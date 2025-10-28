@@ -1,30 +1,39 @@
 import { createClient } from '@supabase/supabase-js'
 
-// For development, allow missing env vars with a warning
-let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-let supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// Check if we're in browser environment
+const isBrowser = typeof window !== 'undefined'
 
-// If environment variables are missing, show helpful error
+// Get environment variables
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+// Validate environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
-  if (typeof window !== 'undefined') {
-    // Client-side error
+  if (isBrowser) {
     console.error('❌ Missing Supabase environment variables')
-    console.log('Please create a .env.local file with:')
-    console.log('NEXT_PUBLIC_SUPABASE_URL=your_supabase_url')
-    console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key')
+    console.log('Please check your environment configuration:')
+    console.log('- Local: Create .env.local file')
+    console.log('- Production: Set in hosting platform')
   }
   
-  // Use placeholder values to prevent build errors
-  supabaseUrl = 'https://placeholder.supabase.co'
-  supabaseAnonKey = 'placeholder-key'
+  // Don't throw error, just use placeholder to prevent build failures
+  console.warn('Using placeholder Supabase client')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
+// Create Supabase client (will use placeholders if env vars missing)
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-key',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+    }
   }
-})
+)
+
+// Helper to check if we have real credentials
+export const hasValidSupabaseConfig = !!(supabaseUrl && supabaseAnonKey)
 
 // Helper function to get current SA time
 export function getSATimestamp(): string {
@@ -38,8 +47,3 @@ export function getSATimestamp(): string {
     second: '2-digit'
   })
 }
-
-// Check if we're using placeholder credentials
-export const isUsingPlaceholderCredentials = 
-  supabaseUrl === 'https://placeholder.supabase.co' || 
-  supabaseAnonKey === 'placeholder-key'
