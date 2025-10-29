@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase, hasValidSupabaseConfig } from '@/lib/supabase'
+import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
 import { Plus, AlertTriangle, Car } from 'lucide-react'
 
 interface AlertForm {
@@ -25,7 +25,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
 
   const onSubmit = async (data: AlertForm) => {
     if (!hasValidSupabaseConfig) {
-      setError('Supabase not configured. Please check environment variables.')
+      setError('System not configured. Please check environment variables.')
       return
     }
 
@@ -38,7 +38,18 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
       const { data: { user } } = await supabase.auth.getUser()
       
       if (!user) {
-        setError('You must be logged in to add alerts')
+        setError('You must be logged in to file reports')
+        return
+      }
+
+      // Ensure user exists in database
+      const dbUser = await ensureUserExists(user.id, {
+        email: user.email!,
+        name: user.user_metadata?.name
+      })
+
+      if (!dbUser) {
+        setError('Unable to verify your account. Please try logging in again.')
         return
       }
 
@@ -59,14 +70,17 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
           }
         ])
 
-      if (insertError) throw insertError
+      if (insertError) {
+        console.error('Insert error:', insertError)
+        throw insertError
+      }
 
-      setSuccess('Vehicle alert added successfully!')
+      setSuccess('Report filed successfully! Community alerted.')
       reset()
       
       // Mock WhatsApp notification
-      console.log('📱 WHATSAPP ALERT MOCK:')
-      console.log(`New vehicle alert: ${data.number_plate} - ${data.reason} in ${data.suburb}`)
+      console.log('📱 RAPID ALERT MOCK:')
+      console.log(`New report: ${data.number_plate} - ${data.reason} in ${data.suburb}`)
       
       // Callback to refresh alerts
       if (onAlertAdded) {
@@ -86,7 +100,8 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         ])
 
     } catch (error: any) {
-      setError(error.message)
+      console.error('Form submission error:', error)
+      setError(error.message || 'Failed to file report. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -107,29 +122,29 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
   ]
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-6 mb-8">
+    <div className="card p-6 mb-8">
       <div className="flex items-center space-x-3 mb-6">
-        <div className="bg-red-100 p-2 rounded-lg">
-          <AlertTriangle className="w-6 h-6 text-red-600" />
+        <div className="bg-accent-red p-2 rounded-lg">
+          <AlertTriangle className="w-6 h-6 text-primary-white" />
         </div>
-        <h2 className="text-2xl font-bold text-gray-800">Report Stolen/Hijacked Vehicle</h2>
+        <h2 className="text-2xl font-bold text-primary-white">File Rapid Report</h2>
       </div>
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div className="bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded mb-4">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+        <div className="bg-green-900 border border-green-700 text-green-300 px-4 py-3 rounded mb-4">
           {success}
         </div>
       )}
 
       {!hasValidSupabaseConfig && (
-        <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
-          ⚠️ Supabase not configured. Form will not work until environment variables are set.
+        <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 px-4 py-3 rounded mb-4">
+          ⚠️ System not configured. Form will not work until environment variables are set.
         </div>
       )}
 
@@ -137,11 +152,12 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Number Plate */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="number_plate" className="block text-sm font-medium text-gray-300 mb-2">
               Number Plate *
             </label>
             <input
               type="text"
+              id="number_plate"
               {...register('number_plate', { 
                 required: 'Number plate is required',
                 pattern: {
@@ -149,28 +165,29 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
                   message: 'Enter valid SA plate (e.g., CA 123 AB)'
                 }
               })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sa-blue focus:border-transparent"
+              className="form-input"
               placeholder="CA 123 AB"
               style={{ textTransform: 'uppercase' }}
             />
             {errors.number_plate && (
-              <p className="text-red-600 text-sm mt-1">{errors.number_plate.message}</p>
+              <p className="text-accent-red text-sm mt-1">{errors.number_plate.message}</p>
             )}
           </div>
 
           {/* Color */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="color" className="block text-sm font-medium text-gray-300 mb-2">
               Color *
             </label>
             <input
               type="text"
+              id="color"
               {...register('color', { required: 'Color is required' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sa-blue focus:border-transparent"
+              className="form-input"
               placeholder="White, Black, Red, etc."
             />
             {errors.color && (
-              <p className="text-red-600 text-sm mt-1">{errors.color.message}</p>
+              <p className="text-accent-red text-sm mt-1">{errors.color.message}</p>
             )}
           </div>
         </div>
@@ -178,12 +195,13 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Make */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="make" className="block text-sm font-medium text-gray-300 mb-2">
               Make *
             </label>
             <select
+              id="make"
               {...register('make', { required: 'Make is required' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sa-blue focus:border-transparent"
+              className="form-input"
             >
               <option value="">Select vehicle make</option>
               {saVehicleMakes.map(make => (
@@ -191,35 +209,37 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
               ))}
             </select>
             {errors.make && (
-              <p className="text-red-600 text-sm mt-1">{errors.make.message}</p>
+              <p className="text-accent-red text-sm mt-1">{errors.make.message}</p>
             )}
           </div>
 
           {/* Model */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="model" className="block text-sm font-medium text-gray-300 mb-2">
               Model *
             </label>
             <input
               type="text"
+              id="model"
               {...register('model', { required: 'Model is required' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sa-blue focus:border-transparent"
+              className="form-input"
               placeholder="Hilux, Polo, X3, etc."
             />
             {errors.model && (
-              <p className="text-red-600 text-sm mt-1">{errors.model.message}</p>
+              <p className="text-accent-red text-sm mt-1">{errors.model.message}</p>
             )}
           </div>
         </div>
 
         {/* Reason */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="reason" className="block text-sm font-medium text-gray-300 mb-2">
             Incident Type / Reason *
           </label>
           <select
+            id="reason"
             {...register('reason', { required: 'Reason is required' })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sa-blue focus:border-transparent"
+            className="form-input"
           >
             <option value="">Select incident type</option>
             <option value="Stolen vehicle">Stolen Vehicle</option>
@@ -230,32 +250,34 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             <option value="Other">Other</option>
           </select>
           {errors.reason && (
-            <p className="text-red-600 text-sm mt-1">{errors.reason.message}</p>
+            <p className="text-accent-red text-sm mt-1">{errors.reason.message}</p>
           )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* SAPS Case Number */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="case_number" className="block text-sm font-medium text-gray-300 mb-2">
               SAPS Case Number
             </label>
             <input
               type="text"
+              id="case_number"
               {...register('case_number')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sa-blue focus:border-transparent"
+              className="form-input"
               placeholder="CAS 123/09/2023"
             />
           </div>
 
           {/* Suburb */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="suburb" className="block text-sm font-medium text-gray-300 mb-2">
               Suburb / Area *
             </label>
             <select
+              id="suburb"
               {...register('suburb', { required: 'Suburb is required' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sa-blue focus:border-transparent"
+              className="form-input"
             >
               <option value="">Select suburb</option>
               {saSuburbs.map(suburb => (
@@ -263,7 +285,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
               ))}
             </select>
             {errors.suburb && (
-              <p className="text-red-600 text-sm mt-1">{errors.suburb.message}</p>
+              <p className="text-accent-red text-sm mt-1">{errors.suburb.message}</p>
             )}
           </div>
         </div>
@@ -272,10 +294,11 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         <div className="flex items-center space-x-3">
           <input
             type="checkbox"
+            id="has_images"
             {...register('has_images')}
-            className="w-4 h-4 text-sa-blue border-gray-300 rounded focus:ring-sa-blue"
+            className="w-4 h-4 text-accent-gold bg-dark-gray border-gray-600 rounded focus:ring-accent-gold focus:ring-2"
           />
-          <label className="text-sm font-medium text-gray-700">
+          <label htmlFor="has_images" className="text-sm font-medium text-gray-300">
             I have images of this vehicle (CCTV, photos, etc.)
           </label>
         </div>
@@ -284,24 +307,24 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         <button
           type="submit"
           disabled={loading || !hasValidSupabaseConfig}
-          className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+          className="w-full btn-secondary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
         >
           {loading ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              <span>Adding Alert...</span>
+              <span>Filing Report...</span>
             </>
           ) : (
             <>
               <AlertTriangle className="w-5 h-5" />
-              <span>Report Stolen Vehicle</span>
+              <span>Submit Rapid Report</span>
             </>
           )}
         </button>
 
         <div className="text-center text-sm text-gray-500">
-          <p>⚠️ This alert will be visible to all community members</p>
-          <p>📱 WhatsApp notification will be sent to the community</p>
+          <p>⚠️ This report will be visible to all community members</p>
+          <p>📱 Instant alerts will be sent to the community network</p>
         </div>
       </form>
     </div>

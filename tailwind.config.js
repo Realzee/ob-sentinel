@@ -8,15 +8,20 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'sa-blue': '#1E3A8A',
-        'sa-green': '#15803D',
-        'sa-red': '#DC2626',
-        'sa-yellow': '#F59E0B',
-        'clean-white': '#F5F5F5'
+        'primary-black': '#000000',
+        'primary-white': '#FFFFFF',
+        'accent-red': '#DC2626',
+        'accent-gold': '#D4AF37',
+        'dark-gray': '#1A1A1A',
+        'medium-gray': '#2D2D2D'
       },
       fontFamily: {
         'inter': ['Inter', 'sans-serif'],
       },
+      backgroundImage: {
+        'gold-gradient': 'linear-gradient(135deg, #D4AF37 0%, #F7EF8A 100%)',
+        'red-gradient': 'linear-gradient(135deg, #DC2626 0%, #F87171 100%)',
+      }
     },
   },
   plugins: [],

@@ -53,40 +53,35 @@ export default function Header() {
   }
 
   return (
-    <header className="bg-sa-blue text-white shadow-lg">
-      <div className="max-w-4xl mx-auto px-4 py-4">
+    <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
+      <div className="max-w-6xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           {/* Logo and Brand */}
           <div className="flex items-center space-x-4">
             <Logo />
             <div>
-              <h1 className="text-2xl font-bold">OB Sentinel</h1>
-              <p className="text-sm opacity-90">South African Neighborhood Watch</p>
+              <h1 className="text-2xl font-bold bg-gold-gradient bg-clip-text text-transparent">
+                RAPID iREPORT
+              </h1>
+              <p className="text-sm text-gray-300">Smart Reporting System</p>
             </div>
           </div>
 
-          {/* Authentication Status */}
-          {authError && (
-            <div className="bg-red-500 text-white px-3 py-1 rounded text-sm hidden md:block">
-              ⚠️ Check environment variables
-            </div>
-          )}
-
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-4">
+          <nav className="hidden md:flex items-center space-x-6">
             {user ? (
               <>
                 <a 
                   href="/" 
-                  className="hover:text-sa-green transition-colors font-medium"
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
                 >
                   Dashboard
                 </a>
                 <a 
                   href="/alerts" 
-                  className="hover:text-sa-green transition-colors font-medium"
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
                 >
-                  View Alerts
+                  View Reports
                 </a>
                 
                 {/* Admin Links */}
@@ -94,15 +89,15 @@ export default function Header() {
                   <>
                     <a 
                       href="/admin/logs" 
-                      className="hover:text-sa-green transition-colors font-medium"
+                      className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
                     >
                       Admin Logs
                     </a>
                     <a 
                       href="/admin/logo" 
-                      className="hover:text-sa-green transition-colors font-medium"
+                      className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
                     >
-                      Upload Logo
+                      Branding
                     </a>
                   </>
                 )}
@@ -110,19 +105,19 @@ export default function Header() {
                 {/* User Links */}
                 <a 
                   href="/change-password" 
-                  className="hover:text-sa-green transition-colors font-medium"
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
                 >
                   Settings
                 </a>
                 
                 {/* User Info & Logout */}
-                <div className="flex items-center space-x-3 border-l border-sa-green pl-4 ml-2">
-                  <span className="text-sm opacity-80">
+                <div className="flex items-center space-x-4 border-l border-gray-600 pl-4 ml-2">
+                  <span className="text-sm text-gray-400">
                     {user.email || user.user_metadata?.name}
                   </span>
                   <button 
                     onClick={handleLogout}
-                    className="bg-sa-red hover:bg-red-700 px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+                    className="btn-outline text-sm"
                   >
                     Logout
                   </button>
@@ -132,21 +127,21 @@ export default function Header() {
               <>
                 <a 
                   href="/" 
-                  className="hover:text-sa-green transition-colors font-medium"
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
                 >
                   Home
                 </a>
                 <a 
                   href="/login" 
-                  className="hover:text-sa-green transition-colors font-medium"
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
                 >
                   Login
                 </a>
                 <a 
                   href="/register" 
-                  className="bg-sa-green hover:bg-green-700 px-4 py-2 rounded-lg transition-colors font-medium"
+                  className="btn-primary"
                 >
-                  Register
+                  Get Started
                 </a>
               </>
             )}
@@ -154,7 +149,7 @@ export default function Header() {
 
           {/* Mobile Menu Button */}
           <button 
-            className="md:hidden p-2 rounded-lg hover:bg-blue-700 transition-colors"
+            className="md:hidden p-2 rounded-lg hover:bg-medium-gray transition-colors"
             onClick={toggleMenu}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,22 +164,22 @@ export default function Header() {
 
         {/* Mobile Navigation Menu */}
         {menuOpen && (
-          <div className="md:hidden mt-4 pb-2 border-t border-blue-400 pt-4">
+          <div className="md:hidden mt-4 pb-2 border-t border-gray-600 pt-4">
             {user ? (
               <div className="space-y-3">
                 <a 
                   href="/" 
-                  className="block hover:text-sa-green transition-colors font-medium py-2"
+                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
                   onClick={() => setMenuOpen(false)}
                 >
                   Dashboard
                 </a>
                 <a 
                   href="/alerts" 
-                  className="block hover:text-sa-green transition-colors font-medium py-2"
+                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
                   onClick={() => setMenuOpen(false)}
                 >
-                  View Alerts
+                  View Reports
                 </a>
                 
                 {/* Admin Links */}
@@ -192,17 +187,17 @@ export default function Header() {
                   <>
                     <a 
                       href="/admin/logs" 
-                      className="block hover:text-sa-green transition-colors font-medium py-2"
+                      className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
                       onClick={() => setMenuOpen(false)}
                     >
                       Admin Logs
                     </a>
                     <a 
                       href="/admin/logo" 
-                      className="block hover:text-sa-green transition-colors font-medium py-2"
+                      className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
                       onClick={() => setMenuOpen(false)}
                     >
-                      Upload Logo
+                      Branding
                     </a>
                   </>
                 )}
@@ -210,15 +205,15 @@ export default function Header() {
                 {/* User Links */}
                 <a 
                   href="/change-password" 
-                  className="block hover:text-sa-green transition-colors font-medium py-2"
+                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
                   onClick={() => setMenuOpen(false)}
                 >
                   Settings
                 </a>
 
                 {/* User Info */}
-                <div className="pt-2 border-t border-blue-400">
-                  <p className="text-sm opacity-80 mb-3">
+                <div className="pt-2 border-t border-gray-600">
+                  <p className="text-sm text-gray-400 mb-3">
                     Signed in as: {user.email || user.user_metadata?.name}
                   </p>
                   <button 
@@ -226,7 +221,7 @@ export default function Header() {
                       handleLogout()
                       setMenuOpen(false)
                     }}
-                    className="w-full bg-sa-red hover:bg-red-700 px-4 py-2 rounded-lg transition-colors font-medium"
+                    className="w-full btn-outline"
                   >
                     Logout
                   </button>
@@ -236,32 +231,25 @@ export default function Header() {
               <div className="space-y-3">
                 <a 
                   href="/" 
-                  className="block hover:text-sa-green transition-colors font-medium py-2"
+                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
                   onClick={() => setMenuOpen(false)}
                 >
                   Home
                 </a>
                 <a 
                   href="/login" 
-                  className="block hover:text-sa-green transition-colors font-medium py-2"
+                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
                   onClick={() => setMenuOpen(false)}
                 >
                   Login
                 </a>
                 <a 
                   href="/register" 
-                  className="block bg-sa-green hover:bg-green-700 px-4 py-2 rounded-lg transition-colors font-medium text-center"
+                  className="block btn-primary text-center"
                   onClick={() => setMenuOpen(false)}
                 >
-                  Register
+                  Get Started
                 </a>
-              </div>
-            )}
-
-            {/* Auth Error Mobile */}
-            {authError && (
-              <div className="bg-red-500 text-white px-3 py-2 rounded text-sm mt-3">
-                ⚠️ Check environment variables
               </div>
             )}
           </div>

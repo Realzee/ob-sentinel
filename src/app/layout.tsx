@@ -3,8 +3,11 @@ import './globals.css'
 import Header from '@/components/Header'
 
 export const metadata: Metadata = {
-  title: 'OB Sentinel - South African Neighborhood Watch',
-  description: 'Secure incident logging and community alerts for South African neighborhood watches',
+  title: 'RAPID iREPORT - Smart Reporting System',
+  description: 'Modern, secure incident logging and community alert system for rapid reporting',
+  icons: {
+    icon: '../../public/favicon.ico',
+  },
 }
 
 export default function RootLayout({
@@ -14,9 +17,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-clean-white">
+      <body className="min-h-screen bg-primary-black text-primary-white">
         <Header />
-        <main className="max-w-4xl mx-auto px-4 py-8">
+        <main className="max-w-6xl mx-auto px-4 py-8">
           {children}
         </main>
       </body>
