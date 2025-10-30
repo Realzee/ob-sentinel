@@ -133,7 +133,7 @@ a {
   display: flex;
   justify-content: center; /* Centers horizontally */
   align-items: center; /* Centers vertically */
-  height: 100vh; /* Sets container height to the full viewport height */
+ 
 }
 
 /* Custom scrollbar */
