@@ -33,39 +33,40 @@ export default function Dashboard() {
   const [editingAlert, setEditingAlert] = useState<AlertVehicle | null>(null)
   const [user, setUser] = useState<any>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  // Fetch alerts whenever user changes
-  useEffect(() => {
-    const fetchAlerts = async () => {
-      if (!user) {
-        setAlerts([])
-        setLoading(false)
-        return
-      }
-
-      setLoading(true)
-      try {
-        const data = await safeDbOperation<AlertVehicle[]>(() => 
-          supabase
-            .from('alerts_vehicles')
-            .select(`
-              *,
-              users (name, email)
-            `)
-            .order('created_at', { ascending: false })
-        , [])
-
-        setAlerts(data || [])
-      } catch (error) {
-        console.error('Error fetching alerts:', error)
-        setAlerts([])
-      } finally {
-        setLoading(false)
-      }
+  // Fetch alerts function
+  const fetchAlerts = async () => {
+    if (!user) {
+      setAlerts([])
+      setLoading(false)
+      return
     }
 
-    fetchAlerts()
-  }, [user])
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('alerts_vehicles')
+        .select(`
+          *,
+          users (name, email)
+        `)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching alerts:', error)
+        setAlerts([])
+      } else {
+        console.log('Fetched alerts:', data?.length)
+        setAlerts(data || [])
+      }
+    } catch (error) {
+      console.error('Error fetching alerts:', error)
+      setAlerts([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Initialize app and set up auth listener
   useEffect(() => {
@@ -90,9 +91,14 @@ export default function Dashboard() {
           }).catch(error => {
             console.warn('User creation failed (non-critical):', error)
           })
+
+          await fetchAlerts()
+        } else {
+          setLoading(false)
         }
       } catch (error) {
         console.error('Initialization error:', error)
+        setLoading(false)
       }
     }
 
@@ -105,9 +111,13 @@ export default function Dashboard() {
         
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           setUser(session?.user ?? null)
+          if (session?.user) {
+            await fetchAlerts()
+          }
         } else if (event === 'SIGNED_OUT') {
           setUser(null)
           setAlerts([])
+          setLoading(false)
         }
       }
     )
@@ -124,6 +134,7 @@ export default function Dashboard() {
       return
     }
 
+    setDeletingId(alertId)
     try {
       const { error } = await supabase
         .from('alerts_vehicles')
@@ -136,21 +147,10 @@ export default function Dashboard() {
         throw error
       }
 
-      console.log('Alert deleted successfully, refreshing list...')
+      console.log('Alert deleted successfully')
       
-      // Refresh alerts by filtering out the deleted one
-      setAlerts(prev => prev.filter(alert => alert.id !== alertId))
-      
-      // Also refetch from server to ensure consistency
-      const { data: freshData } = await supabase
-        .from('alerts_vehicles')
-        .select(`
-          *,
-          users (name, email)
-        `)
-        .order('created_at', { ascending: false })
-
-      setAlerts(freshData || [])
+      // Update UI immediately by filtering out the deleted alert
+      setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== alertId))
       
       // Log the action
       await supabase
@@ -167,6 +167,10 @@ export default function Dashboard() {
     } catch (error: any) {
       console.error('Error deleting alert:', error)
       alert('Failed to delete report: ' + error.message)
+      // If delete failed, refresh the list to ensure consistency
+      await fetchAlerts()
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -261,20 +265,8 @@ export default function Dashboard() {
       {/* Add Report Form */}
       {showAddForm && (
         <AddAlertForm onAlertAdded={() => {
-          // Refresh alerts
-          const refreshAlerts = async () => {
-            const { data: freshData } = await supabase
-              .from('alerts_vehicles')
-              .select(`
-                *,
-                users (name, email)
-              `)
-              .order('created_at', { ascending: false })
-            
-            setAlerts(freshData || [])
-            setShowAddForm(false)
-          }
-          refreshAlerts()
+          fetchAlerts()
+          setShowAddForm(false)
         }} />
       )}
 
@@ -283,20 +275,8 @@ export default function Dashboard() {
         <EditAlertForm 
           alert={editingAlert}
           onAlertUpdated={() => {
-            // Refresh alerts
-            const refreshAlerts = async () => {
-              const { data: freshData } = await supabase
-                .from('alerts_vehicles')
-                .select(`
-                  *,
-                  users (name, email)
-                `)
-                .order('created_at', { ascending: false })
-              
-              setAlerts(freshData || [])
-              setEditingAlert(null)
-            }
-            refreshAlerts()
+            fetchAlerts()
+            setEditingAlert(null)
           }}
           onCancel={() => setEditingAlert(null)}
         />
@@ -428,10 +408,15 @@ export default function Dashboard() {
                           </button>
                           <button
                             onClick={() => handleDeleteAlert(alert.id)}
-                            className="p-2 text-accent-red hover:bg-accent-red hover:text-white rounded transition-colors"
+                            disabled={deletingId === alert.id}
+                            className="p-2 text-accent-red hover:bg-accent-red hover:text-white rounded transition-colors disabled:opacity-50"
                             title="Delete Report"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            {deletingId === alert.id ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
                           </button>
                         </div>
                       )}
