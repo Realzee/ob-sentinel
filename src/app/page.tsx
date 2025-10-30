@@ -189,8 +189,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Quick Actions */}
-      {user && (
+      {/* Quick Actions - Only show if user is logged in */}
+      {user ? (
         <div className="text-center">
           <button
             onClick={() => setShowAddForm(!showAddForm)}
@@ -199,6 +199,13 @@ export default function Dashboard() {
             <Plus className="w-5 h-5" />
             <span>{showAddForm ? 'Cancel' : 'File New Report'}</span>
           </button>
+        </div>
+      ) : (
+        <div className="text-center">
+          <p className="text-gray-400 mb-4">Please log in to file reports</p>
+          <a href="/login" className="btn-primary">
+            Sign In
+          </a>
         </div>
       )}
 
@@ -369,6 +376,7 @@ export default function Dashboard() {
           )}
         </div>
       ) : (
+        // Show authentication message for non-logged in users
         <div className="card p-8 text-center">
           <Shield className="w-16 h-16 text-accent-gold mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-primary-white mb-4">Authentication Required</h2>
@@ -386,7 +394,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Quick Tips */}
+      {/* Quick Tips - Only show if user is logged in */}
       {user && (
         <div className="card p-6 border-l-4 border-accent-gold">
           <h3 className="text-xl font-bold text-accent-gold mb-4">Reporting Guidelines</h3>

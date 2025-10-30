@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { Plus, AlertTriangle, Car } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 
 interface AlertForm {
   number_plate: string
