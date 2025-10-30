@@ -31,8 +31,8 @@ export default function Login() {
       if (authError) throw authError
 
       if (authData.user) {
-        router.push('/')
-        router.refresh()
+        // Force a complete page refresh to ensure all components re-render
+        window.location.href = '/'
       }
     } catch (error: any) {
       setError(error.message)

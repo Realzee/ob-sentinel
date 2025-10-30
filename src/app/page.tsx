@@ -66,22 +66,54 @@ export default function Dashboard() {
     }
 
     initializeApp()
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event)
+        
+        if (event === 'SIGNED_IN') {
+          setUser(session?.user ?? null)
+          if (session?.user) {
+            await fetchAlerts()
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null)
+          setAlerts([]) // Clear alerts when user signs out
+        }
+      }
+    )
+
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   const fetchAlerts = async () => {
-    if (!user) return
+    if (!user) {
+      setAlerts([])
+      return
+    }
 
-    const data = await safeDbOperation<AlertVehicle[]>(() => 
-      supabase
-        .from('alerts_vehicles')
-        .select(`
-          *,
-          users (name, email)
-        `)
-        .order('created_at', { ascending: false })
-    , [])
+    setLoading(true)
+    try {
+      const data = await safeDbOperation<AlertVehicle[]>(() => 
+        supabase
+          .from('alerts_vehicles')
+          .select(`
+            *,
+            users (name, email)
+          `)
+          .order('created_at', { ascending: false })
+      , [])
 
-    setAlerts(data || [])
+      setAlerts(data || [])
+    } catch (error) {
+      console.error('Error fetching alerts:', error)
+      setAlerts([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleDeleteAlert = async (alertId: string) => {
