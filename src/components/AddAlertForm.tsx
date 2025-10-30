@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Upload, X, Image as ImageIcon } from 'lucide-react'
 
 interface AlertForm {
   number_plate: string
@@ -13,15 +13,96 @@ interface AlertForm {
   reason: string
   case_number: string
   suburb: string
-  has_images: boolean
+}
+
+interface ImageFile {
+  file: File
+  preview: string
 }
 
 export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => void }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const [imageFiles, setImageFiles] = useState<ImageFile[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   const { register, handleSubmit, reset, formState: { errors } } = useForm<AlertForm>()
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files) return
+
+    const newImageFiles: ImageFile[] = []
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please upload only image files (JPEG, PNG, etc.)')
+        continue
+      }
+      
+      // Validate file size (5MB max)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image size must be less than 5MB')
+        continue
+      }
+      
+      const preview = URL.createObjectURL(file)
+      newImageFiles.push({ file, preview })
+    }
+    
+    setImageFiles(prev => [...prev, ...newImageFiles].slice(0, 10)) // Max 10 images
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const removeImage = (index: number) => {
+    setImageFiles(prev => {
+      const newFiles = [...prev]
+      URL.revokeObjectURL(newFiles[index].preview)
+      newFiles.splice(index, 1)
+      return newFiles
+    })
+  }
+
+  const uploadImages = async (alertId: string): Promise<string[]> => {
+  if (imageFiles.length === 0) return []
+
+  setUploadingImages(true)
+  const imageUrls: string[] = []
+
+  try {
+    for (const imageFile of imageFiles) {
+      const fileExt = imageFile.file.name.split('.').pop()
+      const fileName = `${alertId}/${Math.random().toString(36).substring(2)}.${fileExt}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('report-images')
+        .upload(fileName, imageFile.file)
+
+      if (uploadError) {
+        console.error('Image upload error:', uploadError)
+        throw new Error(`Failed to upload image: ${uploadError.message}`)
+      }
+
+      // Use getPublicUrl to get the publicly accessible URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('report-images')
+        .getPublicUrl(fileName)
+
+      imageUrls.push(publicUrl)
+    }
+  } finally {
+    setUploadingImages(false)
+  }
+
+  return imageUrls
+}
 
   const onSubmit = async (data: AlertForm) => {
     if (!hasValidSupabaseConfig) {
@@ -54,7 +135,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
       }
 
       // Insert new alert
-      const { error: insertError } = await supabase
+      const { data: alertData, error: insertError } = await supabase
         .from('alerts_vehicles')
         .insert([
           {
@@ -66,16 +147,41 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             reason: data.reason,
             case_number: data.case_number,
             suburb: data.suburb,
-            has_images: data.has_images
+            has_images: imageFiles.length > 0
           }
         ])
+        .select()
+        .single()
 
       if (insertError) {
         console.error('Insert error:', insertError)
         throw insertError
       }
 
-      setSuccess('Report filed successfully! Community alerted.')
+      // Upload images if any
+      let imageUrls: string[] = []
+      if (imageFiles.length > 0) {
+        imageUrls = await uploadImages(alertData.id)
+        
+        // Update alert with image URLs
+        if (imageUrls.length > 0) {
+          const { error: updateError } = await supabase
+            .from('alerts_vehicles')
+            .update({ image_urls: imageUrls })
+            .eq('id', alertData.id)
+
+          if (updateError) {
+            console.error('Image URL update error:', updateError)
+            // Continue anyway - the alert was created successfully
+          }
+        }
+      }
+
+      setSuccess(`Report filed successfully! ${imageUrls.length > 0 ? `${imageUrls.length} image(s) uploaded.` : ''}`)
+      
+      // Clean up
+      imageFiles.forEach(file => URL.revokeObjectURL(file.preview))
+      setImageFiles([])
       reset()
       
       // Mock WhatsApp notification
@@ -290,29 +396,79 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
           </div>
         </div>
 
-        {/* Images Checkbox */}
-        <div className="flex items-center space-x-3">
-          <input
-            type="checkbox"
-            id="has_images"
-            {...register('has_images')}
-            className="w-4 h-4 text-accent-gold bg-dark-gray border-gray-600 rounded focus:ring-accent-gold focus:ring-2"
-          />
-          <label htmlFor="has_images" className="text-sm font-medium text-gray-300">
-            I have images of this vehicle (CCTV, photos, etc.)
+        {/* Image Upload Section */}
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Upload Images (Optional)
           </label>
+          <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+              id="image-upload"
+            />
+            <label
+              htmlFor="image-upload"
+              className="cursor-pointer inline-flex items-center space-x-2 text-accent-gold hover:text-accent-gold/80 transition-colors"
+            >
+              <Upload className="w-5 h-5" />
+              <span>Select images (Max 10, 5MB each)</span>
+            </label>
+            <p className="text-sm text-gray-400 mt-2">
+              Upload CCTV footage screenshots, photos of the vehicle, or other evidence
+            </p>
+          </div>
+
+          {/* Image Previews */}
+          {imageFiles.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center space-x-2 mb-3">
+                <ImageIcon className="w-4 h-4 text-accent-gold" />
+                <span className="text-sm font-medium text-gray-300">
+                  {imageFiles.length} image{imageFiles.length > 1 ? 's' : ''} selected
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {imageFiles.map((imageFile, index) => (
+                  <div key={index} className="relative group">
+                    <img
+                      src={imageFile.preview}
+                      alt={`Preview ${index + 1}`}
+                      className="w-full h-24 object-cover rounded border border-gray-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(index)}
+                      className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                    <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                      {index + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={loading || !hasValidSupabaseConfig}
+          disabled={loading || uploadingImages || !hasValidSupabaseConfig}
           className="w-full btn-secondary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
         >
-          {loading ? (
+          {loading || uploadingImages ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              <span>Filing Report...</span>
+              <span>
+                {uploadingImages ? 'Uploading Images...' : 'Filing Report...'}
+              </span>
             </>
           ) : (
             <>
@@ -325,6 +481,9 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         <div className="text-center text-sm text-gray-500">
           <p>⚠️ This report will be visible to all community members</p>
           <p>📱 Instant alerts will be sent to the community network</p>
+          {imageFiles.length > 0 && (
+            <p>🖼️ {imageFiles.length} image{imageFiles.length > 1 ? 's' : ''} will be attached to this report</p>
+          )}
         </div>
       </form>
     </div>

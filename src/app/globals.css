@@ -39,6 +39,11 @@ a {
   text-decoration: none;
 }
 
+/* Image preview modal styles */
+.image-preview-modal {
+  backdrop-filter: blur(5px);
+}
+
 /* Custom component classes without @apply */
 .btn-primary {
   background-image: url('/button-bg.png'); /* Path to your button image */
