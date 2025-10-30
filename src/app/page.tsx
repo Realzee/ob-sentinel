@@ -93,6 +93,7 @@ export default function Dashboard() {
         <img 
               src="/rapid-ireport-logo.png" 
               alt="RAPID iREPORT Logo"
+              className="w-48 h-24 object-contain"
             />
         <p className="text-gray-400 text-lg">Smart Reporting System</p>
       </div>
