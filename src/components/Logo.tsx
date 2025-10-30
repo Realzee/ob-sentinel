@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export default function Logo() {
-  const [logoUrl, setLogoUrl] = useState<string>('/rapid-ireport-logo.png')
+  const [logoUrl, setLogoUrl] = useState<string>('../rapid-ireport-logo.png')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export default function Logo() {
         src={logoUrl} 
         alt="RAPID iREPORT Logo"
         className="w-10 h-10 object-contain"
-        onError={() => setLogoUrl('/rapid-ireport-logo.png')}
+        onError={() => setLogoUrl('../rapid-ireport-logo.png')}
       />
     </div>
   )

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
+import { supabase, hasValidSupabaseConfig, ensureUserExists, safeDbOperation } from '@/lib/supabase'
 import { Search, AlertTriangle, Shield, Users, Plus, FileText } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 
@@ -28,6 +28,7 @@ export default function Dashboard() {
   useEffect(() => {
     const initializeApp = async () => {
       if (!hasValidSupabaseConfig) {
+        console.warn('Supabase not configured')
         setLoading(false)
         return
       }
@@ -38,10 +39,12 @@ export default function Dashboard() {
         setUser(user)
 
         if (user) {
-          // Ensure user exists in database to prevent foreign key errors
-          await ensureUserExists(user.id, {
+          // Ensure user exists in database (non-blocking)
+          ensureUserExists(user.id, {
             email: user.email!,
             name: user.user_metadata?.name
+          }).catch(error => {
+            console.warn('User creation failed (non-critical):', error)
           })
         }
 
@@ -57,23 +60,15 @@ export default function Dashboard() {
   }, [])
 
   const fetchAlerts = async () => {
-    if (!hasValidSupabaseConfig) {
-      return
-    }
-
-    try {
-      const { data, error } = await supabase
+    const data = await safeDbOperation<AlertVehicle[]>(() => 
+      supabase
         .from('alerts_vehicles')
         .select('*')
         .order('created_at', { ascending: false })
+    , [])
 
-      if (error) throw error
-      setAlerts(data || [])
-    } catch (error: any) {
-      console.error('Error fetching alerts:', error)
-    }
+    setAlerts(data || [])
   }
-
   const filteredAlerts = alerts.filter(alert => 
     alert.number_plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.suburb.toLowerCase().includes(searchTerm.toLowerCase()) ||

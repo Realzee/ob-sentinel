@@ -1,48 +1,67 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, hasValidSupabaseConfig } from '@/lib/supabase'
+import { supabase, hasValidSupabaseConfig, getCurrentUser } from '@/lib/supabase'
 import Logo from './Logo'
 
 export default function Header() {
   const [user, setUser] = useState<any>(null)
   const [authError, setAuthError] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
 
   useEffect(() => {
-    const getUser = async () => {
+    const initializeAuth = async () => {
       if (!hasValidSupabaseConfig) {
         setAuthError(true)
+        setAuthLoading(false)
         return
       }
 
       try {
-        const { data: { user }, error } = await supabase.auth.getUser()
-        if (error) {
-          console.error('Auth error:', error)
-          setAuthError(true)
-        } else {
-          setUser(user)
-        }
+        // Get current user with improved error handling
+        const currentUser = await getCurrentUser()
+        setUser(currentUser)
       } catch (error) {
-        console.error('Error getting user:', error)
+        console.error('Auth initialization error:', error)
         setAuthError(true)
+      } finally {
+        setAuthLoading(false)
       }
     }
 
-    getUser()
+    initializeAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
-      setUser(session?.user ?? null)
-    })
+    // Set up auth state listener with better error handling
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event)
+        
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          setUser(session?.user ?? null)
+          setAuthError(false)
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null)
+        } else if (event === 'USER_UPDATED') {
+          setUser(session?.user ?? null)
+        }
+      }
+    )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut()
-      setUser(null)
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('Logout error:', error)
+      } else {
+        setUser(null)
+        setAuthError(false)
+      }
     } catch (error) {
       console.error('Logout error:', error)
     }
@@ -50,6 +69,28 @@ export default function Header() {
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
+  }
+
+  // Show loading state
+  if (authLoading) {
+    return (
+      <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Logo />
+              <div>
+                <h1 className="text-2xl font-bold bg-gold-gradient bg-clip-text text-transparent">
+                  RAPID iREPORT
+                </h1>
+                <p className="text-sm text-gray-300">Smart Reporting System</p>
+              </div>
+            </div>
+            <div className="text-sm text-gray-400">Loading...</div>
+          </div>
+        </div>
+      </header>
+    )
   }
 
   return (
@@ -66,6 +107,13 @@ export default function Header() {
               <p className="text-sm text-gray-300">Smart Reporting System</p>
             </div>
           </div>
+
+          {/* Authentication Status */}
+          {authError && (
+            <div className="bg-red-900 text-red-300 px-3 py-1 rounded text-sm hidden md:block">
+              ⚠️ Authentication issue
+            </div>
+          )}
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-6">
@@ -112,7 +160,7 @@ export default function Header() {
                 
                 {/* User Info & Logout */}
                 <div className="flex items-center space-x-4 border-l border-gray-600 pl-4 ml-2">
-                  <span className="text-sm text-gray-400">
+                  <span className="text-sm text-gray-400 max-w-xs truncate">
                     {user.email || user.user_metadata?.name}
                   </span>
                   <button 
@@ -213,7 +261,7 @@ export default function Header() {
 
                 {/* User Info */}
                 <div className="pt-2 border-t border-gray-600">
-                  <p className="text-sm text-gray-400 mb-3">
+                  <p className="text-sm text-gray-400 mb-3 truncate">
                     Signed in as: {user.email || user.user_metadata?.name}
                   </p>
                   <button 
@@ -250,6 +298,13 @@ export default function Header() {
                 >
                   Get Started
                 </a>
+              </div>
+            )}
+
+            {/* Auth Error Mobile */}
+            {authError && (
+              <div className="bg-red-900 text-red-300 px-3 py-2 rounded text-sm mt-3">
+                ⚠️ Authentication issue
               </div>
             )}
           </div>
