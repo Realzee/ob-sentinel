@@ -42,8 +42,18 @@ a {
 /* Custom component classes without @apply */
 .btn-primary {
   background-image: url('/button-bg.png'); /* Path to your button image */
+  background-size: cover; /* This makes the image cover the entire button */
+  background-position: center; /* Centers the image */
+  background-repeat: no-repeat; /* Prevents the image from repeating */
   color: white;
-  /* Add other styles as needed */
+  font-weight: 600;
+  padding: 12px 24px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
 }
 
 .btn-primary:hover {
