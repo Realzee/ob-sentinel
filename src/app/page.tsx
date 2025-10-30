@@ -34,6 +34,40 @@ export default function Dashboard() {
   const [user, setUser] = useState<any>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
+  // Fetch alerts whenever user changes
+  useEffect(() => {
+    const fetchAlerts = async () => {
+      if (!user) {
+        setAlerts([])
+        setLoading(false)
+        return
+      }
+
+      setLoading(true)
+      try {
+        const data = await safeDbOperation<AlertVehicle[]>(() => 
+          supabase
+            .from('alerts_vehicles')
+            .select(`
+              *,
+              users (name, email)
+            `)
+            .order('created_at', { ascending: false })
+        , [])
+
+        setAlerts(data || [])
+      } catch (error) {
+        console.error('Error fetching alerts:', error)
+        setAlerts([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAlerts()
+  }, [user])
+
+  // Initialize app and set up auth listener
   useEffect(() => {
     const initializeApp = async () => {
       if (!hasValidSupabaseConfig) {
@@ -45,6 +79,7 @@ export default function Dashboard() {
       try {
         // Get current user
         const { data: { user } } = await supabase.auth.getUser()
+        console.log('Initial user:', user)
         setUser(user)
 
         if (user) {
@@ -55,13 +90,9 @@ export default function Dashboard() {
           }).catch(error => {
             console.warn('User creation failed (non-critical):', error)
           })
-
-          await fetchAlerts()
         }
       } catch (error) {
         console.error('Initialization error:', error)
-      } finally {
-        setLoading(false)
       }
     }
 
@@ -70,16 +101,13 @@ export default function Dashboard() {
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event)
+        console.log('Auth state changed:', event, session?.user)
         
-        if (event === 'SIGNED_IN') {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           setUser(session?.user ?? null)
-          if (session?.user) {
-            await fetchAlerts()
-          }
         } else if (event === 'SIGNED_OUT') {
           setUser(null)
-          setAlerts([]) // Clear alerts when user signs out
+          setAlerts([])
         }
       }
     )
@@ -88,33 +116,6 @@ export default function Dashboard() {
       subscription.unsubscribe()
     }
   }, [])
-
-  const fetchAlerts = async () => {
-    if (!user) {
-      setAlerts([])
-      return
-    }
-
-    setLoading(true)
-    try {
-      const data = await safeDbOperation<AlertVehicle[]>(() => 
-        supabase
-          .from('alerts_vehicles')
-          .select(`
-            *,
-            users (name, email)
-          `)
-          .order('created_at', { ascending: false })
-      , [])
-
-      setAlerts(data || [])
-    } catch (error) {
-      console.error('Error fetching alerts:', error)
-      setAlerts([])
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleDeleteAlert = async (alertId: string) => {
     if (!user) return
@@ -130,10 +131,26 @@ export default function Dashboard() {
         .eq('id', alertId)
         .eq('user_id', user.id) // Ensure user can only delete their own reports
 
-      if (error) throw error
+      if (error) {
+        console.error('Delete error:', error)
+        throw error
+      }
 
-      // Refresh alerts
-      await fetchAlerts()
+      console.log('Alert deleted successfully, refreshing list...')
+      
+      // Refresh alerts by filtering out the deleted one
+      setAlerts(prev => prev.filter(alert => alert.id !== alertId))
+      
+      // Also refetch from server to ensure consistency
+      const { data: freshData } = await supabase
+        .from('alerts_vehicles')
+        .select(`
+          *,
+          users (name, email)
+        `)
+        .order('created_at', { ascending: false })
+
+      setAlerts(freshData || [])
       
       // Log the action
       await supabase
@@ -244,8 +261,20 @@ export default function Dashboard() {
       {/* Add Report Form */}
       {showAddForm && (
         <AddAlertForm onAlertAdded={() => {
-          fetchAlerts()
-          setShowAddForm(false)
+          // Refresh alerts
+          const refreshAlerts = async () => {
+            const { data: freshData } = await supabase
+              .from('alerts_vehicles')
+              .select(`
+                *,
+                users (name, email)
+              `)
+              .order('created_at', { ascending: false })
+            
+            setAlerts(freshData || [])
+            setShowAddForm(false)
+          }
+          refreshAlerts()
         }} />
       )}
 
@@ -254,8 +283,20 @@ export default function Dashboard() {
         <EditAlertForm 
           alert={editingAlert}
           onAlertUpdated={() => {
-            fetchAlerts()
-            setEditingAlert(null)
+            // Refresh alerts
+            const refreshAlerts = async () => {
+              const { data: freshData } = await supabase
+                .from('alerts_vehicles')
+                .select(`
+                  *,
+                  users (name, email)
+                `)
+                .order('created_at', { ascending: false })
+              
+              setAlerts(freshData || [])
+              setEditingAlert(null)
+            }
+            refreshAlerts()
           }}
           onCancel={() => setEditingAlert(null)}
         />

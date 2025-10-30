@@ -60,6 +60,8 @@ export default function Header() {
       } else {
         setUser(null)
         setAuthError(false)
+        // Force page refresh to reset state
+        window.location.href = '/'
       }
     } catch (error) {
       console.error('Logout error:', error)
@@ -77,12 +79,14 @@ export default function Header() {
         <div className="max-w-6xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              {/* Logo without container */}
-              <img 
-                src="/rapid-ireport-logo.png" 
-                alt="RAPID iREPORT Logo"
-                className="w-12 h-12 object-contain"
-              />
+              {/* Simple logo container without background */}
+              <div className="flex items-center justify-center">
+                <img 
+                  src="/rapid-ireport-logo.png" 
+                  alt="RAPID iREPORT Logo"
+                  className="w-12 h-12 object-contain"
+                />
+              </div>
               <div>
                 <h1 className="text-2xl font-bold flashing-text">
                   RAPID iREPORT
@@ -103,11 +107,18 @@ export default function Header() {
         <div className="flex items-center justify-between">
           {/* Logo and Brand - Logo without container */}
           <div className="flex items-center space-x-4">
-            <img 
-              src="/rapid-ireport-logo.png" 
-              alt="RAPID iREPORT Logo"
-              className="w-24 h-24 object-contain"
-            />
+            <div className="flex items-center justify-center">
+              <img 
+                src="/rapid-ireport-logo.png" 
+                alt="RAPID iREPORT Logo"
+                className="w-12 h-12 object-contain"
+                onError={(e) => {
+                  // Fallback if image fails to load
+                  console.log('Logo failed to load, using text fallback')
+                  e.currentTarget.style.display = 'none'
+                }}
+              />
+            </div>
             <div>
               <h1 className="text-2xl font-bold flashing-text">
                 RAPID iREPORT
@@ -318,16 +329,6 @@ export default function Header() {
           </div>
         )}
       </div>
-
-      <style jsx>{`
-        @keyframes flashRedBlue {
-          0%, 100% { color: #EF4444; } /* red-500 */
-          50% { color: #3B82F6; } /* blue-500 */
-        }
-        .flashing-text {
-          animation: flashRedBlue 1.5s ease-in-out infinite;
-        }
-      `}</style>
     </header>
   )
 }
