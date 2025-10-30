@@ -90,9 +90,10 @@ export default function Dashboard() {
     <div className="space-y-8">
       {/* Welcome Section */}
       <div className="text-center">
-        <h1 className="text-4xl font-bold bg-gold-gradient bg-clip-text text-transparent mb-2">
-          RAPID iREPORT
-        </h1>
+        <img 
+              src="/rapid-ireport-logo.png" 
+              alt="RAPID iREPORT Logo"
+            />
         <p className="text-gray-400 text-lg">Smart Reporting System</p>
       </div>
 
