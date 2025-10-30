@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, getCurrentUser } from '@/lib/supabase'
-import Logo from './Logo'
 
 export default function Header() {
   const [user, setUser] = useState<any>(null)
@@ -75,12 +74,18 @@ export default function Header() {
   if (authLoading) {
     return (
       <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
-        <div className="max-w-6xl mx-auto px-4 py-4">
+        <div className="px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Logo />
+              <div className="w-12 h-12 bg-accent-gold rounded-lg flex items-center justify-center">
+                <img 
+                  src="/rapid-ireport-logo.png" 
+                  alt="RAPID iREPORT Logo"
+                  className="w-10 h-10 object-contain"
+                />
+              </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gold-gradient bg-clip-text text-transparent">
+                <h1 className="text-2xl font-bold text-accent-gold">
                   RAPID iREPORT
                 </h1>
                 <p className="text-sm text-gray-300">Smart Reporting System</p>
@@ -95,13 +100,19 @@ export default function Header() {
 
   return (
     <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
-      <div className="max-w-6xl mx-auto px-4 py-4">
+      <div className="px-4 py-4">
         <div className="flex items-center justify-between">
           {/* Logo and Brand */}
           <div className="flex items-center space-x-4">
-            <Logo />
+            <div className="w-12 h-12 bg-accent-gold rounded-lg flex items-center justify-center">
+              <img 
+                src="/rapid-ireport-logo.png" 
+                alt="RAPID iREPORT Logo"
+                className="w-10 h-10 object-contain"
+              />
+            </div>
             <div>
-              <h1 className="text-2xl font-bold bg-gold-gradient bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold text-accent-gold">
                 RAPID iREPORT
               </h1>
               <p className="text-sm text-gray-300">Smart Reporting System</p>
