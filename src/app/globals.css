@@ -42,7 +42,7 @@ a {
 /* Custom component classes without @apply */
 .btn-primary {
   background-image: url('/button-bg.png'); /* Path to your button image */
-  background-size: cover; /* This makes the image cover the entire button */
+  background-size: 100% 100%; /* This makes the image cover the entire button */
   background-position: center; /* Centers the image */
   background-repeat: no-repeat; /* Prevents the image from repeating */
   color: white;
@@ -58,8 +58,8 @@ a {
 
 .btn-primary:hover {
   box-shadow: 0 10px 25px rgba(212, 175, 55, 0.3);
+  transform: translateY(-1px); /* Optional: Add slight lift on hover */
 }
-
 .btn-secondary {
   background: linear-gradient(135deg, #DC2626 0%, #F87171 100%);
   color: #FFFFFF;
