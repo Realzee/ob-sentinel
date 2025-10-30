@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, hasValidSupabaseConfig, ensureUserExists, safeDbOperation } from '@/lib/supabase'
+import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
 import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import EditAlertForm from '@/components/EditAlertForm'
@@ -37,7 +37,10 @@ export default function Dashboard() {
 
   // Fetch alerts function
   const fetchAlerts = async () => {
+    console.log('fetchAlerts called, user:', user)
+    
     if (!user) {
+      console.log('No user, clearing alerts')
       setAlerts([])
       setLoading(false)
       return
@@ -68,6 +71,12 @@ export default function Dashboard() {
     }
   }
 
+  // Fetch alerts whenever user changes
+  useEffect(() => {
+    console.log('User changed, fetching alerts:', user)
+    fetchAlerts()
+  }, [user])
+
   // Initialize app and set up auth listener
   useEffect(() => {
     const initializeApp = async () => {
@@ -91,8 +100,6 @@ export default function Dashboard() {
           }).catch(error => {
             console.warn('User creation failed (non-critical):', error)
           })
-
-          await fetchAlerts()
         } else {
           setLoading(false)
         }
@@ -110,14 +117,12 @@ export default function Dashboard() {
         console.log('Auth state changed:', event, session?.user)
         
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          console.log('User signed in, setting user state')
           setUser(session?.user ?? null)
-          if (session?.user) {
-            await fetchAlerts()
-          }
         } else if (event === 'SIGNED_OUT') {
+          console.log('User signed out, clearing state')
           setUser(null)
           setAlerts([])
-          setLoading(false)
         }
       }
     )
