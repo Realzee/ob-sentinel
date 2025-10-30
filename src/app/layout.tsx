@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: 'RAPID iREPORT - Smart Reporting System',
   description: 'Modern, secure incident logging and community alert system for rapid reporting',
   icons: {
-    icon: '../../public/favicon.ico',
+    icon: './../public/favicon.ico',
   },
 }
 
