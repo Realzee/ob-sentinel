@@ -113,6 +113,22 @@ a {
   color: #9CA3AF;
 }
 
+/* Flash animation for RAPID iREPORT text */
+@keyframes flashRedBlue {
+  0%, 100% { 
+    color: #EF4444; /* red-500 */
+    text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+  }
+  50% { 
+    color: #3B82F6; /* blue-500 */
+    text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+  }
+}
+
+.flashing-text {
+  animation: flashRedBlue 1.5s ease-in-out infinite;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

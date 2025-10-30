@@ -74,18 +74,17 @@ export default function Header() {
   if (authLoading) {
     return (
       <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
-        <div className="px-4 py-4">
+        <div className="max-w-6xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-accent-gold rounded-lg flex items-center justify-center">
-                <img 
-                  src="/rapid-ireport-logo.png" 
-                  alt="RAPID iREPORT Logo"
-                  className="w-10 h-10 object-contain"
-                />
-              </div>
+              {/* Logo without container */}
+              <img 
+                src="/rapid-ireport-logo.png" 
+                alt="RAPID iREPORT Logo"
+                className="w-12 h-12 object-contain"
+              />
               <div>
-                <h1 className="text-2xl font-bold text-accent-gold">
+                <h1 className="text-2xl font-bold flashing-text">
                   RAPID iREPORT
                 </h1>
                 <p className="text-sm text-gray-300">Smart Reporting System</p>
@@ -100,19 +99,17 @@ export default function Header() {
 
   return (
     <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
-      <div className="px-4 py-4">
+      <div className="max-w-6xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
-          {/* Logo and Brand */}
+          {/* Logo and Brand - Logo without container */}
           <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 bg-accent-gold rounded-lg flex items-center justify-center">
-              <img 
-                src="/rapid-ireport-logo.png" 
-                alt="RAPID iREPORT Logo"
-                className="w-10 h-10 object-contain"
-              />
-            </div>
+            <img 
+              src="/rapid-ireport-logo.png" 
+              alt="RAPID iREPORT Logo"
+              className="w-12 h-12 object-contain"
+            />
             <div>
-              <h1 className="text-2xl font-bold text-accent-gold">
+              <h1 className="text-2xl font-bold flashing-text">
                 RAPID iREPORT
               </h1>
               <p className="text-sm text-gray-300">Smart Reporting System</p>
@@ -321,6 +318,16 @@ export default function Header() {
           </div>
         )}
       </div>
+
+      <style jsx>{`
+        @keyframes flashRedBlue {
+          0%, 100% { color: #EF4444; } /* red-500 */
+          50% { color: #3B82F6; } /* blue-500 */
+        }
+        .flashing-text {
+          animation: flashRedBlue 1.5s ease-in-out infinite;
+        }
+      `}</style>
     </header>
   )
 }
