@@ -129,6 +129,13 @@ a {
   animation: flashRedBlue 1.5s ease-in-out infinite;
 }
 
+.flex-container {
+  display: flex;
+  justify-content: center; /* Centers horizontally */
+  align-items: center; /* Centers vertically */
+  height: 100vh; /* Sets container height to the full viewport height */
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
