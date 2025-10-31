@@ -184,7 +184,7 @@ export default function Header() {
                   </span>
                   <button 
                     onClick={handleLogout}
-                    className="btn-outline text-sm"
+                    className="btn-primary text-sm"
                   >
                     Logout
                   </button>
@@ -288,7 +288,7 @@ export default function Header() {
                       handleLogout()
                       setMenuOpen(false)
                     }}
-                    className="w-full btn-outline"
+                    className="w-full btn-primary"
                   >
                     Logout
                   </button>
