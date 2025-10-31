@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X } from 'lucide-react'
+import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import EditAlertForm from '@/components/EditAlertForm'
 
@@ -248,7 +248,7 @@ export default function Dashboard() {
         {/* Custom Image - Replace the src with your actual image path */}
         <div className="flex justify-center mb-6">
           <img 
-            src="/rapid911-ireport-logo.png" // Replace with your image path
+            src="/images/your-custom-image.png" // Replace with your image path
             alt="Rapid911 Logo" 
             className="w-32 h-32 object-contain rounded-lg"
           />
@@ -531,17 +531,95 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Quick Tips */}
+      {/* Enhanced Reporting Guidelines with Graphics */}
       {user && (
         <div className="card p-6 border-l-4 border-accent-gold">
-          <h3 className="text-xl font-bold text-accent-gold mb-4">Reporting Guidelines</h3>
-          <ul className="space-y-2 text-sm text-gray-300">
-            <li>• Report incidents immediately with accurate details</li>
-            <li>• Include vehicle plates, color, make, and model</li>
-            <li>• Note distinctive features and last seen location</li>
-            <li>• Upload any available CCTV or photo evidence</li>
-            <li>• Always file an official SAPS case for serious incidents</li>
-          </ul>
+          <h3 className="text-xl font-bold text-accent-gold mb-6 text-center">Effective Reporting Guide</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Timely Reporting */}
+            <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Clock className="w-6 h-6 text-black" />
+                </div>
+                <h4 className="font-semibold text-primary-white mb-2">Report Immediately</h4>
+                <p className="text-xs text-gray-300">
+                  Report incidents as soon as they occur with accurate time and date
+                </p>
+              </div>
+            </div>
+
+            {/* Vehicle Details */}
+            <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Car className="w-6 h-6 text-black" />
+                </div>
+                <h4 className="font-semibold text-primary-white mb-2">Vehicle Details</h4>
+                <p className="text-xs text-gray-300">
+                  Include plate number, color, make, model, and any distinctive features
+                </p>
+              </div>
+            </div>
+
+            {/* Location Details */}
+            <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <MapPin className="w-6 h-6 text-black" />
+                </div>
+                <h4 className="font-semibold text-primary-white mb-2">Location & Direction</h4>
+                <p className="text-xs text-gray-300">
+                  Note exact location, suburb, and direction of travel if moving
+                </p>
+              </div>
+            </div>
+
+            {/* Evidence */}
+            <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Camera className="w-6 h-6 text-black" />
+                </div>
+                <h4 className="font-semibold text-primary-white mb-2">Upload Evidence</h4>
+                <p className="text-xs text-gray-300">
+                  Attach CCTV footage, photos, or any visual evidence available
+                </p>
+              </div>
+            </div>
+
+            {/* SAPS Case */}
+            <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <FileCheck className="w-6 h-6 text-black" />
+                </div>
+                <h4 className="font-semibold text-primary-white mb-2">SAPS Case Number</h4>
+                <p className="text-xs text-gray-300">
+                  Always file official SAPS case for serious incidents and include case number
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Tips Footer */}
+          <div className="mt-6 pt-4 border-t border-gray-700">
+            <div className="flex flex-wrap justify-center gap-4 text-xs text-gray-400">
+              <span className="flex items-center space-x-1">
+                <AlertTriangle className="w-3 h-3 text-accent-red" />
+                <span>Be accurate and factual</span>
+              </span>
+              <span className="flex items-center space-x-1">
+                <Shield className="w-3 h-3 text-accent-gold" />
+                <span>Do not approach suspects</span>
+              </span>
+              <span className="flex items-center space-x-1">
+                <Users className="w-3 h-3 text-accent-gold" />
+                <span>Community safety first</span>
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </div>
