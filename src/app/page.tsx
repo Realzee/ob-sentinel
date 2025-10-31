@@ -250,7 +250,7 @@ export default function Dashboard() {
           <img 
             src="/rapid911-ireport-logo.png" // Replace with your image path
             alt="Rapid911 Logo" 
-            className="w-32 h-32 object-contain rounded-lg"
+            className="w-48 h-auto object-contain rounded-lg"
           />
         </div>
         <h1 className="text-4xl font-bold bg-gold-gradient bg-clip-text text-transparent mb-2">
