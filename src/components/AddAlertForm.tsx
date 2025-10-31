@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { AlertTriangle, Upload, X, Image as ImageIcon } from 'lucide-react'
+import { AlertTriangle, Upload, X, Image as ImageIcon, MessageCircle } from 'lucide-react'
 
 interface AlertForm {
   number_plate: string
@@ -13,6 +13,7 @@ interface AlertForm {
   reason: string
   case_number: string
   suburb: string
+  comments: string // Add this line
 }
 
 interface ImageFile {
@@ -147,6 +148,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             reason: data.reason,
             case_number: data.case_number,
             suburb: data.suburb,
+            comments: data.comments, // Add this line
             has_images: imageFiles.length > 0
           }
         ])
@@ -394,6 +396,32 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
               <p className="text-accent-red text-sm mt-1">{errors.suburb.message}</p>
             )}
           </div>
+        </div>
+
+        {/* Comments Section */}
+        <div>
+          <label htmlFor="comments" className="block text-sm font-medium text-gray-300 mb-2">
+            <div className="flex items-center space-x-2">
+              <MessageCircle className="w-4 h-4 text-accent-gold" />
+              <span>Additional Comments & Details</span>
+            </div>
+          </label>
+          <textarea
+            id="comments"
+            {...register('comments')}
+            rows={4}
+            className="form-input resize-none"
+            placeholder="Provide additional details about the incident, such as:
+• Time of incident
+• Direction of travel
+• Number of suspects
+• Weapons observed
+• Distinctive vehicle features
+• Any other relevant information..."
+          />
+          <p className="text-sm text-gray-400 mt-1">
+            Include any additional information that could help identify the vehicle or situation
+          </p>
         </div>
 
         {/* Image Upload Section */}
