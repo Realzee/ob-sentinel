@@ -2,9 +2,21 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User } from 'lucide-react'
+import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import EditAlertForm from '@/components/EditAlertForm'
+import AddCommentForm from '@/components/AddCommentForm'
+
+interface AlertComment {
+  id: string
+  comment: string
+  created_at: string
+  user_id: string
+  users: {
+    name: string
+    email: string
+  }
+}
 
 interface AlertVehicle {
   id: string
@@ -23,6 +35,7 @@ interface AlertVehicle {
     name: string
     email: string
   }
+  alert_comments?: AlertComment[]
 }
 
 export default function Dashboard() {
@@ -33,6 +46,7 @@ export default function Dashboard() {
   const [editingAlert, setEditingAlert] = useState<AlertVehicle | null>(null)
   const [user, setUser] = useState<any>(null)
   const [imagePreview, setImagePreview] = useState<{url: string, index: number, total: number} | null>(null)
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set())
 
   // Fetch alerts function
   const fetchAlerts = async () => {
@@ -51,7 +65,11 @@ export default function Dashboard() {
         .from('alerts_vehicles')
         .select(`
           *,
-          users (name, email)
+          users (name, email),
+          alert_comments (
+            *,
+            users (name, email)
+          )
         `)
         .order('created_at', { ascending: false })
 
@@ -221,6 +239,18 @@ export default function Dashboard() {
       url: currentAlert.image_urls[newIndex],
       index: newIndex,
       total: currentAlert.image_urls.length
+    })
+  }
+
+  const toggleComments = (alertId: string) => {
+    setExpandedComments(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(alertId)) {
+        newSet.delete(alertId)
+      } else {
+        newSet.add(alertId)
+      }
+      return newSet
     })
   }
 
@@ -482,6 +512,72 @@ export default function Dashboard() {
                           </div>
                         </div>
                       )}
+
+                      {/* Comments Section */}
+                      <div className="mt-4 pt-4 border-t border-gray-700">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-2">
+                            <MessageCircle className="w-4 h-4 text-accent-gold" />
+                            <span className="text-sm font-medium text-gray-300">
+                              Updates & Comments ({alert.alert_comments?.length || 0})
+                            </span>
+                          </div>
+                          
+                          {(alert.alert_comments && alert.alert_comments.length > 0) && (
+                            <button
+                              onClick={() => toggleComments(alert.id)}
+                              className="flex items-center space-x-1 text-sm text-accent-gold hover:text-accent-gold/80 transition-colors"
+                            >
+                              <span>{expandedComments.has(alert.id) ? 'Hide' : 'Show'}</span>
+                              {expandedComments.has(alert.id) ? (
+                                <ChevronUp className="w-4 h-4" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Comments List */}
+                        {expandedComments.has(alert.id) && alert.alert_comments && alert.alert_comments.length > 0 && (
+                          <div className="space-y-3 mb-4">
+                            {alert.alert_comments
+                              .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                              .map((comment) => (
+                                <div key={comment.id} className="bg-gray-800 rounded-lg p-3">
+                                  <div className="flex items-start space-x-3">
+                                    <div className="flex-shrink-0">
+                                      <div className="w-6 h-6 bg-accent-gold rounded-full flex items-center justify-center">
+                                        <User className="w-3 h-3 text-black" />
+                                      </div>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center space-x-2 mb-1">
+                                        <span className="text-sm font-medium text-accent-gold">
+                                          {comment.users?.name || 'Unknown User'}
+                                        </span>
+                                        <span className="text-xs text-gray-400">
+                                          {new Date(comment.created_at).toLocaleString('en-ZA', {
+                                            timeZone: 'Africa/Johannesburg'
+                                          })}
+                                        </span>
+                                      </div>
+                                      <p className="text-sm text-gray-300 whitespace-pre-wrap">
+                                        {comment.comment}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+
+                        {/* Add Comment Form */}
+                        <AddCommentForm 
+                          alertId={alert.id}
+                          onCommentAdded={fetchAlerts}
+                        />
+                      </div>
                     </div>
                     
                     <div className="mt-2 sm:mt-0 sm:ml-4 flex items-center space-x-2">
