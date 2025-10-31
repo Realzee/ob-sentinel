@@ -104,7 +104,7 @@ export default function ChangePassword() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-sa-green hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50"
+          className="btn-primary inline-flex items-center space-x-2"
         >
           {loading ? 'Updating Password...' : 'Update Password'}
         </button>
