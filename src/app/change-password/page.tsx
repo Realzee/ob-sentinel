@@ -46,8 +46,8 @@ export default function ChangePassword() {
   }
 
   return (
-    <div className="max-w-md mx-auto bg-white rounded-xl shadow-md p-8">
-      <h1 className="text-3xl font-bold text-center text-sa-blue mb-8">
+    <div className="max-w-md mx-auto card p-8">
+      <h1 className="text-3xl font-bold text-center text-accent-gold mb-2">
         Change Password
       </h1>
 
@@ -65,7 +65,7 @@ export default function ChangePassword() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             New Password
           </label>
           <input
@@ -85,7 +85,7 @@ export default function ChangePassword() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Confirm New Password
           </label>
           <input
