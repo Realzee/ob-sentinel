@@ -84,7 +84,7 @@ export default function Header() {
                 <img 
                   src="/rapid-ireport-logo.png" 
                   alt="RAPID iREPORT Logo"
-                  className="w-24 h-24 object-contain"
+                  className="w-32 h-auto object-contain"
                 />
               </div>
               <div>
