@@ -97,20 +97,20 @@ export default function Register() {
   }
 
   return (
-    <div className="max-w-md mx-auto bg-white rounded-xl shadow-md p-8">
-      <h1 className="text-3xl font-bold text-center text-sa-blue mb-8">
+    <div className="max-w-md mx-auto card p-8">
+      <h1 className="text-3xl font-bold text-center text-accent-gold mb-2">
         Join OB Sentinel
       </h1>
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div className="bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded mb-4">
           {error}
         </div>
       )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Full Name
           </label>
           <input
