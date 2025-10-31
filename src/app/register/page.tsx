@@ -99,7 +99,7 @@ export default function Register() {
   return (
     <div className="max-w-md mx-auto card p-8">
       <h1 className="text-3xl font-bold text-center text-accent-gold mb-2">
-        Join OB Sentinel
+        Join Rapid911
       </h1>
 
       {error && (
@@ -125,7 +125,7 @@ export default function Register() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Email Address
           </label>
           <input
@@ -146,7 +146,7 @@ export default function Register() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Phone Number
           </label>
           <input
@@ -161,7 +161,7 @@ export default function Register() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Password
           </label>
           <input
@@ -182,7 +182,7 @@ export default function Register() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
             Confirm Password
           </label>
           <input
