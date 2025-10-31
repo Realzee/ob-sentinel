@@ -183,7 +183,7 @@ export default function Dashboard() {
           }
         ])
 
-    }catch (error: any) {
+    } catch (error: any) {
       console.error('Error deleting alert:', error)
       alert('Failed to delete report: ' + error.message)
       await fetchAlerts()
@@ -243,17 +243,16 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Welcome Section with Image */}
+      {/* Welcome Section with Custom Image */}
       <div className="text-center">
-        {/* Added Image */}
+        {/* Custom Image - Replace the src with your actual image path */}
         <div className="flex justify-center mb-6">
-          <div className="w-32 h-32 bg-gradient-to-br from-accent-gold to-accent-red rounded-full flex items-center justify-center shadow-lg border-4 border-white/10">
-            <div className="w-28 h-28 bg-dark-gray rounded-full flex items-center justify-center">
-              <Shield className="w-16 h-16 text-accent-gold" />
-            </div>
-          </div>
+          <img 
+            src="/public/rapid911-ireport-logo.png" // Replace with your image path
+            alt="Rapid911 Logo" 
+            className="w-32 h-32 object-contain rounded-lg"
+          />
         </div>
-        
         <h1 className="text-4xl font-bold bg-gold-gradient bg-clip-text text-transparent mb-2">
           Rapid911 iReport
         </h1>
