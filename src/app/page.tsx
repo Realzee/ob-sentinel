@@ -52,7 +52,10 @@ export default function Dashboard() {
         .from('alerts_vehicles')
         .select(`
           *,
-          users (name, email)
+          users (
+            name,
+            email
+          )
         `)
         .order('created_at', { ascending: false })
 
@@ -61,6 +64,10 @@ export default function Dashboard() {
         setAlerts([])
       } else {
         console.log('Fetched alerts:', data?.length)
+        // Debug: log the user data for each alert
+        data?.forEach(alert => {
+          console.log(`Alert ${alert.id} - User:`, alert.users)
+        })
         setAlerts(data || [])
       }
     } catch (error) {
@@ -94,7 +101,7 @@ export default function Dashboard() {
             // Ensure user exists in database (non-blocking)
             ensureUserExists(user.id, {
               email: user.email!,
-              name: user.user_metadata?.name
+              name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
             }).catch(error => {
               console.warn('User creation failed (non-critical):', error)
             })
@@ -125,6 +132,14 @@ export default function Dashboard() {
           setUser(session?.user ?? null)
           
           if (session?.user) {
+            // Ensure user exists in database
+            ensureUserExists(session.user.id, {
+              email: session.user.email!,
+              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User'
+            }).catch(error => {
+              console.warn('User creation failed (non-critical):', error)
+            })
+
             // Small delay to ensure state is set before fetching
             setTimeout(async () => {
               if (mounted) await fetchAlerts()
@@ -225,12 +240,24 @@ export default function Dashboard() {
     })
   }
 
+  // Helper function to get user display name
+  const getUserDisplayName = (alert: AlertVehicle) => {
+    if (alert.users?.name && alert.users.name !== 'Unknown User') {
+      return alert.users.name;
+    }
+    if (alert.users?.email) {
+      return alert.users.email.split('@')[0]; // Use username part of email
+    }
+    return 'Community Member'; // Fallback
+  }
+
   const filteredAlerts = alerts.filter(alert => 
     alert.number_plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.suburb.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.users?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    alert.users?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.comments?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
@@ -449,7 +476,7 @@ export default function Dashboard() {
                       <div className="flex items-center space-x-2 mt-2">
                         <User className="w-3 h-3 text-accent-gold" />
                         <span className="text-sm text-gray-400">
-                          Reported by: <span className="text-accent-gold">{alert.users?.name || 'Unknown User'}</span>
+                          Reported by: <span className="text-accent-gold">{getUserDisplayName(alert)}</span>
                         </span>
                       </div>
                       
