@@ -255,7 +255,7 @@ export default function Dashboard() {
           />
         </div>
         <h1 className="text-4xl font-bold bg-gold-gradient bg-clip-text text-transparent mb-2">
-          Rapid911 iReport
+          iReport
         </h1>
         <p className="text-gray-400 text-lg">Smart Reporting System</p>
       </div>
@@ -431,7 +431,7 @@ export default function Dashboard() {
                           {alert.reason}
                         </span>
                         {/* Updated registration number with white background and dark-blue text */}
-                        <span className="bg-white text-blue-900 px-3 py-1 rounded-full text-sm font-medium border border-gray-300">
+                        <span className="bg-white text-blue-900 px-3 py-1 rounded-full text-sm font-bold border border-gray-300">
                           {alert.number_plate}
                         </span>
                         <span className="text-sm text-gray-400">{alert.suburb}</span>
