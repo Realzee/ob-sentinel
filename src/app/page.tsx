@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck } from 'lucide-react'
+import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import EditAlertForm from '@/components/EditAlertForm'
 
@@ -228,7 +228,8 @@ export default function Dashboard() {
     alert.number_plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.suburb.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    alert.model.toLowerCase().includes(searchTerm.toLowerCase())
+    alert.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    alert.users?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const stats = {
@@ -248,9 +249,9 @@ export default function Dashboard() {
         {/* Custom Image - Replace the src with your actual image path */}
         <div className="flex justify-center mb-6">
           <img 
-            src="/rapid911-ireport-logo.png" // Replace with your image path
+            src="/images/your-custom-image.png" // Replace with your image path
             alt="Rapid911 Logo" 
-            className="w-48 h-auto object-contain rounded-lg"
+            className="w-32 h-32 object-contain rounded-lg"
           />
         </div>
         <h1 className="text-4xl font-bold bg-gold-gradient bg-clip-text text-transparent mb-2">
@@ -401,7 +402,7 @@ export default function Dashboard() {
                   type="text"
                   id="search-reports"
                   name="search-reports"
-                  placeholder="Search reports, plates, areas..."
+                  placeholder="Search reports, plates, areas, users..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="form-input pl-10"
@@ -429,7 +430,8 @@ export default function Dashboard() {
                         }`}>
                           {alert.reason}
                         </span>
-                        <span className="bg-accent-red text-primary-white px-3 py-1 rounded-full text-sm font-medium">
+                        {/* Updated registration number with white background and dark-blue text */}
+                        <span className="bg-white text-blue-900 px-3 py-1 rounded-full text-sm font-medium border border-gray-300">
                           {alert.number_plate}
                         </span>
                         <span className="text-sm text-gray-400">{alert.suburb}</span>
@@ -440,6 +442,14 @@ export default function Dashboard() {
                       <p className="text-primary-white font-medium">
                         {alert.color} {alert.make} {alert.model}
                       </p>
+                      
+                      {/* Added reporter information */}
+                      <div className="flex items-center space-x-2 mt-2">
+                        <User className="w-3 h-3 text-accent-gold" />
+                        <span className="text-sm text-gray-400">
+                          Reported by: <span className="text-accent-gold">{alert.users?.name || 'Unknown User'}</span>
+                        </span>
+                      </div>
                       
                       {/* Enhanced Image Preview */}
                       {alert.image_urls && alert.image_urls.length > 0 && (
