@@ -297,7 +297,7 @@ export default function Dashboard() {
             </button>
             <button
               onClick={refreshAlerts}
-              className="btn-outline inline-flex items-center space-x-2"
+              className="btn-primary inline-flex items-center space-x-2"
             >
               <span>Refresh</span>
             </button>
@@ -364,13 +364,13 @@ export default function Dashboard() {
               <div className="flex justify-between items-center p-4 border-t bg-white sticky bottom-0">
                 <button
                   onClick={() => navigateImage('prev')}
-                  className="btn-outline flex items-center space-x-2"
+                  className="btn-primary flex items-center space-x-2"
                 >
                   <span>Previous</span>
                 </button>
                 <button
                   onClick={() => navigateImage('next')}
-                  className="btn-outline flex items-center space-x-2"
+                  className="btn-primary flex items-center space-x-2"
                 >
                   <span>Next</span>
                 </button>
@@ -516,7 +516,7 @@ export default function Dashboard() {
             <a href="/login" className="btn-primary">
               Sign In
             </a>
-            <a href="/register" className="btn-outline">
+            <a href="/register" className="btn-primary">
               Create Account
             </a>
           </div>
