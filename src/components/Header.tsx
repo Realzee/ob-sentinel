@@ -84,12 +84,12 @@ export default function Header() {
                 <img 
                   src="/rapid-ireport-logo.png" 
                   alt="RAPID iREPORT Logo"
-                  className="w-48 h-48 object-contain"
+                  className="w-24 h-24 object-contain"
                 />
               </div>
               <div>
                 <h1 className="text-2xl font-bold flashing-text">
-                  RAPID iREPORT
+                  iReport
                 </h1>
                 <p className="text-sm text-gray-300">Smart Reporting System</p>
               </div>
@@ -111,7 +111,7 @@ export default function Header() {
               <img 
                 src="/rapid-ireport-logo.png" 
                 alt="RAPID iREPORT Logo"
-                className="w-12 h-12 object-contain"
+                className="w-24 h-24 object-contain"
                 onError={(e) => {
                   // Fallback if image fails to load
                   console.log('Logo failed to load, using text fallback')
@@ -121,7 +121,7 @@ export default function Header() {
             </div>
             <div>
               <h1 className="text-2xl font-bold flashing-text">
-                RAPID iREPORT
+                iReport
               </h1>
               <p className="text-sm text-gray-300">Smart Reporting System</p>
             </div>
@@ -250,7 +250,7 @@ export default function Header() {
                 </a>
                 
                 {/* Admin Links */}
-                {user.email === 'riedwaan@multi-sound.co.za' && (
+                {user.email === 'clint@rapid911.co.za' && (
                   <>
                     <a 
                       href="/admin/logs" 
