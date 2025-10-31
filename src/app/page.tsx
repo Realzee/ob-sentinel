@@ -249,9 +249,9 @@ export default function Dashboard() {
         {/* Custom Image - Replace the src with your actual image path */}
         <div className="flex justify-center mb-6">
           <img 
-            src="/images/your-custom-image.png" // Replace with your image path
+            src="/rapid911-ireport-logo.png" // Replace with your image path
             alt="Rapid911 Logo" 
-            className="w-32 h-32 object-contain rounded-lg"
+            className="w-32 h-auto object-contain rounded-lg"
           />
         </div>
         <h1 className="text-4xl font-bold bg-gold-gradient bg-clip-text text-transparent mb-2">
