@@ -424,8 +424,8 @@ export default function Dashboard() {
                     <div className="flex-1">
                       <div className="flex items-center space-x-4 mb-2">
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          alert.reason.includes('Hijack') ? 'bg-red-900 text-red-300' :
-                          alert.reason.includes('Stolen') ? 'bg-orange-900 text-orange-300' :
+                          alert.reason.includes('Hijack') ? 'bg-red-500 text-black' :
+                          alert.reason.includes('Stolen') ? 'bg-green-500 text-white' :
                           'bg-yellow-900 text-yellow-300'
                         }`}>
                           {alert.reason}
