@@ -44,7 +44,7 @@ export default function Login() {
   return (
     <div className="max-w-md mx-auto card p-8">
       <h1 className="text-3xl font-bold text-center text-accent-gold mb-2">
-        RAPID iREPORT
+        Rapid911 iReport
       </h1>
       <p className="text-center text-gray-400 mb-8">Smart Reporting System</p>
 
