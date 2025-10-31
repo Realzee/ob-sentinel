@@ -111,7 +111,7 @@ export default function Header() {
               <img 
                 src="/rapid-ireport-logo.png" 
                 alt="RAPID iREPORT Logo"
-                className="w-48 h-auto object-contain"
+                className="w-42 h-auto object-contain"
                 onError={(e) => {
                   // Fallback if image fails to load
                   console.log('Logo failed to load, using text fallback')

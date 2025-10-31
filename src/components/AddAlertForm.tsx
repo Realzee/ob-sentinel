@@ -461,7 +461,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         <button
           type="submit"
           disabled={loading || uploadingImages || !hasValidSupabaseConfig}
-          className="w-full btn-secondary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+          className="w-full btn-primary flex items-center justify-center space-x-2"
         >
           {loading || uploadingImages ? (
             <>
