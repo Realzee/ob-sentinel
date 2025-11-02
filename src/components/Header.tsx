@@ -80,14 +80,13 @@ export default function Header() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               {/* Simple logo container without background */}
-              <div className="flex items-center justify-left">
+              <div className="flex flex-col items-center justify-left">
                 <img 
             src="/rapid911-ireport-logo1.png"
             alt="Rapid911 Logo" 
             className="w-30 h-auto"
           />
-          <br>
-          <p className="text-sm flashing-text flashing-text">Smart Reporting System</p></br>
+          <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
               </div>
               <div>
               </div>
@@ -105,13 +104,13 @@ export default function Header() {
         <div className="flex items-center justify-between">
           {/* Logo and Brand - Logo without container */}
           <div className="flex items-center space-x-4">
-            <div className="flex items-center justify-center">
-              <img 
-            src="/rapid911-ireport-logo1.png"
-            alt="Rapid911 Logo" 
-            className="w-30 h-auto"
-          /> <br>
-          <p className="text-sm flashing-text flashing-text">Smart Reporting System</p></br>
+            <div className="flex flex-col items-center justify-center">
+                <img 
+                  src="/rapid911-ireport-logo1.png"
+                  alt="Rapid911 Logo" 
+                  className="w-30 h-auto"
+            />
+            <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
             </div>
             
           </div>
