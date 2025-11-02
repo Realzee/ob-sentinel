@@ -414,7 +414,7 @@ export default function Dashboard() {
               onClick={refreshAlerts}
               className="btn-primary inline-flex items-center space-x-2"
             >
-              <span>Refresh</span>
+              <span>Show Community Alerts</span>
             </button>
           </div>
           {loading && (
