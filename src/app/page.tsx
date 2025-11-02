@@ -186,6 +186,7 @@ export default function Dashboard() {
       }
 
       console.log('Alert deleted successfully')
+      // Immediately update the UI by filtering out the deleted alert
       setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== alertId))
       
       await supabase
@@ -202,6 +203,7 @@ export default function Dashboard() {
     } catch (error: any) {
       console.error('Error deleting alert:', error)
       alert('Failed to delete report: ' + error.message)
+      // Refresh the list to ensure consistency
       await fetchAlerts()
     }
   }
@@ -356,10 +358,13 @@ export default function Dashboard() {
 
       {/* Add Report Form */}
       {showAddForm && (
-        <AddAlertForm onAlertAdded={() => {
-          fetchAlerts()
-          setShowAddForm(false)
-        }} />
+        <AddAlertForm 
+          onAlertAdded={() => {
+            console.log('AddAlertForm: onAlertAdded called')
+            fetchAlerts() // Ensure this is called
+            setShowAddForm(false)
+          }} 
+        />
       )}
 
       {/* Edit Report Form */}
@@ -367,7 +372,8 @@ export default function Dashboard() {
         <EditAlertForm 
           alert={editingAlert}
           onAlertUpdated={() => {
-            fetchAlerts()
+            console.log('EditAlertForm: onAlertUpdated called')
+            fetchAlerts() // Ensure this is called
             setEditingAlert(null)
           }}
           onCancel={() => setEditingAlert(null)}
