@@ -283,9 +283,7 @@ export default function Dashboard() {
             className="w-30 h-auto object-contain rounded-lg"
           />
         </div>
-        <h1 className="text-4xl font-bold bg-gold-gradient bg-clip-text text-transparent mb-2">
-          iReport
-        </h1>
+        
         <p className="text-gray-400 text-lg">Smart Reporting System</p>
       </div>
 
