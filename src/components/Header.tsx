@@ -80,15 +80,15 @@ export default function Header() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               {/* Simple logo container without background */}
-              <div className="flex items-center justify-center">
+              <div className="flex items-center justify-left">
                 <img 
             src="/rapid911-ireport-logo1.png"
             alt="Rapid911 Logo" 
             className="w-30 h-auto"
           />
+          <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
               </div>
               <div>
-                <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
               </div>
             </div>
             <div className="text-sm text-gray-400">Loading...</div>
@@ -106,15 +106,11 @@ export default function Header() {
           <div className="flex items-center space-x-4">
             <div className="flex items-center justify-center">
               <img 
-                src="/rapid-ireport-logo.png" 
-                alt="RAPID iREPORT Logo"
-                className="w-40 h-auto object-contain"
-                onError={(e) => {
-                  // Fallback if image fails to load
-                  console.log('Logo failed to load, using text fallback')
-                  e.currentTarget.style.display = 'none'
-                }}
-              />
+            src="/rapid911-ireport-logo1.png"
+            alt="Rapid911 Logo" 
+            className="w-30 h-auto"
+          />
+          <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
             </div>
             <div>
               <h1 className="text-2xl font-bold flashing-text">
