@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { AlertTriangle, Upload, X, Image as ImageIcon, Hash, MessageCircle, Building } from 'lucide-react'
+import { AlertTriangle, Upload, X, Image as ImageIcon, Hash, MessageCircle, Building, MapPin, Navigation, Compass } from 'lucide-react'
 
 interface AlertForm {
   number_plate: string
@@ -15,6 +15,8 @@ interface AlertForm {
   station_reported_at: string
   suburb: string
   comments: string
+  latitude?: number
+  longitude?: number
 }
 
 interface ImageFile {
@@ -88,9 +90,69 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
   const [uploadingImages, setUploadingImages] = useState(false)
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([])
   const [obNumber, setObNumber] = useState<string>(generateOBNumber()) // Generate OB number on component mount
+  const [location, setLocation] = useState<{latitude?: number, longitude?: number, address?: string}>({})
+  const [gettingLocation, setGettingLocation] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<AlertForm>()
+  const { register, handleSubmit, reset, formState: { errors }, setValue } = useForm<AlertForm>()
+
+  // Get current location
+  const getCurrentLocation = () => {
+    setGettingLocation(true)
+    setError('')
+    
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser')
+      setGettingLocation(false)
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords
+        setLocation({ latitude, longitude })
+        setValue('latitude', latitude)
+        setValue('longitude', longitude)
+        setGettingLocation(false)
+        
+        // Reverse geocode to get address
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.display_name) {
+              setLocation(prev => ({ ...prev, address: data.display_name }))
+            }
+          })
+          .catch(() => {
+            // Silent fail - address is optional
+          })
+      },
+      (error) => {
+        console.error('Geolocation error:', error)
+        setError('Unable to retrieve your location. Please enable location services or enter coordinates manually.')
+        setGettingLocation(false)
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
+      }
+    )
+  }
+
+  // Manual coordinate input
+  const handleManualCoordinates = () => {
+    const lat = parseFloat(prompt('Enter latitude (e.g., -26.107566):') || '')
+    const lon = parseFloat(prompt('Enter longitude (e.g., 28.056702):') || '')
+    
+    if (!isNaN(lat) && !isNaN(lon)) {
+      setLocation({ latitude: lat, longitude: lon })
+      setValue('latitude', lat)
+      setValue('longitude', lon)
+    } else if (lat !== 0 || lon !== 0) {
+      setError('Invalid coordinates entered')
+    }
+  }
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
@@ -196,7 +258,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         return
       }
 
-      // Insert new alert with OB number
+      // Insert new alert with OB number and location
       const { data: alertData, error: insertError } = await supabase
         .from('alerts_vehicles')
         .insert([
@@ -212,7 +274,9 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             ob_number: obNumber, // Include the generated OB number
             suburb: data.suburb,
             comments: data.comments,
-            has_images: imageFiles.length > 0
+            has_images: imageFiles.length > 0,
+            latitude: data.latitude,
+            longitude: data.longitude
           }
         ])
         .select()
@@ -242,11 +306,12 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         }
       }
 
-      setSuccess(`Report filed successfully! OB Number: ${obNumber} ${imageUrls.length > 0 ? `${imageUrls.length} image(s) uploaded.` : ''}`)
+      setSuccess(`Report filed successfully! OB Number: ${obNumber} ${imageUrls.length > 0 ? `${imageUrls.length} image(s) uploaded.` : ''} ${data.latitude && data.longitude ? 'Location pin dropped.' : ''}`)
       
       // Clean up
       imageFiles.forEach(file => URL.revokeObjectURL(file.preview))
       setImageFiles([])
+      setLocation({})
       reset()
       
       // Generate new OB number for next report
@@ -426,6 +491,95 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
           {errors.reason && (
             <p className="text-accent-red text-sm mt-1">{errors.reason.message}</p>
           )}
+        </div>
+
+        {/* Location Section */}
+        <div className="bg-dark-gray border border-gray-700 rounded-lg p-4">
+          <div className="flex items-center space-x-3 mb-4">
+            <MapPin className="w-5 h-5 text-accent-gold" />
+            <h3 className="text-lg font-semibold text-primary-white">Location Pin Drop (Optional)</h3>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={getCurrentLocation}
+                disabled={gettingLocation}
+                className="btn-primary flex items-center justify-center space-x-2 disabled:opacity-50"
+              >
+                {gettingLocation ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <Navigation className="w-4 h-4" />
+                )}
+                <span>{gettingLocation ? 'Getting Location...' : 'Use Current Location'}</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleManualCoordinates}
+                className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+              >
+                <Compass className="w-4 h-4" />
+                <span>Enter Coordinates</span>
+              </button>
+            </div>
+
+            {location.latitude && location.longitude && (
+              <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
+                <div className="flex items-center space-x-2 mb-2">
+                  <MapPin className="w-4 h-4 text-accent-gold" />
+                  <span className="text-sm font-medium text-accent-gold">Location Set</span>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-300">
+                    <strong>Coordinates:</strong> {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                  </p>
+                  {location.address && (
+                    <p className="text-sm text-gray-300">
+                      <strong>Address:</strong> {location.address}
+                    </p>
+                  )}
+                  <div className="flex space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => window.open(`https://www.openstreetmap.org/?mlat=${location.latitude}&mlon=${location.longitude}#map=16/${location.latitude}/${location.longitude}`, '_blank')}
+                      className="text-sm text-blue-400 hover:text-blue-300 underline"
+                    >
+                      View on OpenStreetMap
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocation({})
+                        setValue('latitude', undefined)
+                        setValue('longitude', undefined)
+                      }}
+                      className="text-sm text-red-400 hover:text-red-300 underline"
+                    >
+                      Remove Location
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="hidden"
+                {...register('latitude')}
+              />
+              <input
+                type="hidden"
+                {...register('longitude')}
+              />
+            </div>
+
+            <p className="text-sm text-gray-400">
+              📍 Adding a location pin helps community members quickly identify the incident area and provides better context for the report.
+            </p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -610,6 +764,9 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
           <p>⚠️ This report will be visible to all community members</p>
           <p>📱 Instant alerts will be sent to the community network</p>
           <p>🔢 OB Number: <strong>{obNumber}</strong> will be assigned to this report</p>
+          {location.latitude && location.longitude && (
+            <p>📍 Location pin will be added to this report</p>
+          )}
           {imageFiles.length > 0 && (
             <p>🖼️ {imageFiles.length} image{imageFiles.length > 1 ? 's' : ''} will be attached to this report</p>
           )}

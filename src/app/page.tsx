@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle } from 'lucide-react'
+import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import AddCrimeForm from '@/components/AddCrimeForm'
 import EditAlertForm from '@/components/EditAlertForm'
@@ -20,6 +20,8 @@ interface AlertVehicle {
   suburb: string
   has_images: boolean
   image_urls?: string[]
+  latitude?: number
+  longitude?: number
   created_at: string
   user_id: string
   comments?: string
@@ -46,6 +48,8 @@ interface CrimeReport {
   comments?: string
   has_images: boolean
   image_urls?: string[]
+  latitude?: number
+  longitude?: number
   created_at: string
   user_id: string
   users: {
@@ -66,10 +70,30 @@ export default function Dashboard() {
   const [imagePreview, setImagePreview] = useState<{url: string, index: number, total: number} | null>(null)
   const [viewMode, setViewMode] = useState<'all' | 'my'>('all')
   const [activeTab, setActiveTab] = useState<'vehicles' | 'crimes'>('vehicles')
+  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null)
+  const [mapModal, setMapModal] = useState<{show: boolean, item: any, type: 'vehicle' | 'crime'} | null>(null)
+
+  // Get user's current location
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          })
+        },
+        (error) => {
+          console.log('Geolocation error:', error)
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      )
+    }
+  }, [])
 
   // Fetch user data for reports
   const fetchUserData = async (userIds: string[]) => {
-    if (userIds.length === 0) return new Map()
+    if (userIds.length === 0) return new globalThis.Map()
     
     const { data: usersData, error } = await supabase
       .from('users')
@@ -78,10 +102,10 @@ export default function Dashboard() {
 
     if (error) {
       console.error('Error fetching user data:', error)
-      return new Map()
+      return new globalThis.Map()
     }
 
-    const usersMap = new Map()
+    const usersMap = new globalThis.Map<string, { name: string, email: string }>()
     usersData?.forEach(user => {
       usersMap.set(user.id, {
         name: user.name || 'Unknown User',
@@ -398,6 +422,23 @@ export default function Dashboard() {
     })
   }
 
+  // OpenStreetMap functions
+  const openOSM = (lat: number, lon: number) => {
+    window.open(`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}`, '_blank')
+  }
+
+  const getDirections = (lat: number, lon: number) => {
+    if (userLocation) {
+      window.open(`https://www.openstreetmap.org/directions?engine=osrm_car&route=${userLocation.latitude},${userLocation.longitude};${lat},${lon}`, '_blank')
+    } else {
+      alert('Unable to get your current location. Please enable location services.')
+    }
+  }
+
+  const showMapModal = (item: any, type: 'vehicle' | 'crime') => {
+    setMapModal({ show: true, item, type })
+  }
+
   // Helper function to get user display name
   const getUserDisplayName = (item: any) => {
     if (item.users?.name && item.users.name !== 'Unknown User') {
@@ -452,7 +493,8 @@ export default function Dashboard() {
       ...crimeReports.map(c => c.suburb)
     ])).length,
     myAlerts: alerts.filter(a => a.user_id === user?.id).length,
-    myCrimeReports: crimeReports.filter(c => c.user_id === user?.id).length
+    myCrimeReports: crimeReports.filter(c => c.user_id === user?.id).length,
+    reportsWithLocation: alerts.filter(a => a.latitude && a.longitude).length + crimeReports.filter(c => c.latitude && c.longitude).length
   }
 
   // Fixed ternary operator - properly formatted
@@ -549,10 +591,10 @@ export default function Dashboard() {
         <div className="card p-6 border-l-4 border-accent-blue">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-400">My Reports</p>
-              <p className="text-3xl font-bold text-accent-blue">{currentStats.my}</p>
+              <p className="text-sm text-gray-400">Reports with Location</p>
+              <p className="text-3xl font-bold text-accent-blue">{stats.reportsWithLocation}</p>
             </div>
-            <User className="w-8 h-8 text-accent-blue" />
+            <MapPin className="w-8 h-8 text-accent-blue" />
           </div>
         </div>
       </div>
@@ -668,6 +710,78 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Map Modal */}
+      {mapModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-full overflow-auto relative">
+            <div className="p-4 flex justify-between items-center border-b bg-white sticky top-0 z-10">
+              <h3 className="text-lg font-semibold">
+                Location: {mapModal.type === 'vehicle' ? mapModal.item.number_plate : mapModal.item.crime_type}
+              </h3>
+              <button
+                onClick={() => setMapModal(null)}
+                className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-200"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-4">
+              <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                <button
+                  onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
+                  className="btn-primary flex items-center justify-center space-x-2"
+                >
+                  <Map className="w-4 h-4" />
+                  <span>Open in OpenStreetMap</span>
+                </button>
+                {userLocation && (
+                  <button
+                    onClick={() => getDirections(mapModal.item.latitude, mapModal.item.longitude)}
+                    className="btn-primary flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700"
+                  >
+                    <Navigation className="w-4 h-4" />
+                    <span>Get Directions</span>
+                  </button>
+                )}
+              </div>
+              
+              <div className="bg-gray-100 rounded-lg p-4 mb-4">
+                <h4 className="font-semibold mb-2">Location Details:</h4>
+                <p><strong>Coordinates:</strong> {mapModal.item.latitude?.toFixed(6)}, {mapModal.item.longitude?.toFixed(6)}</p>
+                <p><strong>Suburb:</strong> {mapModal.item.suburb}</p>
+                {mapModal.type === 'crime' && (
+                  <p><strong>Specific Location:</strong> {mapModal.item.location}</p>
+                )}
+              </div>
+
+              {/* Embedded OpenStreetMap */}
+              <div className="w-full h-96 rounded-lg overflow-hidden border-2 border-gray-300">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  scrolling="no"
+                  marginHeight={0}
+                  marginWidth={0}
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapModal.item.longitude - 0.01},${mapModal.item.latitude - 0.01},${mapModal.item.longitude + 0.01},${mapModal.item.latitude + 0.01}&layer=mapnik&marker=${mapModal.item.latitude},${mapModal.item.longitude}`}
+                />
+              </div>
+              
+              <div className="text-center mt-2 text-sm text-gray-600">
+                <a
+                  href={`https://www.openstreetmap.org/?mlat=${mapModal.item.latitude}&mlon=${mapModal.item.longitude}#map=16/${mapModal.item.latitude}/${mapModal.item.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  View Larger Map
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Search and Reports */}
       {user ? (
         <div className="card p-6">
@@ -768,6 +882,41 @@ export default function Dashboard() {
                       <p className="text-primary-white font-medium">
                         {alert.color} {alert.make} {alert.model}
                       </p>
+                      
+                      {/* Location Section */}
+                      {alert.latitude && alert.longitude && (
+                        <div className="mt-3 p-3 bg-gray-800 rounded-lg border-l-4 border-accent-gold">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <MapPin className="w-4 h-4 text-accent-gold" />
+                            <span className="text-sm font-medium text-accent-gold">Location Pin Dropped</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => showMapModal(alert, 'vehicle')}
+                              className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
+                            >
+                              <Map className="w-3 h-3" />
+                              <span>View Map</span>
+                            </button>
+                            <button
+                              onClick={() => openOSM(alert.latitude!, alert.longitude!)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-sm py-1 px-3 rounded flex items-center space-x-1 transition-colors"
+                            >
+                              <MapPin className="w-3 h-3" />
+                              <span>OpenStreetMap</span>
+                            </button>
+                            {userLocation && (
+                              <button
+                                onClick={() => getDirections(alert.latitude!, alert.longitude!)}
+                                className="bg-green-600 hover:bg-green-700 text-white text-sm py-1 px-3 rounded flex items-center space-x-1 transition-colors"
+                              >
+                                <Navigation className="w-3 h-3" />
+                                <span>Directions</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                       
                       <div className="flex items-center space-x-2 mt-2">
                         <User className="w-3 h-3 text-accent-gold" />
@@ -898,6 +1047,41 @@ export default function Dashboard() {
                       <p className="text-gray-300 text-sm mb-2">
                         {report.description}
                       </p>
+
+                      {/* Location Section */}
+                      {report.latitude && report.longitude && (
+                        <div className="mt-3 p-3 bg-gray-800 rounded-lg border-l-4 border-red-600">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <MapPin className="w-4 h-4 text-red-400" />
+                            <span className="text-sm font-medium text-red-400">Location Pin Dropped</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => showMapModal(report, 'crime')}
+                              className="bg-red-600 hover:bg-red-700 text-white text-sm py-1 px-3 rounded flex items-center space-x-1 transition-colors"
+                            >
+                              <Map className="w-3 h-3" />
+                              <span>View Map</span>
+                            </button>
+                            <button
+                              onClick={() => openOSM(report.latitude!, report.longitude!)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-sm py-1 px-3 rounded flex items-center space-x-1 transition-colors"
+                            >
+                              <MapPin className="w-3 h-3" />
+                              <span>OpenStreetMap</span>
+                            </button>
+                            {userLocation && (
+                              <button
+                                onClick={() => getDirections(report.latitude!, report.longitude!)}
+                                className="bg-green-600 hover:bg-green-700 text-white text-sm py-1 px-3 rounded flex items-center space-x-1 transition-colors"
+                              >
+                                <Navigation className="w-3 h-3" />
+                                <span>Directions</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       {report.suspects_description && (
                         <div className="mt-2 p-2 bg-gray-800 rounded border-l-2 border-red-600">
@@ -1054,9 +1238,9 @@ export default function Dashboard() {
                   color="red"
                 />
                 <GuidelineCard 
-                  icon={<User className="w-6 h-6" />}
-                  title="Suspect Information"
-                  description="Note suspect descriptions, clothing, and behavior"
+                  icon={<MapPin className="w-6 h-6" />}
+                  title="Exact Location"
+                  description="Pinpoint the exact location where the crime occurred"
                   color="red"
                 />
                 <GuidelineCard 

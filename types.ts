@@ -14,6 +14,8 @@ export interface AlertVehicle {
   comments?: string
   has_images: boolean
   image_urls?: string[]
+  latitude?: number
+  longitude?: number
   created_at: string
   updated_at: string
   users?: {
@@ -40,6 +42,8 @@ export interface CrimeReport {
   comments?: string
   has_images: boolean
   image_urls?: string[]
+  latitude?: number
+  longitude?: number
   created_at: string
   updated_at: string
   users?: {
@@ -75,6 +79,8 @@ export interface AlertFormData {
   station_reported_at: string
   suburb: string
   comments: string
+  latitude?: number
+  longitude?: number
 }
 
 export interface CrimeFormData {
@@ -90,4 +96,12 @@ export interface CrimeFormData {
   case_number: string
   station_reported_at: string
   comments: string
+  latitude?: number
+  longitude?: number
+}
+
+export interface Location {
+  latitude: number
+  longitude: number
+  address?: string
 }

@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
-import { AlertTriangle, X, Upload, Image as ImageIcon, MessageCircle, Building } from 'lucide-react'
+import { AlertTriangle, X, Upload, Image as ImageIcon, MessageCircle, Building, MapPin, Navigation, Compass } from 'lucide-react'
 
 interface AlertForm {
   number_plate: string
@@ -14,7 +14,9 @@ interface AlertForm {
   case_number: string
   station_reported_at: string
   suburb: string
-  comments: string // Add this line
+  comments: string
+  latitude?: number
+  longitude?: number
 }
 
 interface ImageFile {
@@ -77,9 +79,14 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([])
   const [existingImages, setExistingImages] = useState<string[]>(alert.image_urls || [])
   const [imagesToDelete, setImagesToDelete] = useState<string[]>([])
+  const [location, setLocation] = useState<{latitude?: number, longitude?: number, address?: string}>({
+    latitude: alert.latitude,
+    longitude: alert.longitude
+  })
+  const [gettingLocation, setGettingLocation] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  const { register, handleSubmit, formState: { errors } } = useForm<AlertForm>({
+  const { register, handleSubmit, formState: { errors }, setValue } = useForm<AlertForm>({
     defaultValues: {
       number_plate: alert.number_plate,
       color: alert.color,
@@ -89,9 +96,69 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
       case_number: alert.case_number || '',
       station_reported_at: alert.station_reported_at || '',
       suburb: alert.suburb,
-      comments: alert.comments || '' // Add this line
+      comments: alert.comments || '',
+      latitude: alert.latitude,
+      longitude: alert.longitude
     }
   })
+
+  // Get current location
+  const getCurrentLocation = () => {
+    setGettingLocation(true)
+    setError('')
+    
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser')
+      setGettingLocation(false)
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords
+        setLocation({ latitude, longitude })
+        setValue('latitude', latitude)
+        setValue('longitude', longitude)
+        setGettingLocation(false)
+        
+        // Reverse geocode to get address
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.display_name) {
+              setLocation(prev => ({ ...prev, address: data.display_name }))
+            }
+          })
+          .catch(() => {
+            // Silent fail - address is optional
+          })
+      },
+      (error) => {
+        console.error('Geolocation error:', error)
+        setError('Unable to retrieve your location. Please enable location services or enter coordinates manually.')
+        setGettingLocation(false)
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
+      }
+    )
+  }
+
+  // Manual coordinate input
+  const handleManualCoordinates = () => {
+    const lat = parseFloat(prompt('Enter latitude (e.g., -26.107566):') || '')
+    const lon = parseFloat(prompt('Enter longitude (e.g., 28.056702):') || '')
+    
+    if (!isNaN(lat) && !isNaN(lon)) {
+      setLocation({ latitude: lat, longitude: lon })
+      setValue('latitude', lat)
+      setValue('longitude', lon)
+    } else if (lat !== 0 || lon !== 0) {
+      setError('Invalid coordinates entered')
+    }
+  }
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
@@ -193,7 +260,7 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
         ...newImageUrls
       ]
 
-      // Update alert
+      // Update alert with location
       const { error: updateError } = await supabase
         .from('alerts_vehicles')
         .update({
@@ -205,9 +272,11 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
           case_number: data.case_number,
           station_reported_at: data.station_reported_at,
           suburb: data.suburb,
-          comments: data.comments, // Add this line
+          comments: data.comments,
           has_images: finalImageUrls.length > 0,
           image_urls: finalImageUrls,
+          latitude: data.latitude,
+          longitude: data.longitude,
           updated_at: new Date().toISOString()
         })
         .eq('id', alert.id)
@@ -218,7 +287,7 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
         throw updateError
       }
 
-      setSuccess(`Report updated successfully! ${newImageUrls.length > 0 ? `${newImageUrls.length} new image(s) uploaded.` : ''}`)
+      setSuccess(`Report updated successfully! ${newImageUrls.length > 0 ? `${newImageUrls.length} new image(s) uploaded.` : ''} ${data.latitude && data.longitude ? 'Location updated.' : ''}`)
       
       // Clean up
       imageFiles.forEach(file => URL.revokeObjectURL(file.preview))
@@ -385,6 +454,105 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
           {errors.reason && (
             <p className="text-accent-red text-sm mt-1">{errors.reason.message}</p>
           )}
+        </div>
+
+        {/* Location Section */}
+        <div className="bg-dark-gray border border-gray-700 rounded-lg p-4">
+          <div className="flex items-center space-x-3 mb-4">
+            <MapPin className="w-5 h-5 text-accent-gold" />
+            <h3 className="text-lg font-semibold text-primary-white">Update Location Pin (Optional)</h3>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={getCurrentLocation}
+                disabled={gettingLocation}
+                className="btn-primary flex items-center justify-center space-x-2 disabled:opacity-50"
+              >
+                {gettingLocation ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <Navigation className="w-4 h-4" />
+                )}
+                <span>{gettingLocation ? 'Getting Location...' : 'Use Current Location'}</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleManualCoordinates}
+                className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+              >
+                <Compass className="w-4 h-4" />
+                <span>Enter Coordinates</span>
+              </button>
+
+              {(alert.latitude && alert.longitude) || (location.latitude && location.longitude) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocation({})
+                    setValue('latitude', undefined)
+                    setValue('longitude', undefined)
+                  }}
+                  className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Remove Location</span>
+                </button>
+              ) : null}
+            </div>
+
+            {(location.latitude && location.longitude) || (alert.latitude && alert.longitude) ? (
+              <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
+                <div className="flex items-center space-x-2 mb-2">
+                  <MapPin className="w-4 h-4 text-accent-gold" />
+                  <span className="text-sm font-medium text-accent-gold">
+                    {location.latitude ? 'Updated Location Set' : 'Current Location'}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-300">
+                    <strong>Coordinates:</strong> {(location.latitude || alert.latitude).toFixed(6)}, {(location.longitude || alert.longitude).toFixed(6)}
+                  </p>
+                  {location.address && (
+                    <p className="text-sm text-gray-300">
+                      <strong>Address:</strong> {location.address}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => window.open(`https://www.openstreetmap.org/?mlat=${location.latitude || alert.latitude}&mlon=${location.longitude || alert.longitude}#map=16/${location.latitude || alert.latitude}/${location.longitude || alert.longitude}`, '_blank')}
+                    className="text-sm text-blue-400 hover:text-blue-300 underline"
+                  >
+                    View on OpenStreetMap
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-gray-600">
+                <div className="flex items-center space-x-2 mb-2">
+                  <MapPin className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-400">No Location Set</span>
+                </div>
+                <p className="text-sm text-gray-400">
+                  Add a location pin to help community members identify the incident area.
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="hidden"
+                {...register('latitude')}
+              />
+              <input
+                type="hidden"
+                {...register('longitude')}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
