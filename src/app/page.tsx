@@ -36,10 +36,11 @@ export default function Dashboard() {
   const [imagePreview, setImagePreview] = useState<{url: string, index: number, total: number} | null>(null)
 
   // Fetch alerts function
-  const fetchAlerts = async () => {
-    console.log('fetchAlerts called, user:', user)
+  const fetchAlerts = async (currentUser?: any) => {
+    const userToUse = currentUser || user;
+    console.log('fetchAlerts called, user:', userToUse)
     
-    if (!user) {
+    if (!userToUse) {
       console.log('No user, clearing alerts')
       setAlerts([])
       setLoading(false)
@@ -106,8 +107,8 @@ export default function Dashboard() {
               console.warn('User creation failed (non-critical):', error)
             })
 
-            // Fetch alerts for logged in user
-            await fetchAlerts()
+            // Fetch alerts for logged in user - use the user we just got
+            await fetchAlerts(user)
           } else {
             setLoading(false)
           }
@@ -140,10 +141,9 @@ export default function Dashboard() {
               console.warn('User creation failed (non-critical):', error)
             })
 
-            // Small delay to ensure state is set before fetching
-            setTimeout(async () => {
-              if (mounted) await fetchAlerts()
-            }, 100)
+            // Fetch alerts immediately with the session user
+            console.log('Fetching alerts immediately after login')
+            await fetchAlerts(session.user)
           }
         } else if (event === 'SIGNED_OUT') {
           console.log('User signed out, clearing state')
