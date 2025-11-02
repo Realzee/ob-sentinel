@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { AlertTriangle, Upload, X, Image as ImageIcon, MessageCircle } from 'lucide-react'
+import { AlertTriangle, Upload, X, Image as ImageIcon, Hash, MessageCircle } from 'lucide-react'
 
 interface AlertForm {
   number_plate: string
@@ -13,12 +13,30 @@ interface AlertForm {
   reason: string
   case_number: string
   suburb: string
-  comments: string // Add this line
+  comments: string
 }
 
 interface ImageFile {
   file: File
   preview: string
+}
+
+// Function to generate OB number
+const generateOBNumber = (): string => {
+  const now = new Date();
+  
+  // Format: YYMMDD-HHMMSS-RANDOM
+  const year = now.getFullYear().toString().slice(-2);
+  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  const day = now.getDate().toString().padStart(2, '0');
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  const seconds = now.getSeconds().toString().padStart(2, '0');
+  
+  // Generate random 4-character string
+  const randomChars = Math.random().toString(36).substring(2, 6).toUpperCase();
+  
+  return `OB${year}${month}${day}-${hours}${minutes}${seconds}-${randomChars}`;
 }
 
 export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => void }) {
@@ -27,6 +45,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
   const [success, setSuccess] = useState('')
   const [uploadingImages, setUploadingImages] = useState(false)
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([])
+  const [obNumber, setObNumber] = useState<string>(generateOBNumber()) // Generate OB number on component mount
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   const { register, handleSubmit, reset, formState: { errors } } = useForm<AlertForm>()
@@ -135,7 +154,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         return
       }
 
-      // Insert new alert
+      // Insert new alert with OB number
       const { data: alertData, error: insertError } = await supabase
         .from('alerts_vehicles')
         .insert([
@@ -147,8 +166,9 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             model: data.model,
             reason: data.reason,
             case_number: data.case_number,
+            ob_number: obNumber, // Include the generated OB number
             suburb: data.suburb,
-            comments: data.comments, // Add this line
+            comments: data.comments,
             has_images: imageFiles.length > 0
           }
         ])
@@ -179,16 +199,19 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         }
       }
 
-      setSuccess(`Report filed successfully! ${imageUrls.length > 0 ? `${imageUrls.length} image(s) uploaded.` : ''}`)
+      setSuccess(`Report filed successfully! OB Number: ${obNumber} ${imageUrls.length > 0 ? `${imageUrls.length} image(s) uploaded.` : ''}`)
       
       // Clean up
       imageFiles.forEach(file => URL.revokeObjectURL(file.preview))
       setImageFiles([])
       reset()
       
+      // Generate new OB number for next report
+      setObNumber(generateOBNumber())
+      
       // Mock WhatsApp notification
       console.log('📱 RAPID ALERT MOCK:')
-      console.log(`New report: ${data.number_plate} - ${data.reason} in ${data.suburb}`)
+      console.log(`New report: ${data.number_plate} - ${data.reason} in ${data.suburb} - OB: ${obNumber}`)
       
       // Callback to refresh alerts
       if (onAlertAdded) {
@@ -255,6 +278,17 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
           ⚠️ System not configured. Form will not work until environment variables are set.
         </div>
       )}
+
+      {/* OB Number Display */}
+      <div className="bg-accent-gold text-primary-black p-4 rounded-lg mb-6">
+        <div className="flex items-center space-x-3">
+          <Hash className="w-6 h-6" />
+          <div>
+            <h3 className="font-bold text-lg">OB Number: {obNumber}</h3>
+            <p className="text-sm opacity-90">This number will be assigned to your report</p>
+          </div>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -366,7 +400,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
           {/* SAPS Case Number */}
           <div>
             <label htmlFor="case_number" className="block text-sm font-medium text-gray-300 mb-2">
-              SAPS Case Number
+              SAPS Case Number (Optional)
             </label>
             <input
               type="text"
@@ -375,6 +409,9 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
               className="form-input"
               placeholder="CAS 123/09/2023"
             />
+            <p className="text-sm text-gray-400 mt-1">
+              If you have an official SAPS case number
+            </p>
           </div>
 
           {/* Suburb */}
@@ -509,6 +546,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         <div className="text-center text-sm text-gray-500">
           <p>⚠️ This report will be visible to all community members</p>
           <p>📱 Instant alerts will be sent to the community network</p>
+          <p>🔢 OB Number: <strong>{obNumber}</strong> will be assigned to this report</p>
           {imageFiles.length > 0 && (
             <p>🖼️ {imageFiles.length} image{imageFiles.length > 1 ? 's' : ''} will be attached to this report</p>
           )}

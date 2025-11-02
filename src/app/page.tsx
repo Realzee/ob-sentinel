@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle } from 'lucide-react'
+import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import EditAlertForm from '@/components/EditAlertForm'
 
@@ -14,6 +14,7 @@ interface AlertVehicle {
   model: string
   reason: string
   case_number: string
+  ob_number: string // Add this line
   suburb: string
   has_images: boolean
   image_urls?: string[]
@@ -260,7 +261,8 @@ export default function Dashboard() {
     alert.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.users?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.users?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    alert.comments?.toLowerCase().includes(searchTerm.toLowerCase())
+    alert.comments?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    alert.ob_number?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const stats = {
@@ -435,7 +437,7 @@ export default function Dashboard() {
                   type="text"
                   id="search-reports"
                   name="search-reports"
-                  placeholder="Search reports, plates, areas, users, comments..."
+                  placeholder="Search reports, plates, areas, users, comments, OB numbers..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="form-input pl-10"
@@ -468,10 +470,21 @@ export default function Dashboard() {
                           {alert.number_plate}
                         </span>
                         <span className="text-sm text-gray-400">{alert.suburb}</span>
+                      </div>
+                      
+                      {/* OB Number and SAPS Case Number */}
+                      <div className="flex items-center space-x-4 mb-2">
+                        <div className="flex items-center space-x-2">
+                          <Hash className="w-4 h-4 text-accent-gold" />
+                          <span className="text-sm font-medium text-accent-gold">
+                            OB: {alert.ob_number || 'Generating...'}
+                          </span>
+                        </div>
                         {alert.case_number && (
                           <span className="text-sm text-gray-500">SAPS: {alert.case_number}</span>
                         )}
                       </div>
+                      
                       <p className="text-primary-white font-medium">
                         {alert.color} {alert.make} {alert.model}
                       </p>
