@@ -86,7 +86,8 @@ export default function Header() {
             alt="Rapid911 Logo" 
             className="w-30 h-auto"
           />
-          <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
+          <br>
+          <p className="text-sm flashing-text flashing-text">Smart Reporting System</p></br>
               </div>
               <div>
               </div>
@@ -109,8 +110,8 @@ export default function Header() {
             src="/rapid911-ireport-logo1.png"
             alt="Rapid911 Logo" 
             className="w-30 h-auto"
-          />
-          <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
+          /> <br>
+          <p className="text-sm flashing-text flashing-text">Smart Reporting System</p></br>
             </div>
             
           </div>
