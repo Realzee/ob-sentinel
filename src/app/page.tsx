@@ -37,11 +37,10 @@ export default function Dashboard() {
   const [imagePreview, setImagePreview] = useState<{url: string, index: number, total: number} | null>(null)
 
   // Fetch alerts function
-  const fetchAlerts = async (currentUser?: any) => {
-    const userToUse = currentUser || user;
-    console.log('fetchAlerts called, user:', userToUse)
+  const fetchAlerts = async () => {
+    console.log('fetchAlerts called, user:', user)
     
-    if (!userToUse) {
+    if (!user) {
       console.log('No user, clearing alerts')
       setAlerts([])
       setLoading(false)
@@ -109,7 +108,7 @@ export default function Dashboard() {
             })
 
             // Fetch alerts for logged in user - use the user we just got
-            await fetchAlerts(user)
+            await fetchAlerts()
           } else {
             setLoading(false)
           }
@@ -142,9 +141,10 @@ export default function Dashboard() {
               console.warn('User creation failed (non-critical):', error)
             })
 
-            // Fetch alerts immediately with the session user
-            console.log('Fetching alerts immediately after login')
-            await fetchAlerts(session.user)
+            // Use setTimeout to ensure state is updated before fetching
+            setTimeout(() => {
+              fetchAlerts()
+            }, 100)
           }
         } else if (event === 'SIGNED_OUT') {
           console.log('User signed out, clearing state')
@@ -164,6 +164,7 @@ export default function Dashboard() {
   // Manual refresh function
   const refreshAlerts = async () => {
     console.log('Manual refresh triggered')
+    setLoading(true) // Show loading immediately
     await fetchAlerts()
   }
 
@@ -205,7 +206,7 @@ export default function Dashboard() {
       console.error('Error deleting alert:', error)
       alert('Failed to delete report: ' + error.message)
       // Refresh the list to ensure consistency
-      await fetchAlerts()
+      await refreshAlerts()
     }
   }
 
@@ -363,8 +364,8 @@ export default function Dashboard() {
         <AddAlertForm 
           onAlertAdded={() => {
             console.log('AddAlertForm: onAlertAdded called')
-            fetchAlerts() // Ensure this is called
             setShowAddForm(false)
+            refreshAlerts() // Use refreshAlerts instead of fetchAlerts
           }} 
         />
       )}
@@ -375,8 +376,8 @@ export default function Dashboard() {
           alert={editingAlert}
           onAlertUpdated={() => {
             console.log('EditAlertForm: onAlertUpdated called')
-            fetchAlerts() // Ensure this is called
             setEditingAlert(null)
+            refreshAlerts() // Use refreshAlerts instead of fetchAlerts
           }}
           onCancel={() => setEditingAlert(null)}
         />
@@ -447,9 +448,10 @@ export default function Dashboard() {
           </div>
 
           {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto"></div>
-              <p className="mt-4 text-gray-400">Loading reports...</p>
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
+              <p className="text-gray-400">Loading community reports...</p>
+              <p className="text-sm text-gray-500 mt-2">This may take a few moments</p>
             </div>
           ) : (
             <div className="space-y-4">

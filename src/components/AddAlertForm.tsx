@@ -245,13 +245,6 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
     'Renault', 'Chevrolet', 'Mitsubishi', 'Volvo', 'Land Rover', 'Other'
   ]
 
-  // Common South African suburbs for suggestions
-  const saSuburbs = [
-    'Sandton', 'Randburg', 'Fourways', 'Midrand', 'Pretoria', 'Centurion',
-    'Johannesburg CBD', 'Rosebank', 'Parkhurst', 'Greenside', 'Edenvale',
-    'Bedfordview', 'Bryanston', 'Hyde Park', 'Illovo', 'Melville', 'Other'
-  ]
-
   return (
     <div className="card p-6 mb-8">
       <div className="flex items-center space-x-3 mb-6">
@@ -419,16 +412,32 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             <label htmlFor="suburb" className="block text-sm font-medium text-gray-300 mb-2">
               Suburb / Area *
             </label>
-            <select
+            <input
+              type="text"
               id="suburb"
               {...register('suburb', { required: 'Suburb is required' })}
               className="form-input"
-            >
-              <option value="">Select suburb</option>
-              {saSuburbs.map(suburb => (
-                <option key={suburb} value={suburb}>{suburb}</option>
-              ))}
-            </select>
+              placeholder="Enter suburb or area"
+              list="suburb-suggestions"
+            />
+            <datalist id="suburb-suggestions">
+              <option value="Sandton" />
+              <option value="Randburg" />
+              <option value="Fourways" />
+              <option value="Midrand" />
+              <option value="Pretoria" />
+              <option value="Centurion" />
+              <option value="Johannesburg CBD" />
+              <option value="Rosebank" />
+              <option value="Parkhurst" />
+              <option value="Greenside" />
+              <option value="Edenvale" />
+              <option value="Bedfordview" />
+              <option value="Bryanston" />
+              <option value="Hyde Park" />
+              <option value="Illovo" />
+              <option value="Melville" />
+            </datalist>
             {errors.suburb && (
               <p className="text-accent-red text-sm mt-1">{errors.suburb.message}</p>
             )}
