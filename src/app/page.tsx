@@ -900,7 +900,7 @@ export default function Dashboard() {
                             </button>
                             <button
                               onClick={() => openOSM(alert.latitude!, alert.longitude!)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white text-sm py-1 px-3 rounded flex items-center space-x-1 transition-colors"
+                              className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
                             >
                               <MapPin className="w-3 h-3" />
                               <span>OpenStreetMap</span>
@@ -908,7 +908,7 @@ export default function Dashboard() {
                             {userLocation && (
                               <button
                                 onClick={() => getDirections(alert.latitude!, alert.longitude!)}
-                                className="bg-green-600 hover:bg-green-700 text-white text-sm py-1 px-3 rounded flex items-center space-x-1 transition-colors"
+                                className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
                               >
                                 <Navigation className="w-3 h-3" />
                                 <span>Directions</span>
