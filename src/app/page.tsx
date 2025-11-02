@@ -516,8 +516,8 @@ export default function Dashboard() {
       <div className="text-center">
         <div className="flex justify-center mb-6">
           <img 
-            src="/rapid911-ireport-logo1.png"
-            alt="Rapid911 Logo" 
+            src="/rapid911-ireport-logo2.png"
+            alt="Rapid Rangers Logo" 
             className="w-30 h-auto"
           />
         </div>
