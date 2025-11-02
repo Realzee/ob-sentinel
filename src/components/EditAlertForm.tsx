@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
-import { AlertTriangle, X, Upload, Image as ImageIcon, MessageCircle } from 'lucide-react'
+import { AlertTriangle, X, Upload, Image as ImageIcon, MessageCircle, Building } from 'lucide-react'
 
 interface AlertForm {
   number_plate: string
@@ -12,6 +12,7 @@ interface AlertForm {
   model: string
   reason: string
   case_number: string
+  station_reported_at: string
   suburb: string
   comments: string // Add this line
 }
@@ -48,6 +49,26 @@ const saSuburbs = [
   'Other'
 ].sort();
 
+// Common South African vehicle makes
+const saVehicleMakes = [
+  'Toyota', 'Volkswagen', 'Ford', 'Nissan', 'BMW', 'Mercedes-Benz',
+  'Hyundai', 'Kia', 'Isuzu', 'Mazda', 'Honda', 'Audi', 'Suzuki',
+  'Renault', 'Chevrolet', 'Mitsubishi', 'Volvo', 'Land Rover', 'Other'
+].sort();
+
+// Common SAPS Stations
+const sapsStations = [
+  'Sandton SAPS',
+  'Randburg SAPS',
+  'Rosebank SAPS',
+  'Douglasdale SAPS',
+  'Midrand SAPS',
+  'Pretoria Central SAPS',
+  'Brooklyn SAPS',
+  'Lyttelton SAPS',
+  'Other'
+].sort();
+
 export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditAlertFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -66,6 +87,7 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
       model: alert.model,
       reason: alert.reason,
       case_number: alert.case_number || '',
+      station_reported_at: alert.station_reported_at || '',
       suburb: alert.suburb,
       comments: alert.comments || '' // Add this line
     }
@@ -181,6 +203,7 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
           model: data.model,
           reason: data.reason,
           case_number: data.case_number,
+          station_reported_at: data.station_reported_at,
           suburb: data.suburb,
           comments: data.comments, // Add this line
           has_images: finalImageUrls.length > 0,
@@ -225,13 +248,6 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
       setLoading(false)
     }
   }
-
-  // Common South African vehicle makes
-  const saVehicleMakes = [
-    'Toyota', 'Volkswagen', 'Ford', 'Nissan', 'BMW', 'Mercedes-Benz',
-    'Hyundai', 'Kia', 'Isuzu', 'Mazda', 'Honda', 'Audi', 'Suzuki',
-    'Renault', 'Chevrolet', 'Mitsubishi', 'Volvo', 'Land Rover', 'Other'
-  ]
 
   return (
     <div className="card p-6 mb-8 relative">
@@ -312,16 +328,19 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
             <label htmlFor="make" className="block text-sm font-medium text-gray-300 mb-2">
               Make *
             </label>
-            <select
+            <input
+              type="text"
               id="make"
               {...register('make', { required: 'Make is required' })}
               className="form-input"
-            >
-              <option value="">Select vehicle make</option>
+              placeholder="Toyota, Volkswagen, BMW, etc."
+              list="make-suggestions"
+            />
+            <datalist id="make-suggestions">
               {saVehicleMakes.map(make => (
-                <option key={make} value={make}>{make}</option>
+                <option key={make} value={make} />
               ))}
-            </select>
+            </datalist>
             {errors.make && (
               <p className="text-accent-red text-sm mt-1">{errors.make.message}</p>
             )}
@@ -383,6 +402,31 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
             />
           </div>
 
+          {/* Station Reported At */}
+          <div>
+            <label htmlFor="station_reported_at" className="block text-sm font-medium text-gray-300 mb-2">
+              <div className="flex items-center space-x-2">
+                <Building className="w-4 h-4 text-accent-blue" />
+                <span>Station Reported At</span>
+              </div>
+            </label>
+            <input
+              type="text"
+              id="station_reported_at"
+              {...register('station_reported_at')}
+              className="form-input"
+              placeholder="Sandton SAPS, Randburg SAPS, etc."
+              list="station-suggestions"
+            />
+            <datalist id="station-suggestions">
+              {sapsStations.map(station => (
+                <option key={station} value={station} />
+              ))}
+            </datalist>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Suburb */}
           <div>
             <label htmlFor="suburb" className="block text-sm font-medium text-gray-300 mb-2">

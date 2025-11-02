@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash } from 'lucide-react'
+import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import EditAlertForm from '@/components/EditAlertForm'
 
@@ -14,7 +14,8 @@ interface AlertVehicle {
   model: string
   reason: string
   case_number: string
-  ob_number: string // Add this line
+  station_reported_at: string
+  ob_number: string
   suburb: string
   has_images: boolean
   image_urls?: string[]
@@ -35,6 +36,7 @@ export default function Dashboard() {
   const [editingAlert, setEditingAlert] = useState<AlertVehicle | null>(null)
   const [user, setUser] = useState<any>(null)
   const [imagePreview, setImagePreview] = useState<{url: string, index: number, total: number} | null>(null)
+  const [viewMode, setViewMode] = useState<'all' | 'my'>('all') // 'all' or 'my'
 
   // Fetch alerts function
   const fetchAlerts = async () => {
@@ -49,7 +51,7 @@ export default function Dashboard() {
 
     setLoading(true)
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('alerts_vehicles')
         .select(`
           *,
@@ -60,15 +62,18 @@ export default function Dashboard() {
         `)
         .order('created_at', { ascending: false })
 
+      // If view mode is 'my', only fetch current user's alerts
+      if (viewMode === 'my') {
+        query = query.eq('user_id', user.id)
+      }
+
+      const { data, error } = await query
+
       if (error) {
         console.error('Error fetching alerts:', error)
         setAlerts([])
       } else {
         console.log('Fetched alerts:', data?.length)
-        // Debug: log the user data for each alert
-        data?.forEach(alert => {
-          console.log(`Alert ${alert.id} - User:`, alert.users)
-        })
         setAlerts(data || [])
       }
     } catch (error) {
@@ -78,6 +83,35 @@ export default function Dashboard() {
       setLoading(false)
     }
   }
+
+  // Set up real-time subscription for auto updates
+  useEffect(() => {
+    if (!user) return
+
+    console.log('Setting up real-time subscription for alerts')
+    
+    const subscription = supabase
+      .channel('alerts-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'alerts_vehicles'
+        },
+        (payload) => {
+          console.log('Real-time update received:', payload)
+          // Refresh alerts when any change occurs
+          fetchAlerts()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      console.log('Cleaning up real-time subscription')
+      subscription.unsubscribe()
+    }
+  }, [user, viewMode])
 
   // Initialize app and set up auth listener
   useEffect(() => {
@@ -161,7 +195,7 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Add this useEffect to handle page refresh
+  // Add this useEffect to handle page refresh and view mode changes
   useEffect(() => {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
@@ -187,7 +221,7 @@ export default function Dashboard() {
       window.removeEventListener('pageshow', handlePageShow)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [user])
+  }, [user, viewMode])
 
   // Manual refresh function
   const refreshAlerts = async () => {
@@ -291,7 +325,8 @@ export default function Dashboard() {
     alert.users?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.users?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.comments?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    alert.ob_number?.toLowerCase().includes(searchTerm.toLowerCase())
+    alert.ob_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    alert.station_reported_at?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const stats = {
@@ -301,7 +336,8 @@ export default function Dashboard() {
       const today = new Date()
       return alertDate.toDateString() === today.toDateString()
     }).length,
-    activeSuburbs: new Set(alerts.map(a => a.suburb)).size
+    activeSuburbs: new Set(alerts.map(a => a.suburb)).size,
+    myAlerts: alerts.filter(a => a.user_id === user?.id).length
   }
 
   return (
@@ -321,7 +357,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="card p-6 border-l-4 border-accent-gold">
           <div className="flex items-center justify-between">
             <div>
@@ -349,6 +385,16 @@ export default function Dashboard() {
               <p className="text-3xl font-bold text-accent-gold">{stats.activeSuburbs}</p>
             </div>
             <Users className="w-8 h-8 text-accent-gold" />
+          </div>
+        </div>
+
+        <div className="card p-6 border-l-4 border-accent-blue">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-400">My Reports</p>
+              <p className="text-3xl font-bold text-accent-blue">{stats.myAlerts}</p>
+            </div>
+            <User className="w-8 h-8 text-accent-blue" />
           </div>
         </div>
       </div>
@@ -457,7 +503,35 @@ export default function Dashboard() {
       {user ? (
         <div className="card p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
-            <h2 className="text-2xl font-bold text-primary-white">Recent Reports</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
+              <h2 className="text-2xl font-bold text-primary-white">
+                {viewMode === 'all' ? 'Community Reports' : 'My Reports'}
+              </h2>
+              
+              {/* View Mode Toggle */}
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setViewMode('all')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    viewMode === 'all' 
+                      ? 'bg-accent-gold text-black' 
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  All Reports
+                </button>
+                <button
+                  onClick={() => setViewMode('my')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    viewMode === 'my' 
+                      ? 'bg-accent-blue text-white' 
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  My Reports
+                </button>
+              </div>
+            </div>
             
             <div className="flex items-center space-x-4">
               <div className="relative w-full sm:w-64">
@@ -466,7 +540,7 @@ export default function Dashboard() {
                   type="text"
                   id="search-reports"
                   name="search-reports"
-                  placeholder="Search reports, plates, areas, users, comments, OB numbers..."
+                  placeholder="Search reports, plates, areas, stations, users..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="form-input pl-10"
@@ -478,7 +552,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
-              <p className="text-gray-400">Loading community reports...</p>
+              <p className="text-gray-400">Loading {viewMode === 'all' ? 'community' : 'your'} reports...</p>
               <p className="text-sm text-gray-500 mt-2">This may take a few moments</p>
             </div>
           ) : (
@@ -487,7 +561,7 @@ export default function Dashboard() {
                 <div key={alert.id} className="bg-dark-gray border border-gray-700 rounded-lg p-4 hover:border-accent-gold transition-colors">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center space-x-4 mb-2">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                           alert.reason.includes('Hijack') ? 'bg-red-600 text-white' :
                           alert.reason.includes('Stolen') ? 'bg-green-500 text-white' :
@@ -502,8 +576,8 @@ export default function Dashboard() {
                         <span className="text-sm text-gray-400">{alert.suburb}</span>
                       </div>
                       
-                      {/* OB Number and SAPS Case Number */}
-                      <div className="flex items-center space-x-4 mb-2">
+                      {/* OB Number, SAPS Case Number, and Station */}
+                      <div className="flex flex-wrap items-center gap-4 mb-2">
                         <div className="flex items-center space-x-2">
                           <Hash className="w-4 h-4 text-accent-gold" />
                           <span className="text-sm font-medium text-accent-gold">
@@ -511,7 +585,18 @@ export default function Dashboard() {
                           </span>
                         </div>
                         {alert.case_number && (
-                          <span className="text-sm text-gray-500">SAPS: {alert.case_number}</span>
+                          <div className="flex items-center space-x-2">
+                            <FileCheck className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm text-gray-500">SAPS: {alert.case_number}</span>
+                          </div>
+                        )}
+                        {alert.station_reported_at && (
+                          <div className="flex items-center space-x-2">
+                            <Building className="w-4 h-4 text-blue-400" />
+                            <span className="text-sm text-blue-400 max-w-xs truncate" title={alert.station_reported_at}>
+                              Station: {alert.station_reported_at}
+                            </span>
+                          </div>
                         )}
                       </div>
                       
@@ -572,10 +657,12 @@ export default function Dashboard() {
                     </div>
                     
                     <div className="mt-2 sm:mt-0 sm:ml-4 flex items-center space-x-2">
-                      <div className="text-sm text-gray-400">
-                        {new Date(alert.created_at).toLocaleString('en-ZA', {
-                          timeZone: 'Africa/Johannesburg'
-                        })}
+                      <div className="text-sm text-gray-400 text-right">
+                        <div>{new Date(alert.created_at).toLocaleDateString('en-ZA')}</div>
+                        <div>{new Date(alert.created_at).toLocaleTimeString('en-ZA', { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}</div>
                       </div>
                       
                       {/* Edit and Delete buttons */}
@@ -604,7 +691,10 @@ export default function Dashboard() {
               
               {filteredAlerts.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  {searchTerm ? 'No reports found matching your search.' : 'No reports filed yet.'}
+                  {searchTerm 
+                    ? `No ${viewMode === 'all' ? 'community' : 'your'} reports found matching your search.` 
+                    : `No ${viewMode === 'all' ? 'community' : 'your'} reports filed yet.`
+                  }
                 </div>
               )}
             </div>
