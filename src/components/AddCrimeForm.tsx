@@ -458,7 +458,7 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
                 type="button"
                 onClick={getCurrentLocation}
                 disabled={gettingLocation}
-                className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+                className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
               >
                 {gettingLocation ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -471,7 +471,7 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
               <button
                 type="button"
                 onClick={handleManualCoordinates}
-                className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
               >
                 <Compass className="w-4 h-4" />
                 <span>Enter Coordinates</span>
@@ -497,7 +497,7 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
                     <button
                       type="button"
                       onClick={() => window.open(`https://www.openstreetmap.org/?mlat=${location.latitude}&mlon=${location.longitude}#map=16/${location.latitude}/${location.longitude}`, '_blank')}
-                      className="text-sm text-blue-400 hover:text-blue-300 underline"
+                      className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
                     >
                       View on OpenStreetMap
                     </button>
@@ -508,7 +508,7 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
                         setValue('latitude', undefined)
                         setValue('longitude', undefined)
                       }}
-                      className="text-sm text-red-400 hover:text-red-300 underline"
+                      className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
                     >
                       Remove Location
                     </button>

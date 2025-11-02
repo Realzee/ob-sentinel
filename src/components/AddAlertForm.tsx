@@ -519,7 +519,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
               <button
                 type="button"
                 onClick={handleManualCoordinates}
-                className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
               >
                 <Compass className="w-4 h-4" />
                 <span>Enter Coordinates</span>
