@@ -67,7 +67,38 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState<'all' | 'my'>('all')
   const [activeTab, setActiveTab] = useState<'vehicles' | 'crimes'>('vehicles')
 
-  // Fetch alerts function
+  // Fetch user data for reports
+  const fetchUserData = async (userIds: string[]) => {
+    if (userIds.length === 0) return new Map()
+    
+    const { data: usersData, error } = await supabase
+      .from('users')
+      .select('id, name, email')
+      .in('id', userIds)
+
+    if (error) {
+      console.error('Error fetching user data:', error)
+      return new Map()
+    }
+
+    const usersMap = new Map()
+    usersData?.forEach(user => {
+      usersMap.set(user.id, {
+        name: user.name || 'Unknown User',
+        email: user.email
+      })
+    })
+    
+    return usersMap
+  }
+
+  // Helper function to get unique user IDs from array
+  const getUniqueUserIds = (items: any[]): string[] => {
+    const userIds = items?.map(item => item.user_id) || []
+    return Array.from(new Set(userIds))
+  }
+
+  // Fetch alerts function - UPDATED without joins
   const fetchAlerts = async () => {
     if (!user) {
       setAlerts([])
@@ -78,16 +109,10 @@ export default function Dashboard() {
 
     setLoading(true)
     try {
-      // Fetch vehicle alerts
+      // Fetch vehicle alerts without join
       let vehicleQuery = supabase
         .from('alerts_vehicles')
-        .select(`
-          *,
-          users (
-            name,
-            email
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false })
 
       if (viewMode === 'my') {
@@ -100,19 +125,23 @@ export default function Dashboard() {
         console.error('Error fetching alerts:', alertsError)
         setAlerts([])
       } else {
-        setAlerts(alertsData || [])
+        // Fetch user data separately
+        const userIds = getUniqueUserIds(alertsData || [])
+        const usersMap = await fetchUserData(userIds)
+        
+        // Combine data
+        const alertsWithUsers = (alertsData || []).map(alert => ({
+          ...alert,
+          users: usersMap.get(alert.user_id) || { name: 'Unknown User', email: '' }
+        }))
+        
+        setAlerts(alertsWithUsers)
       }
 
-      // Fetch crime reports
+      // Fetch crime reports without join
       let crimeQuery = supabase
         .from('crime_reports')
-        .select(`
-          *,
-          users (
-            name,
-            email
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false })
 
       if (viewMode === 'my') {
@@ -125,7 +154,17 @@ export default function Dashboard() {
         console.error('Error fetching crime reports:', crimesError)
         setCrimeReports([])
       } else {
-        setCrimeReports(crimesData || [])
+        // Fetch user data separately
+        const userIds = getUniqueUserIds(crimesData || [])
+        const usersMap = await fetchUserData(userIds)
+        
+        // Combine data
+        const crimesWithUsers = (crimesData || []).map(report => ({
+          ...report,
+          users: usersMap.get(report.user_id) || { name: 'Unknown User', email: '' }
+        }))
+        
+        setCrimeReports(crimesWithUsers)
       }
 
     } catch (error) {
@@ -408,10 +447,10 @@ export default function Dashboard() {
       const today = new Date()
       return reportDate.toDateString() === today.toDateString()
     }).length,
-    activeSuburbs: new Set([
+    activeSuburbs: Array.from(new Set([
       ...alerts.map(a => a.suburb),
       ...crimeReports.map(c => c.suburb)
-    ]).size,
+    ])).length,
     myAlerts: alerts.filter(a => a.user_id === user?.id).length,
     myCrimeReports: crimeReports.filter(c => c.user_id === user?.id).length
   }
