@@ -1058,14 +1058,14 @@ export default function Dashboard() {
                           <div className="flex flex-wrap gap-2">
                             <button
                               onClick={() => showMapModal(report, 'crime')}
-                              className="bg-red-600 hover:bg-red-700 text-white text-sm py-1 px-3 rounded flex items-center space-x-1 transition-colors"
+                              className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
                             >
                               <Map className="w-3 h-3" />
                               <span>View Map</span>
                             </button>
                             <button
                               onClick={() => openOSM(report.latitude!, report.longitude!)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white text-sm py-1 px-3 rounded flex items-center space-x-1 transition-colors"
+                              className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
                             >
                               <MapPin className="w-3 h-3" />
                               <span>OpenStreetMap</span>
@@ -1073,7 +1073,7 @@ export default function Dashboard() {
                             {userLocation && (
                               <button
                                 onClick={() => getDirections(report.latitude!, report.longitude!)}
-                                className="bg-green-600 hover:bg-green-700 text-white text-sm py-1 px-3 rounded flex items-center space-x-1 transition-colors"
+                                className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
                               >
                                 <Navigation className="w-3 h-3" />
                                 <span>Directions</span>
