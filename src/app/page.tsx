@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building } from 'lucide-react'
+import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
+import AddCrimeForm from '@/components/AddCrimeForm'
 import EditAlertForm from '@/components/EditAlertForm'
 
 interface AlertVehicle {
@@ -28,30 +29,57 @@ interface AlertVehicle {
   }
 }
 
+interface CrimeReport {
+  id: string
+  crime_type: string
+  description: string
+  location: string
+  suburb: string
+  date_occurred?: string
+  time_occurred?: string
+  suspects_description?: string
+  weapons_involved: boolean
+  injuries: boolean
+  case_number?: string
+  station_reported_at?: string
+  ob_number: string
+  comments?: string
+  has_images: boolean
+  image_urls?: string[]
+  created_at: string
+  user_id: string
+  users: {
+    name: string
+    email: string
+  }
+}
+
 export default function Dashboard() {
   const [alerts, setAlerts] = useState<AlertVehicle[]>([])
+  const [crimeReports, setCrimeReports] = useState<CrimeReport[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [reportType, setReportType] = useState<'vehicle' | 'crime'>('vehicle')
   const [editingAlert, setEditingAlert] = useState<AlertVehicle | null>(null)
   const [user, setUser] = useState<any>(null)
   const [imagePreview, setImagePreview] = useState<{url: string, index: number, total: number} | null>(null)
-  const [viewMode, setViewMode] = useState<'all' | 'my'>('all') // 'all' or 'my'
+  const [viewMode, setViewMode] = useState<'all' | 'my'>('all')
+  const [activeTab, setActiveTab] = useState<'vehicles' | 'crimes'>('vehicles')
 
   // Fetch alerts function
   const fetchAlerts = async () => {
-    console.log('fetchAlerts called, user:', user)
-    
     if (!user) {
-      console.log('No user, clearing alerts')
       setAlerts([])
+      setCrimeReports([])
       setLoading(false)
       return
     }
 
     setLoading(true)
     try {
-      let query = supabase
+      // Fetch vehicle alerts
+      let vehicleQuery = supabase
         .from('alerts_vehicles')
         .select(`
           *,
@@ -62,35 +90,59 @@ export default function Dashboard() {
         `)
         .order('created_at', { ascending: false })
 
-      // If view mode is 'my', only fetch current user's alerts
       if (viewMode === 'my') {
-        query = query.eq('user_id', user.id)
+        vehicleQuery = vehicleQuery.eq('user_id', user.id)
       }
 
-      const { data, error } = await query
+      const { data: alertsData, error: alertsError } = await vehicleQuery
 
-      if (error) {
-        console.error('Error fetching alerts:', error)
+      if (alertsError) {
+        console.error('Error fetching alerts:', alertsError)
         setAlerts([])
       } else {
-        console.log('Fetched alerts:', data?.length)
-        setAlerts(data || [])
+        setAlerts(alertsData || [])
       }
+
+      // Fetch crime reports
+      let crimeQuery = supabase
+        .from('crime_reports')
+        .select(`
+          *,
+          users (
+            name,
+            email
+          )
+        `)
+        .order('created_at', { ascending: false })
+
+      if (viewMode === 'my') {
+        crimeQuery = crimeQuery.eq('user_id', user.id)
+      }
+
+      const { data: crimesData, error: crimesError } = await crimeQuery
+
+      if (crimesError) {
+        console.error('Error fetching crime reports:', crimesError)
+        setCrimeReports([])
+      } else {
+        setCrimeReports(crimesData || [])
+      }
+
     } catch (error) {
-      console.error('Error fetching alerts:', error)
+      console.error('Error fetching data:', error)
       setAlerts([])
+      setCrimeReports([])
     } finally {
       setLoading(false)
     }
   }
 
-  // Set up real-time subscription for auto updates
+  // Set up real-time subscriptions
   useEffect(() => {
     if (!user) return
 
-    console.log('Setting up real-time subscription for alerts')
-    
-    const subscription = supabase
+    // Subscribe to vehicle alerts
+    const vehicleSubscription = supabase
       .channel('alerts-changes')
       .on(
         'postgres_changes',
@@ -100,16 +152,32 @@ export default function Dashboard() {
           table: 'alerts_vehicles'
         },
         (payload) => {
-          console.log('Real-time update received:', payload)
-          // Refresh alerts when any change occurs
+          console.log('Vehicle alert update:', payload)
+          fetchAlerts()
+        }
+      )
+      .subscribe()
+
+    // Subscribe to crime reports
+    const crimeSubscription = supabase
+      .channel('crimes-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'crime_reports'
+        },
+        (payload) => {
+          console.log('Crime report update:', payload)
           fetchAlerts()
         }
       )
       .subscribe()
 
     return () => {
-      console.log('Cleaning up real-time subscription')
-      subscription.unsubscribe()
+      vehicleSubscription.unsubscribe()
+      crimeSubscription.unsubscribe()
     }
   }, [user, viewMode])
 
@@ -125,7 +193,6 @@ export default function Dashboard() {
       }
 
       try {
-        // Get current user
         const { data: { user } } = await supabase.auth.getUser()
         console.log('Initial user:', user)
         
@@ -133,7 +200,6 @@ export default function Dashboard() {
           setUser(user)
           
           if (user) {
-            // Ensure user exists in database (non-blocking)
             ensureUserExists(user.id, {
               email: user.email!,
               name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
@@ -141,7 +207,6 @@ export default function Dashboard() {
               console.warn('User creation failed (non-critical):', error)
             })
 
-            // Fetch alerts for logged in user - use the user we just got
             await fetchAlerts()
           } else {
             setLoading(false)
@@ -155,7 +220,6 @@ export default function Dashboard() {
 
     initializeApp()
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event, session?.user)
@@ -163,11 +227,9 @@ export default function Dashboard() {
         if (!mounted) return
         
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          console.log('User signed in, setting user state and fetching alerts')
           setUser(session?.user ?? null)
           
           if (session?.user) {
-            // Ensure user exists in database
             ensureUserExists(session.user.id, {
               email: session.user.email!,
               name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User'
@@ -175,15 +237,14 @@ export default function Dashboard() {
               console.warn('User creation failed (non-critical):', error)
             })
 
-            // Use setTimeout to ensure state is updated before fetching
             setTimeout(() => {
               fetchAlerts()
             }, 100)
           }
         } else if (event === 'SIGNED_OUT') {
-          console.log('User signed out, clearing state')
           setUser(null)
           setAlerts([])
+          setCrimeReports([])
           setLoading(false)
         }
       }
@@ -195,21 +256,16 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Add this useEffect to handle page refresh and view mode changes
+  // Handle page refresh and visibility changes
   useEffect(() => {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
-        // Page was restored from back/forward cache, refresh data
-        console.log('Page restored from cache, refreshing alerts')
         fetchAlerts()
       }
     }
 
-    // Listen for page visibility changes
     const handleVisibilityChange = () => {
       if (!document.hidden && user) {
-        // Page became visible, refresh data
-        console.log('Page became visible, refreshing alerts')
         fetchAlerts()
       }
     }
@@ -226,11 +282,11 @@ export default function Dashboard() {
   // Manual refresh function
   const refreshAlerts = async () => {
     console.log('Manual refresh triggered')
-    setLoading(true) // Show loading immediately
+    setLoading(true)
     await fetchAlerts()
   }
 
-  const handleDeleteAlert = async (alertId: string) => {
+  const handleDeleteAlert = async (alertId: string, type: 'vehicle' | 'crime') => {
     if (!user) return
 
     if (!confirm('Are you sure you want to delete this report? This action cannot be undone.')) {
@@ -238,8 +294,9 @@ export default function Dashboard() {
     }
 
     try {
+      const table = type === 'vehicle' ? 'alerts_vehicles' : 'crime_reports'
       const { error } = await supabase
-        .from('alerts_vehicles')
+        .from(table)
         .delete()
         .eq('id', alertId)
         .eq('user_id', user.id)
@@ -249,25 +306,28 @@ export default function Dashboard() {
         throw error
       }
 
-      console.log('Alert deleted successfully')
-      // Immediately update the UI by filtering out the deleted alert
-      setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== alertId))
+      console.log('Report deleted successfully')
+      
+      if (type === 'vehicle') {
+        setAlerts(prev => prev.filter(alert => alert.id !== alertId))
+      } else {
+        setCrimeReports(prev => prev.filter(report => report.id !== alertId))
+      }
       
       await supabase
         .from('user_logs')
         .insert([
           {
             user_id: user.id,
-            action: 'delete_alert',
+            action: `delete_${type}_report`,
             ip_address: '',
             user_agent: navigator.userAgent
           }
         ])
 
     } catch (error: any) {
-      console.error('Error deleting alert:', error)
+      console.error('Error deleting report:', error)
       alert('Failed to delete report: ' + error.message)
-      // Refresh the list to ensure consistency
       await refreshAlerts()
     }
   }
@@ -276,47 +336,41 @@ export default function Dashboard() {
     setEditingAlert(alert)
   }
 
-  const handleImagePreview = (alert: AlertVehicle, imageIndex: number) => {
+  const handleImagePreview = (urls: string[], imageIndex: number) => {
     setImagePreview({
-      url: alert.image_urls![imageIndex],
+      url: urls[imageIndex],
       index: imageIndex,
-      total: alert.image_urls!.length
+      total: urls.length
     })
   }
 
   const navigateImage = (direction: 'prev' | 'next') => {
     if (!imagePreview) return
     
-    const currentAlert = alerts.find(alert => 
-      alert.image_urls?.includes(imagePreview.url)
-    )
-    
-    if (!currentAlert || !currentAlert.image_urls) return
-    
     let newIndex = direction === 'next' ? imagePreview.index + 1 : imagePreview.index - 1
     
     // Wrap around
-    if (newIndex >= currentAlert.image_urls.length) newIndex = 0
-    if (newIndex < 0) newIndex = currentAlert.image_urls.length - 1
+    if (newIndex >= imagePreview.total) newIndex = 0
+    if (newIndex < 0) newIndex = imagePreview.total - 1
     
     setImagePreview({
-      url: currentAlert.image_urls[newIndex],
-      index: newIndex,
-      total: currentAlert.image_urls.length
+      ...imagePreview,
+      index: newIndex
     })
   }
 
   // Helper function to get user display name
-  const getUserDisplayName = (alert: AlertVehicle) => {
-    if (alert.users?.name && alert.users.name !== 'Unknown User') {
-      return alert.users.name;
+  const getUserDisplayName = (item: any) => {
+    if (item.users?.name && item.users.name !== 'Unknown User') {
+      return item.users.name;
     }
-    if (alert.users?.email) {
-      return alert.users.email.split('@')[0]; // Use username part of email
+    if (item.users?.email) {
+      return item.users.email.split('@')[0];
     }
-    return 'Community Member'; // Fallback
+    return 'Community Member';
   }
 
+  // Filter data based on search term and active tab
   const filteredAlerts = alerts.filter(alert => 
     alert.number_plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.suburb.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -329,42 +383,107 @@ export default function Dashboard() {
     alert.station_reported_at?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
+  const filteredCrimeReports = crimeReports.filter(report =>
+    report.crime_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    report.suburb.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    report.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    report.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    report.users?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    report.users?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    report.comments?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    report.ob_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    report.station_reported_at?.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
   const stats = {
-    totalAlerts: alerts.length,
-    recentAlerts: alerts.filter(a => {
+    totalVehicleAlerts: alerts.length,
+    totalCrimeReports: crimeReports.length,
+    recentVehicleAlerts: alerts.filter(a => {
       const alertDate = new Date(a.created_at)
       const today = new Date()
       return alertDate.toDateString() === today.toDateString()
     }).length,
-    activeSuburbs: new Set(alerts.map(a => a.suburb)).size,
-    myAlerts: alerts.filter(a => a.user_id === user?.id).length
+    recentCrimeReports: crimeReports.filter(c => {
+      const reportDate = new Date(c.created_at)
+      const today = new Date()
+      return reportDate.toDateString() === today.toDateString()
+    }).length,
+    activeSuburbs: new Set([
+      ...alerts.map(a => a.suburb),
+      ...crimeReports.map(c => c.suburb)
+    ]).size,
+    myAlerts: alerts.filter(a => a.user_id === user?.id).length,
+    myCrimeReports: crimeReports.filter(c => c.user_id === user?.id).length
   }
+
+  // Fixed ternary operator - properly formatted
+  const currentStats = activeTab === 'vehicles' 
+    ? {
+        total: stats.totalVehicleAlerts,
+        recent: stats.recentVehicleAlerts,
+        my: stats.myAlerts
+      }
+    : {
+        total: stats.totalCrimeReports,
+        recent: stats.recentCrimeReports,
+        my: stats.myCrimeReports
+      }
 
   return (
     <div className="space-y-8">
-      {/* Welcome Section with Custom Image */}
+      {/* Welcome Section */}
       <div className="text-center">
-        {/* Custom Image - Replace the src with your actual image path */}
         <div className="flex justify-center mb-6">
           <img 
-            src="/rapid911-ireport-logo1.png" // Replace with your image path
+            src="/rapid911-ireport-logo1.png"
             alt="Rapid911 Logo" 
             className="w-30 h-auto"
           />
         </div>
-        
-        <p className="text-gray-400 text-lg">Smart Reporting System</p>
+        <p className="text-gray-400 text-lg">Community Safety Reporting System</p>
+      </div>
+
+      {/* Report Type Tabs */}
+      <div className="flex space-x-4 mb-6">
+        <button
+          onClick={() => setActiveTab('vehicles')}
+          className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
+            activeTab === 'vehicles' 
+              ? 'bg-accent-gold text-black' 
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+          }`}
+        >
+          <Car className="w-5 h-5 inline mr-2" />
+          Stolen Vehicles
+        </button>
+        <button
+          onClick={() => setActiveTab('crimes')}
+          className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
+            activeTab === 'crimes' 
+              ? 'bg-red-600 text-white' 
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+          }`}
+        >
+          <Shield className="w-5 h-5 inline mr-2" />
+          Crime Reports
+        </button>
       </div>
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="card p-6 border-l-4 border-accent-gold">
+        <div className={`card p-6 border-l-4 ${
+          activeTab === 'vehicles' ? 'border-accent-gold' : 'border-red-600'
+        }`}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-400">Total Reports</p>
-              <p className="text-3xl font-bold text-accent-gold">{stats.totalAlerts}</p>
+              <p className="text-sm text-gray-400">Total {activeTab === 'vehicles' ? 'Vehicle' : 'Crime'} Reports</p>
+              <p className={`text-3xl font-bold ${
+                activeTab === 'vehicles' ? 'text-accent-gold' : 'text-red-600'
+              }`}>
+                {currentStats.total}
+              </p>
             </div>
-            <FileText className="w-8 h-8 text-accent-gold" />
+            {activeTab === 'vehicles' ? <Car className="w-8 h-8 text-accent-gold" /> : <Shield className="w-8 h-8 text-red-600" />}
           </div>
         </div>
 
@@ -372,7 +491,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-400">Today's Reports</p>
-              <p className="text-3xl font-bold text-accent-red">{stats.recentAlerts}</p>
+              <p className="text-3xl font-bold text-accent-red">{currentStats.recent}</p>
             </div>
             <AlertTriangle className="w-8 h-8 text-accent-red" />
           </div>
@@ -392,7 +511,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-400">My Reports</p>
-              <p className="text-3xl font-bold text-accent-blue">{stats.myAlerts}</p>
+              <p className="text-3xl font-bold text-accent-blue">{currentStats.my}</p>
             </div>
             <User className="w-8 h-8 text-accent-blue" />
           </div>
@@ -405,18 +524,41 @@ export default function Dashboard() {
           <div className="flex justify-center space-x-4">
             <button
               onClick={() => setShowAddForm(!showAddForm)}
-              className="btn-primary inline-flex items-center space-x-2"
+              className={`inline-flex items-center space-x-2 py-2 px-4 rounded-lg font-medium transition-colors ${
+                activeTab === 'vehicles' 
+                  ? 'bg-accent-gold text-black hover:bg-yellow-500' 
+                  : 'bg-red-600 text-white hover:bg-red-700'
+              }`}
             >
               <Plus className="w-5 h-5" />
-              <span>{showAddForm ? 'Cancel' : 'File New Report'}</span>
+              <span>{showAddForm ? 'Cancel' : `File New ${activeTab === 'vehicles' ? 'Vehicle' : 'Crime'} Report`}</span>
             </button>
             <button
               onClick={refreshAlerts}
               className="btn-primary inline-flex items-center space-x-2"
             >
-              <span>Show Community Alerts</span>
+              <span>Refresh</span>
             </button>
           </div>
+          
+          {showAddForm && activeTab === 'vehicles' && (
+            <AddAlertForm 
+              onAlertAdded={() => {
+                setShowAddForm(false)
+                refreshAlerts()
+              }} 
+            />
+          )}
+
+          {showAddForm && activeTab === 'crimes' && (
+            <AddCrimeForm 
+              onCrimeReportAdded={() => {
+                setShowAddForm(false)
+                refreshAlerts()
+              }} 
+            />
+          )}
+
           {loading && (
             <div className="text-sm text-gray-400">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-gold mx-auto"></div>
@@ -433,25 +575,13 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Add Report Form */}
-      {showAddForm && (
-        <AddAlertForm 
-          onAlertAdded={() => {
-            console.log('AddAlertForm: onAlertAdded called')
-            setShowAddForm(false)
-            refreshAlerts() // Use refreshAlerts instead of fetchAlerts
-          }} 
-        />
-      )}
-
       {/* Edit Report Form */}
       {editingAlert && (
         <EditAlertForm 
           alert={editingAlert}
           onAlertUpdated={() => {
-            console.log('EditAlertForm: onAlertUpdated called')
             setEditingAlert(null)
-            refreshAlerts() // Use refreshAlerts instead of fetchAlerts
+            refreshAlerts()
           }}
           onCancel={() => setEditingAlert(null)}
         />
@@ -505,7 +635,7 @@ export default function Dashboard() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
             <div className="flex flex-col sm:flex-row sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
               <h2 className="text-2xl font-bold text-primary-white">
-                {viewMode === 'all' ? 'Community Reports' : 'My Reports'}
+                {viewMode === 'all' ? 'Community' : 'My'} {activeTab === 'vehicles' ? 'Vehicle Reports' : 'Crime Reports'}
               </h2>
               
               {/* View Mode Toggle */}
@@ -538,9 +668,7 @@ export default function Dashboard() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
                   type="text"
-                  id="search-reports"
-                  name="search-reports"
-                  placeholder="Search reports, plates, areas, stations, users..."
+                  placeholder={`Search ${activeTab === 'vehicles' ? 'vehicles, plates, areas...' : 'crimes, locations, descriptions...'}`}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="form-input pl-10"
@@ -552,12 +680,12 @@ export default function Dashboard() {
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
-              <p className="text-gray-400">Loading {viewMode === 'all' ? 'community' : 'your'} reports...</p>
-              <p className="text-sm text-gray-500 mt-2">This may take a few moments</p>
+              <p className="text-gray-400">Loading {activeTab === 'vehicles' ? 'vehicle' : 'crime'} reports...</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredAlerts.map((alert) => (
+              {/* Vehicle Reports */}
+              {activeTab === 'vehicles' && filteredAlerts.map((alert) => (
                 <div key={alert.id} className="bg-dark-gray border border-gray-700 rounded-lg p-4 hover:border-accent-gold transition-colors">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between">
                     <div className="flex-1">
@@ -569,19 +697,17 @@ export default function Dashboard() {
                         }`}>
                           {alert.reason}
                         </span>
-                        {/* Updated registration number with white background and dark-blue text */}
                         <span className="bg-white text-blue-900 px-3 py-1 rounded-full text-sm font-bold border border-gray-300">
                           {alert.number_plate}
                         </span>
                         <span className="text-sm text-gray-400">{alert.suburb}</span>
                       </div>
                       
-                      {/* OB Number, SAPS Case Number, and Station */}
                       <div className="flex flex-wrap items-center gap-4 mb-2">
                         <div className="flex items-center space-x-2">
                           <Hash className="w-4 h-4 text-accent-gold" />
                           <span className="text-sm font-medium text-accent-gold">
-                            OB: {alert.ob_number || 'Generating...'}
+                            OB: {alert.ob_number}
                           </span>
                         </div>
                         {alert.case_number && (
@@ -593,7 +719,7 @@ export default function Dashboard() {
                         {alert.station_reported_at && (
                           <div className="flex items-center space-x-2">
                             <Building className="w-4 h-4 text-blue-400" />
-                            <span className="text-sm text-blue-400 max-w-xs truncate" title={alert.station_reported_at}>
+                            <span className="text-sm text-blue-400 max-w-xs truncate">
                               Station: {alert.station_reported_at}
                             </span>
                           </div>
@@ -604,7 +730,6 @@ export default function Dashboard() {
                         {alert.color} {alert.make} {alert.model}
                       </p>
                       
-                      {/* Added reporter information */}
                       <div className="flex items-center space-x-2 mt-2">
                         <User className="w-3 h-3 text-accent-gold" />
                         <span className="text-sm text-gray-400">
@@ -612,13 +737,12 @@ export default function Dashboard() {
                         </span>
                       </div>
                       
-                      {/* Enhanced Image Preview */}
                       {alert.image_urls && alert.image_urls.length > 0 && (
                         <div className="mt-3">
                           <div className="flex items-center space-x-2 mb-2">
                             <ImageIcon className="w-4 h-4 text-accent-gold" />
                             <span className="text-sm text-accent-gold font-medium">
-                              {alert.image_urls.length} image{alert.image_urls.length > 1 ? 's' : ''} attached
+                              {alert.image_urls.length} image{alert.image_urls.length > 1 ? 's' : ''}
                             </span>
                           </div>
                           <div className="flex space-x-2 overflow-x-auto pb-2">
@@ -626,17 +750,15 @@ export default function Dashboard() {
                               <div 
                                 key={index}
                                 className="relative group cursor-pointer flex-shrink-0"
-                                onClick={() => handleImagePreview(alert, index)}
+                                onClick={() => handleImagePreview(alert.image_urls!, index)}
                               >
                                 <img 
                                   src={url} 
                                   alt={`Evidence ${index + 1}`}
                                   className="w-20 h-20 object-cover rounded border-2 border-gray-600 hover:border-accent-gold transition-colors"
                                 />
-                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity rounded flex items-center justify-center">
-                                  <div className="bg-black bg-opacity-50 text-white text-xs px-1 rounded absolute bottom-1 right-1">
-                                    {index + 1}
-                                  </div>
+                                <div className="absolute bottom-1 right-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                                  {index + 1}
                                 </div>
                               </div>
                             ))}
@@ -644,7 +766,6 @@ export default function Dashboard() {
                         </div>
                       )}
 
-                      {/* Comments Display */}
                       {alert.comments && (
                         <div className="mt-3 p-3 bg-gray-800 rounded-lg border-l-4 border-accent-gold">
                           <div className="flex items-center space-x-2 mb-2">
@@ -665,20 +786,151 @@ export default function Dashboard() {
                         })}</div>
                       </div>
                       
-                      {/* Edit and Delete buttons */}
                       {alert.user_id === user.id && (
                         <div className="flex space-x-2">
                           <button
                             onClick={() => handleEditAlert(alert)}
                             className="p-2 text-accent-gold hover:bg-accent-gold hover:text-black rounded transition-colors"
-                            title="Edit Report"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDeleteAlert(alert.id)}
+                            onClick={() => handleDeleteAlert(alert.id, 'vehicle')}
                             className="p-2 text-accent-red hover:bg-accent-red hover:text-white rounded transition-colors"
-                            title="Delete Report"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Crime Reports */}
+              {activeTab === 'crimes' && filteredCrimeReports.map((report) => (
+                <div key={report.id} className="bg-dark-gray border border-gray-700 rounded-lg p-4 hover:border-red-600 transition-colors">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <span className="px-3 py-1 rounded-full text-sm font-medium bg-red-600 text-white">
+                          {report.crime_type}
+                        </span>
+                        <span className="text-sm text-gray-400">{report.suburb}</span>
+                        {report.weapons_involved && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-600 text-white">
+                            Weapons
+                          </span>
+                        )}
+                        {report.injuries && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-700 text-white">
+                            Injuries
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-4 mb-2">
+                        <div className="flex items-center space-x-2">
+                          <Hash className="w-4 h-4 text-red-400" />
+                          <span className="text-sm font-medium text-red-400">
+                            CR: {report.ob_number}
+                          </span>
+                        </div>
+                        {report.case_number && (
+                          <div className="flex items-center space-x-2">
+                            <FileCheck className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm text-gray-500">SAPS: {report.case_number}</span>
+                          </div>
+                        )}
+                        {report.station_reported_at && (
+                          <div className="flex items-center space-x-2">
+                            <Building className="w-4 h-4 text-blue-400" />
+                            <span className="text-sm text-blue-400 max-w-xs truncate">
+                              Station: {report.station_reported_at}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <p className="text-primary-white font-medium mb-2">
+                        {report.location}
+                      </p>
+                      
+                      <p className="text-gray-300 text-sm mb-2">
+                        {report.description}
+                      </p>
+
+                      {report.suspects_description && (
+                        <div className="mt-2 p-2 bg-gray-800 rounded border-l-2 border-red-600">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <User className="w-3 h-3 text-red-400" />
+                            <span className="text-xs font-medium text-red-400">Suspects:</span>
+                          </div>
+                          <p className="text-xs text-gray-300">{report.suspects_description}</p>
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center space-x-2 mt-2">
+                        <User className="w-3 h-3 text-red-400" />
+                        <span className="text-sm text-gray-400">
+                          Reported by: <span className="text-red-400">{getUserDisplayName(report)}</span>
+                        </span>
+                      </div>
+                      
+                      {report.image_urls && report.image_urls.length > 0 && (
+                        <div className="mt-3">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <ImageIcon className="w-4 h-4 text-red-400" />
+                            <span className="text-sm text-red-400 font-medium">
+                              {report.image_urls.length} evidence image{report.image_urls.length > 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div className="flex space-x-2 overflow-x-auto pb-2">
+                            {report.image_urls.map((url, index) => (
+                              <div 
+                                key={index}
+                                className="relative group cursor-pointer flex-shrink-0"
+                                onClick={() => handleImagePreview(report.image_urls!, index)}
+                              >
+                                <img 
+                                  src={url} 
+                                  alt={`Evidence ${index + 1}`}
+                                  className="w-20 h-20 object-cover rounded border-2 border-gray-600 hover:border-red-600 transition-colors"
+                                />
+                                <div className="absolute bottom-1 right-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                                  {index + 1}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {report.comments && (
+                        <div className="mt-3 p-3 bg-gray-800 rounded-lg border-l-4 border-red-600">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <MessageCircle className="w-4 h-4 text-red-400" />
+                            <span className="text-sm font-medium text-red-400">Additional Information:</span>
+                          </div>
+                          <p className="text-sm text-gray-300 whitespace-pre-wrap">{report.comments}</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="mt-2 sm:mt-0 sm:ml-4 flex items-center space-x-2">
+                      <div className="text-sm text-gray-400 text-right">
+                        <div>{new Date(report.created_at).toLocaleDateString('en-ZA')}</div>
+                        <div>{new Date(report.created_at).toLocaleTimeString('en-ZA', { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}</div>
+                      </div>
+                      
+                      {report.user_id === user.id && (
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleDeleteAlert(report.id, 'crime')}
+                            className="p-2 text-red-400 hover:bg-red-600 hover:text-white rounded transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -689,126 +941,125 @@ export default function Dashboard() {
                 </div>
               ))}
               
-              {filteredAlerts.length === 0 && (
+              {(activeTab === 'vehicles' && filteredAlerts.length === 0) || 
+               (activeTab === 'crimes' && filteredCrimeReports.length === 0) ? (
                 <div className="text-center py-8 text-gray-500">
                   {searchTerm 
-                    ? `No ${viewMode === 'all' ? 'community' : 'your'} reports found matching your search.` 
-                    : `No ${viewMode === 'all' ? 'community' : 'your'} reports filed yet.`
+                    ? `No ${activeTab === 'vehicles' ? 'vehicle' : 'crime'} reports found matching your search.` 
+                    : `No ${activeTab === 'vehicles' ? 'vehicle' : 'crime'} reports filed yet.`
                   }
                 </div>
-              )}
+              ) : null}
             </div>
           )}
         </div>
-      ) : (
-        <div className="card p-8 text-center">
-          <Shield className="w-16 h-16 text-accent-gold mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-primary-white mb-4">Authentication Required</h2>
-          <p className="text-gray-400 mb-6">
-            Please log in to view and manage community safety reports.
-          </p>
-          <div className="space-x-4">
-            <a href="/login" className="btn-primary">
-              Sign In
-            </a>
-            <a href="/register" className="btn-primary">
-              Create Account
-            </a>
-          </div>
-        </div>
-      )}
+      ) : null}
 
-      {/* Enhanced Reporting Guidelines with Graphics */}
+      {/* Reporting Guidelines */}
       {user && (
-        <div className="card p-6 border-l-4 border-accent-gold">
-          <h3 className="text-xl font-bold text-accent-gold mb-6 text-center">Effective Reporting Guide</h3>
+        <div className={`card p-6 border-l-4 ${
+          activeTab === 'vehicles' ? 'border-accent-gold' : 'border-red-600'
+        }`}>
+          <h3 className={`text-xl font-bold mb-6 text-center ${
+            activeTab === 'vehicles' ? 'text-accent-gold' : 'text-red-600'
+          }`}>
+            {activeTab === 'vehicles' ? 'Vehicle Reporting Guide' : 'Crime Reporting Guide'}
+          </h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Timely Reporting */}
-            <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                  <Clock className="w-6 h-6 text-black" />
-                </div>
-                <h4 className="font-semibold text-primary-white mb-2">Report Immediately</h4>
-                <p className="text-xs text-gray-300">
-                  Report incidents as soon as they occur with accurate time and date
-                </p>
-              </div>
-            </div>
-
-            {/* Vehicle Details */}
-            <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                  <Car className="w-6 h-6 text-black" />
-                </div>
-                <h4 className="font-semibold text-primary-white mb-2">Vehicle Details</h4>
-                <p className="text-xs text-gray-300">
-                  Include plate number, color, make, model, and any distinctive features
-                </p>
-              </div>
-            </div>
-
-            {/* Location Details */}
-            <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                  <MapPin className="w-6 h-6 text-black" />
-                </div>
-                <h4 className="font-semibold text-primary-white mb-2">Location & Direction</h4>
-                <p className="text-xs text-gray-300">
-                  Note exact location, suburb, and direction of travel if moving
-                </p>
-              </div>
-            </div>
-
-            {/* Evidence */}
-            <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                  <Camera className="w-6 h-6 text-black" />
-                </div>
-                <h4 className="font-semibold text-primary-white mb-2">Upload Evidence</h4>
-                <p className="text-xs text-gray-300">
-                  Attach CCTV footage, photos, or any visual evidence available
-                </p>
-              </div>
-            </div>
-
-            {/* SAPS Case */}
-            <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                  <FileCheck className="w-6 h-6 text-black" />
-                </div>
-                <h4 className="font-semibold text-primary-white mb-2">SAPS Case Number</h4>
-                <p className="text-xs text-gray-300">
-                  Always file official SAPS case for serious incidents and include case number
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Tips Footer */}
-          <div className="mt-6 pt-4 border-t border-gray-700">
-            <div className="flex flex-wrap justify-center gap-4 text-xs text-gray-400">
-              <span className="flex items-center space-x-1">
-                <AlertTriangle className="w-3 h-3 text-accent-red" />
-                <span>Be accurate and factual</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <Shield className="w-3 h-3 text-accent-gold" />
-                <span>Do not approach suspects</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <Users className="w-3 h-3 text-accent-gold" />
-                <span>Community safety first</span>
-              </span>
-            </div>
+          <div className="grid grid-cols-1 md:grid-rows-2 lg:grid-cols-5 gap-4">
+            {activeTab === 'vehicles' ? (
+              <>
+                <GuidelineCard 
+                  icon={<Clock className="w-6 h-6" />}
+                  title="Report Immediately"
+                  description="Report stolen vehicles as soon as they are discovered"
+                  color="gold"
+                />
+                <GuidelineCard 
+                  icon={<Car className="w-6 h-6" />}
+                  title="Vehicle Details"
+                  description="Include plate number, color, make, model, and distinctive features"
+                  color="gold"
+                />
+                <GuidelineCard 
+                  icon={<MapPin className="w-6 h-6" />}
+                  title="Location & Direction"
+                  description="Note last seen location and direction of travel"
+                  color="gold"
+                />
+                <GuidelineCard 
+                  icon={<Camera className="w-6 h-6" />}
+                  title="Upload Evidence"
+                  description="Attach CCTV footage or photos of the vehicle"
+                  color="gold"
+                />
+                <GuidelineCard 
+                  icon={<FileCheck className="w-6 h-6" />}
+                  title="SAPS Case Number"
+                  description="Always file official SAPS case for stolen vehicles"
+                  color="gold"
+                />
+              </>
+            ) : (
+              <>
+                <GuidelineCard 
+                  icon={<Clock className="w-6 h-6" />}
+                  title="Report Immediately"
+                  description="Report crimes as soon as they occur or are discovered"
+                  color="red"
+                />
+                <GuidelineCard 
+                  icon={<Shield className="w-6 h-6" />}
+                  title="Crime Details"
+                  description="Provide specific crime type, location, and description"
+                  color="red"
+                />
+                <GuidelineCard 
+                  icon={<User className="w-6 h-6" />}
+                  title="Suspect Information"
+                  description="Note suspect descriptions, clothing, and behavior"
+                  color="red"
+                />
+                <GuidelineCard 
+                  icon={<AlertCircle className="w-6 h-6" />}
+                  title="Safety First"
+                  description="Do not approach suspects. Your safety comes first"
+                  color="red"
+                />
+                <GuidelineCard 
+                  icon={<FileCheck className="w-6 h-6" />}
+                  title="Emergency Contact"
+                  description="For emergencies, always call 10111 immediately"
+                  color="red"
+                />
+              </>
+            )}
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Helper component for guideline cards
+function GuidelineCard({ icon, title, description, color }: { 
+  icon: React.ReactNode; 
+  title: string; 
+  description: string;
+  color: 'gold' | 'red';
+}) {
+  const bgColor = color === 'gold' ? 'bg-accent-gold' : 'bg-red-600'
+  const textColor = color === 'gold' ? 'text-black' : 'text-white'
+  
+  return (
+    <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
+      <div className="flex flex-col items-center text-center">
+        <div className={`w-12 h-12 ${bgColor} rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform ${textColor}`}>
+          {icon}
+        </div>
+        <h4 className="font-semibold text-primary-white mb-2">{title}</h4>
+        <p className="text-xs text-gray-300">{description}</p>
+      </div>
     </div>
   )
 }
