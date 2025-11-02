@@ -112,12 +112,7 @@ export default function Header() {
           />
           <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold flashing-text">
-                iReport
-              </h1>
-              <p className="text-sm text-gray-300">Smart Reporting System</p>
-            </div>
+            
           </div>
 
           {/* Authentication Status */}
