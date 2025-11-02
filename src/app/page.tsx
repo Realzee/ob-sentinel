@@ -161,6 +161,34 @@ export default function Dashboard() {
     }
   }, [])
 
+  // Add this useEffect to handle page refresh
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        // Page was restored from back/forward cache, refresh data
+        console.log('Page restored from cache, refreshing alerts')
+        fetchAlerts()
+      }
+    }
+
+    // Listen for page visibility changes
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user) {
+        // Page became visible, refresh data
+        console.log('Page became visible, refreshing alerts')
+        fetchAlerts()
+      }
+    }
+
+    window.addEventListener('pageshow', handlePageShow)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [user])
+
   // Manual refresh function
   const refreshAlerts = async () => {
     console.log('Manual refresh triggered')

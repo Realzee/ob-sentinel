@@ -39,6 +39,27 @@ const generateOBNumber = (): string => {
   return `OB${year}${month}${day}-${hours}${minutes}${seconds}-${randomChars}`;
 }
 
+// Sorted South African suburbs
+const saSuburbs = [
+  'Bedfordview',
+  'Bryanston', 
+  'Centurion',
+  'Edenvale',
+  'Fourways',
+  'Greenside',
+  'Hyde Park',
+  'Illovo',
+  'Johannesburg CBD',
+  'Melville',
+  'Midrand',
+  'Parkhurst',
+  'Pretoria',
+  'Randburg',
+  'Rosebank',
+  'Sandton',
+  'Other'
+].sort();
+
 export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => void }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -421,22 +442,9 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
               list="suburb-suggestions"
             />
             <datalist id="suburb-suggestions">
-              <option value="Sandton" />
-              <option value="Randburg" />
-              <option value="Fourways" />
-              <option value="Midrand" />
-              <option value="Pretoria" />
-              <option value="Centurion" />
-              <option value="Johannesburg CBD" />
-              <option value="Rosebank" />
-              <option value="Parkhurst" />
-              <option value="Greenside" />
-              <option value="Edenvale" />
-              <option value="Bedfordview" />
-              <option value="Bryanston" />
-              <option value="Hyde Park" />
-              <option value="Illovo" />
-              <option value="Melville" />
+              {saSuburbs.map(suburb => (
+                <option key={suburb} value={suburb} />
+              ))}
             </datalist>
             {errors.suburb && (
               <p className="text-accent-red text-sm mt-1">{errors.suburb.message}</p>
