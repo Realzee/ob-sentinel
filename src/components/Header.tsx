@@ -82,7 +82,7 @@ export default function Header() {
               {/* Simple logo container without background */}
               <div className="flex items-center justify-center">
                 <img 
-                  src="/rapid-ireport-logo.png" 
+                  src="/rapid-ireport-logo.jpg" 
                   alt="RAPID iREPORT Logo"
                   className="w-32 h-auto object-contain"
                 />
