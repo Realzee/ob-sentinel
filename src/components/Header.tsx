@@ -82,7 +82,7 @@ export default function Header() {
               {/* Simple logo container without background */}
               <div className="flex items-center justify-center">
                 <img 
-                  src="/rapid-ireport-logo.jpg" 
+                  src="/rapid-ireport-logo.png" 
                   alt="RAPID iREPORT Logo"
                   className="w-40 h-auto object-contain"
                 />
@@ -109,7 +109,7 @@ export default function Header() {
           <div className="flex items-center space-x-4">
             <div className="flex items-center justify-center">
               <img 
-                src="/rapid-ireport-logo.jpg" 
+                src="/rapid-ireport-logo.png" 
                 alt="RAPID iREPORT Logo"
                 className="w-40 h-auto object-contain"
                 onError={(e) => {
