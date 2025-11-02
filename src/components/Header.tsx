@@ -82,16 +82,13 @@ export default function Header() {
               {/* Simple logo container without background */}
               <div className="flex items-center justify-center">
                 <img 
-                  src="/rapid-ireport-logo.png" 
-                  alt="RAPID iREPORT Logo"
-                  className="w-40 h-auto object-contain"
-                />
+            src="/rapid911-ireport-logo1.png"
+            alt="Rapid911 Logo" 
+            className="w-30 h-auto"
+          />
               </div>
               <div>
-                <h1 className="text-2xl font-bold flashing-text">
-                  iReport
-                </h1>
-                <p className="text-sm text-gray-300">Smart Reporting System</p>
+                <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
               </div>
             </div>
             <div className="text-sm text-gray-400">Loading...</div>
