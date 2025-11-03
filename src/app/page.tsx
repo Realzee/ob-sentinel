@@ -750,7 +750,7 @@ export default function Dashboard() {
             {userLocation && (
               <button
                 onClick={() => getDirections(mapModal.item.latitude, mapModal.item.longitude)}
-                className="bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
+                className="btn-primary flex items-center justify-center space-x-2 py-3 px-4 text-sm sm:text-base"
               >
                 <Navigation className="w-4 h-4" />
                 <span>Get Directions</span>
