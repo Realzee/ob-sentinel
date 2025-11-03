@@ -710,77 +710,128 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Map Modal */}
-      {mapModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-full overflow-auto relative">
-            <div className="p-4 flex justify-between items-center border-b bg-white sticky top-0 z-10">
-              <h3 className="text-lg font-semibold">
-                Location: {mapModal.type === 'vehicle' ? mapModal.item.number_plate : mapModal.item.crime_type}
-              </h3>
-              <button
-                onClick={() => setMapModal(null)}
-                className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-200"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="p-4">
-              <div className="flex flex-col sm:flex-row gap-4 mb-4">
-                <button
-                  onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
-                  className="btn-primary flex items-center justify-center space-x-2"
-                >
-                  <Map className="w-4 h-4" />
-                  <span>Open in OpenStreetMap</span>
-                </button>
-                {userLocation && (
-                  <button
-                    onClick={() => getDirections(mapModal.item.latitude, mapModal.item.longitude)}
-                    className="btn-primary flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700"
-                  >
-                    <Navigation className="w-4 h-4" />
-                    <span>Get Directions</span>
-                  </button>
-                )}
-              </div>
-              
-              <div className="bg-gray-100 rounded-lg p-4 mb-4">
-                <h4 className="font-semibold mb-2">Location Details:</h4>
-                <p><strong>Coordinates:</strong> {mapModal.item.latitude?.toFixed(6)}, {mapModal.item.longitude?.toFixed(6)}</p>
-                <p><strong>Suburb:</strong> {mapModal.item.suburb}</p>
-                {mapModal.type === 'crime' && (
-                  <p><strong>Specific Location:</strong> {mapModal.item.location}</p>
-                )}
-              </div>
+      {/* Map Modal - Dark Theme & Mobile Optimized */}
+{mapModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-2 sm:p-4">
+    <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-full overflow-hidden flex flex-col">
+      {/* Header */}
+      <div className="p-4 sm:p-6 border-b border-gray-700 flex justify-between items-center bg-dark-gray sticky top-0 z-10">
+        <div>
+          <h3 className="text-lg sm:text-xl font-bold text-primary-white">
+            {mapModal.type === 'vehicle' ? 'Vehicle Location' : 'Crime Scene Location'}
+          </h3>
+          <p className="text-sm text-gray-400 mt-1">
+            {mapModal.type === 'vehicle' 
+              ? `${mapModal.item.number_plate} - ${mapModal.item.make} ${mapModal.item.model}`
+              : `${mapModal.item.crime_type} - ${mapModal.item.suburb}`
+            }
+          </p>
+        </div>
+        <button
+          onClick={() => setMapModal(null)}
+          className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+        >
+          <X className="w-5 h-5 sm:w-6 sm:h-6" />
+        </button>
+      </div>
 
-              {/* Embedded OpenStreetMap */}
-              <div className="w-full h-96 rounded-lg overflow-hidden border-2 border-gray-300">
-                <iframe
-                  width="100%"
-                  height="100%"
-                  frameBorder="0"
-                  scrolling="no"
-                  marginHeight={0}
-                  marginWidth={0}
-                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapModal.item.longitude - 0.01},${mapModal.item.latitude - 0.01},${mapModal.item.longitude + 0.01},${mapModal.item.latitude + 0.01}&layer=mapnik&marker=${mapModal.item.latitude},${mapModal.item.longitude}`}
-                />
-              </div>
-              
-              <div className="text-center mt-2 text-sm text-gray-600">
-                <a
-                  href={`https://www.openstreetmap.org/?mlat=${mapModal.item.latitude}&mlon=${mapModal.item.longitude}#map=16/${mapModal.item.latitude}/${mapModal.item.longitude}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800"
-                >
-                  View Larger Map
-                </a>
-              </div>
+      {/* Content */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-4 sm:p-6 space-y-4">
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
+              className="btn-primary flex items-center justify-center space-x-2 py-3 px-4 text-sm sm:text-base"
+            >
+              <Map className="w-4 h-4" />
+              <span>Open in OpenStreetMap</span>
+            </button>
+            {userLocation && (
+              <button
+                onClick={() => getDirections(mapModal.item.latitude, mapModal.item.longitude)}
+                className="bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
+              >
+                <Navigation className="w-4 h-4" />
+                <span>Get Directions</span>
+              </button>
+            )}
+          </div>
+          
+          {/* Location Details */}
+          <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
+            <h4 className="font-semibold text-primary-white mb-3 text-sm sm:text-base">Location Details</h4>
+            <div className="space-y-2 text-sm">
+              <p className="text-gray-300">
+                <strong className="text-accent-gold">Coordinates:</strong> {mapModal.item.latitude?.toFixed(6)}, {mapModal.item.longitude?.toFixed(6)}
+              </p>
+              <p className="text-gray-300">
+                <strong className="text-accent-gold">Suburb:</strong> {mapModal.item.suburb}
+              </p>
+              {mapModal.type === 'crime' && (
+                <p className="text-gray-300">
+                  <strong className="text-accent-gold">Specific Location:</strong> {mapModal.item.location}
+                </p>
+              )}
             </div>
           </div>
+
+          {/* Embedded OpenStreetMap */}
+          <div className="w-full h-64 sm:h-80 md:h-96 rounded-lg overflow-hidden border-2 border-gray-600 bg-gray-900">
+            <iframe
+              width="100%"
+              height="100%"
+              frameBorder="0"
+              scrolling="no"
+              marginHeight={0}
+              marginWidth={0}
+              src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapModal.item.longitude - 0.01},${mapModal.item.latitude - 0.01},${mapModal.item.longitude + 0.01},${mapModal.item.latitude + 0.01}&layer=mapnik&marker=${mapModal.item.latitude},${mapModal.item.longitude}`}
+              className="bg-gray-900"
+              title="Location Map"
+            />
+          </div>
+          
+          {/* External Link */}
+          <div className="text-center pt-2">
+            <a
+              href={`https://www.openstreetmap.org/?mlat=${mapModal.item.latitude}&mlon=${mapModal.item.longitude}#map=16/${mapModal.item.latitude}/${mapModal.item.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent-blue hover:text-accent-blue/80 text-sm transition-colors inline-flex items-center space-x-1"
+            >
+              <span>View Larger Map on OpenStreetMap</span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Footer - Quick Actions for Mobile */}
+      <div className="p-4 border-t border-gray-700 bg-dark-gray sm:hidden">
+        <div className="flex space-x-3">
+          <button
+            onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
+            className="flex-1 bg-accent-gold text-black py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center space-x-1"
+          >
+            <Map className="w-4 h-4" />
+            <span>Open Map</span>
+          </button>
+          {userLocation && (
+            <button
+              onClick={() => getDirections(mapModal.item.latitude, mapModal.item.longitude)}
+              className="flex-1 bg-green-600 text-white py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center space-x-1"
+            >
+              <Navigation className="w-4 h-4" />
+              <span>Directions</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Search and Reports */}
       {user ? (
