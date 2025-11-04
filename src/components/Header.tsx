@@ -104,7 +104,7 @@ export default function Header() {
         <div className="flex items-center justify-between">
           {/* Logo and Brand - Logo without container */}
           <div className="flex items-center space-x-4">
-            <div className="flex flex-col items-center justify-center">
+            <div className="flex flex-col items-left justify-center">
                 <img 
                   src="/rapid911-ireport-logo1.png"
                   alt="Rapid911 Logo" 
