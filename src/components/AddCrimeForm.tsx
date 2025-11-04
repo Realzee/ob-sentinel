@@ -18,8 +18,8 @@ interface CrimeFormData {
   case_number: string
   station_reported_at: string
   comments: string
-  latitude?: number
-  longitude?: number
+  latitude?: number | null
+  longitude?: number | null
 }
 
 interface ImageFile {
@@ -240,6 +240,17 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
         return
       }
 
+      // ✅ FIX: Convert empty strings to null for numeric fields
+      const formData = {
+        ...data,
+        latitude: data.latitude && !isNaN(Number(data.latitude)) ? Number(data.latitude) : null,
+        longitude: data.longitude && !isNaN(Number(data.longitude)) ? Number(data.longitude) : null,
+        case_number: data.case_number || null,
+        station_reported_at: data.station_reported_at || null,
+        suspects_description: data.suspects_description || null,
+        comments: data.comments || null
+      }
+
       // Combine date and time
       const dateTimeOccurred = data.date_occurred && data.time_occurred 
         ? `${data.date_occurred}T${data.time_occurred}`
@@ -251,22 +262,22 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
         .insert([
           {
             user_id: user.id,
-            crime_type: data.crime_type,
-            description: data.description,
-            location: data.location,
-            suburb: data.suburb,
+            crime_type: formData.crime_type,
+            description: formData.description,
+            location: formData.location,
+            suburb: formData.suburb,
             date_occurred: dateTimeOccurred,
-            time_occurred: data.time_occurred,
-            suspects_description: data.suspects_description,
-            weapons_involved: data.weapons_involved,
-            injuries: data.injuries,
-            case_number: data.case_number,
-            station_reported_at: data.station_reported_at,
+            time_occurred: formData.time_occurred,
+            suspects_description: formData.suspects_description,
+            weapons_involved: formData.weapons_involved,
+            injuries: formData.injuries,
+            case_number: formData.case_number,
+            station_reported_at: formData.station_reported_at,
             ob_number: obNumber,
-            comments: data.comments,
+            comments: formData.comments,
             has_images: imageFiles.length > 0,
-            latitude: data.latitude,
-            longitude: data.longitude
+            latitude: formData.latitude,
+            longitude: formData.longitude
           }
         ])
         .select()
@@ -458,7 +469,7 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
                 type="button"
                 onClick={getCurrentLocation}
                 disabled={gettingLocation}
-                className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
+                className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
               >
                 {gettingLocation ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -471,7 +482,7 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
               <button
                 type="button"
                 onClick={handleManualCoordinates}
-                className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
+                className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
               >
                 <Compass className="w-4 h-4" />
                 <span>Enter Coordinates</span>
@@ -497,7 +508,7 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
                     <button
                       type="button"
                       onClick={() => window.open(`https://www.openstreetmap.org/?mlat=${location.latitude}&mlon=${location.longitude}#map=16/${location.latitude}/${location.longitude}`, '_blank')}
-                      className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
+                      className="text-sm text-blue-400 hover:text-blue-300 underline"
                     >
                       View on OpenStreetMap
                     </button>
@@ -505,10 +516,10 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
                       type="button"
                       onClick={() => {
                         setLocation({})
-                        setValue('latitude', undefined)
-                        setValue('longitude', undefined)
+                        setValue('latitude', null)
+                        setValue('longitude', null)
                       }}
-                      className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
+                      className="text-sm text-red-400 hover:text-red-300 underline"
                     >
                       Remove Location
                     </button>

@@ -15,8 +15,8 @@ interface AlertForm {
   station_reported_at: string
   suburb: string
   comments: string
-  latitude?: number
-  longitude?: number
+  latitude?: number | null
+  longitude?: number | null
 }
 
 interface ImageFile {
@@ -258,25 +258,36 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         return
       }
 
+      // ✅ FIX: Convert empty strings to null for numeric fields
+      const formData = {
+        ...data,
+        latitude: data.latitude && !isNaN(Number(data.latitude)) ? Number(data.latitude) : null,
+        longitude: data.longitude && !isNaN(Number(data.longitude)) ? Number(data.longitude) : null,
+        number_plate: data.number_plate.toUpperCase().replace(/\s/g, ''),
+        case_number: data.case_number || null,
+        station_reported_at: data.station_reported_at || null,
+        comments: data.comments || null
+      }
+
       // Insert new alert with OB number and location
       const { data: alertData, error: insertError } = await supabase
         .from('alerts_vehicles')
         .insert([
           {
             user_id: user.id,
-            number_plate: data.number_plate.toUpperCase().replace(/\s/g, ''),
-            color: data.color,
-            make: data.make,
-            model: data.model,
-            reason: data.reason,
-            case_number: data.case_number,
-            station_reported_at: data.station_reported_at,
+            number_plate: formData.number_plate,
+            color: formData.color,
+            make: formData.make,
+            model: formData.model,
+            reason: formData.reason,
+            case_number: formData.case_number,
+            station_reported_at: formData.station_reported_at,
             ob_number: obNumber, // Include the generated OB number
-            suburb: data.suburb,
-            comments: data.comments,
+            suburb: formData.suburb,
+            comments: formData.comments,
             has_images: imageFiles.length > 0,
-            latitude: data.latitude,
-            longitude: data.longitude
+            latitude: formData.latitude,
+            longitude: formData.longitude
           }
         ])
         .select()
@@ -519,7 +530,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
               <button
                 type="button"
                 onClick={handleManualCoordinates}
-                className="btn-primary text-sm py-1 px-3 flex items-center space-x-1"
+                className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
               >
                 <Compass className="w-4 h-4" />
                 <span>Enter Coordinates</span>
@@ -553,8 +564,8 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
                       type="button"
                       onClick={() => {
                         setLocation({})
-                        setValue('latitude', undefined)
-                        setValue('longitude', undefined)
+                        setValue('latitude', null)
+                        setValue('longitude', null)
                       }}
                       className="text-sm text-red-400 hover:text-red-300 underline"
                     >

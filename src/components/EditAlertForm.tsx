@@ -15,8 +15,8 @@ interface AlertForm {
   station_reported_at: string
   suburb: string
   comments: string
-  latitude?: number
-  longitude?: number
+  latitude?: number | null
+  longitude?: number | null
 }
 
 interface ImageFile {
@@ -251,6 +251,17 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
         return
       }
 
+      // ✅ FIX: Convert empty strings to null for numeric fields
+      const formData = {
+        ...data,
+        latitude: data.latitude && !isNaN(Number(data.latitude)) ? Number(data.latitude) : null,
+        longitude: data.longitude && !isNaN(Number(data.longitude)) ? Number(data.longitude) : null,
+        number_plate: data.number_plate.toUpperCase().replace(/\s/g, ''),
+        case_number: data.case_number || null,
+        station_reported_at: data.station_reported_at || null,
+        comments: data.comments || null
+      }
+
       // Upload new images
       const newImageUrls = await uploadImages(alert.id)
       
@@ -264,19 +275,19 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
       const { error: updateError } = await supabase
         .from('alerts_vehicles')
         .update({
-          number_plate: data.number_plate.toUpperCase().replace(/\s/g, ''),
-          color: data.color,
-          make: data.make,
-          model: data.model,
-          reason: data.reason,
-          case_number: data.case_number,
-          station_reported_at: data.station_reported_at,
-          suburb: data.suburb,
-          comments: data.comments,
+          number_plate: formData.number_plate,
+          color: formData.color,
+          make: formData.make,
+          model: formData.model,
+          reason: formData.reason,
+          case_number: formData.case_number,
+          station_reported_at: formData.station_reported_at,
+          suburb: formData.suburb,
+          comments: formData.comments,
           has_images: finalImageUrls.length > 0,
           image_urls: finalImageUrls,
-          latitude: data.latitude,
-          longitude: data.longitude,
+          latitude: formData.latitude,
+          longitude: formData.longitude,
           updated_at: new Date().toISOString()
         })
         .eq('id', alert.id)
@@ -493,8 +504,8 @@ export default function EditAlertForm({ alert, onAlertUpdated, onCancel }: EditA
                   type="button"
                   onClick={() => {
                     setLocation({})
-                    setValue('latitude', undefined)
-                    setValue('longitude', undefined)
+                    setValue('latitude', null)
+                    setValue('longitude', null)
                   }}
                   className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
                 >
