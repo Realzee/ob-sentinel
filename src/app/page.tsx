@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map } from 'lucide-react'
+import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map, Calendar, Eye } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import AddCrimeForm from '@/components/AddCrimeForm'
 import EditAlertForm from '@/components/EditAlertForm'
@@ -23,6 +23,7 @@ interface AlertVehicle {
   latitude?: number
   longitude?: number
   created_at: string
+  incident_date?: string
   user_id: string
   comments?: string
   users: {
@@ -67,11 +68,12 @@ export default function Dashboard() {
   const [reportType, setReportType] = useState<'vehicle' | 'crime'>('vehicle')
   const [editingAlert, setEditingAlert] = useState<AlertVehicle | null>(null)
   const [user, setUser] = useState<any>(null)
-  const [imagePreview, setImagePreview] = useState<{url: string, index: number, total: number} | null>(null)
+  const [imagePreview, setImagePreview] = useState<{ url: string, index: number, total: number } | null>(null)
   const [viewMode, setViewMode] = useState<'all' | 'my'>('all')
   const [activeTab, setActiveTab] = useState<'vehicles' | 'crimes'>('vehicles')
-  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null)
-  const [mapModal, setMapModal] = useState<{show: boolean, item: any, type: 'vehicle' | 'crime'} | null>(null)
+  const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null)
+  const [mapModal, setMapModal] = useState<{ show: boolean, item: any, type: 'vehicle' | 'crime' } | null>(null)
+  const [viewReportModal, setViewReportModal] = useState<{ show: boolean, item: any, type: 'vehicle' | 'crime' } | null>(null)
 
   // Get user's current location
   useEffect(() => {
@@ -94,7 +96,7 @@ export default function Dashboard() {
   // Fetch user data for reports
   const fetchUserData = async (userIds: string[]) => {
     if (userIds.length === 0) return new globalThis.Map()
-    
+
     const { data: usersData, error } = await supabase
       .from('users')
       .select('id, name, email')
@@ -112,7 +114,7 @@ export default function Dashboard() {
         email: user.email
       })
     })
-    
+
     return usersMap
   }
 
@@ -152,13 +154,13 @@ export default function Dashboard() {
         // Fetch user data separately
         const userIds = getUniqueUserIds(alertsData || [])
         const usersMap = await fetchUserData(userIds)
-        
+
         // Combine data
         const alertsWithUsers = (alertsData || []).map(alert => ({
           ...alert,
           users: usersMap.get(alert.user_id) || { name: 'Unknown User', email: '' }
         }))
-        
+
         setAlerts(alertsWithUsers)
       }
 
@@ -181,13 +183,13 @@ export default function Dashboard() {
         // Fetch user data separately
         const userIds = getUniqueUserIds(crimesData || [])
         const usersMap = await fetchUserData(userIds)
-        
+
         // Combine data
         const crimesWithUsers = (crimesData || []).map(report => ({
           ...report,
           users: usersMap.get(report.user_id) || { name: 'Unknown User', email: '' }
         }))
-        
+
         setCrimeReports(crimesWithUsers)
       }
 
@@ -258,10 +260,10 @@ export default function Dashboard() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
         console.log('Initial user:', user)
-        
+
         if (mounted) {
           setUser(user)
-          
+
           if (user) {
             ensureUserExists(user.id, {
               email: user.email!,
@@ -286,12 +288,12 @@ export default function Dashboard() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event, session?.user)
-        
+
         if (!mounted) return
-        
+
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           setUser(session?.user ?? null)
-          
+
           if (session?.user) {
             ensureUserExists(session.user.id, {
               email: session.user.email!,
@@ -370,13 +372,13 @@ export default function Dashboard() {
       }
 
       console.log('Report deleted successfully')
-      
+
       if (type === 'vehicle') {
         setAlerts(prev => prev.filter(alert => alert.id !== alertId))
       } else {
         setCrimeReports(prev => prev.filter(report => report.id !== alertId))
       }
-      
+
       await supabase
         .from('user_logs')
         .insert([
@@ -409,13 +411,13 @@ export default function Dashboard() {
 
   const navigateImage = (direction: 'prev' | 'next') => {
     if (!imagePreview) return
-    
+
     let newIndex = direction === 'next' ? imagePreview.index + 1 : imagePreview.index - 1
-    
+
     // Wrap around
     if (newIndex >= imagePreview.total) newIndex = 0
     if (newIndex < 0) newIndex = imagePreview.total - 1
-    
+
     setImagePreview({
       ...imagePreview,
       index: newIndex
@@ -439,6 +441,10 @@ export default function Dashboard() {
     setMapModal({ show: true, item, type })
   }
 
+  const showViewReportModal = (item: any, type: 'vehicle' | 'crime') => {
+    setViewReportModal({ show: true, item, type })
+  }
+
   // Helper function to get user display name
   const getUserDisplayName = (item: any) => {
     if (item.users?.name && item.users.name !== 'Unknown User') {
@@ -450,8 +456,25 @@ export default function Dashboard() {
     return 'Community Member';
   }
 
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-ZA', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  }
+
+  // Format time for display
+  const formatTime = (dateString: string) => {
+    return new Date(dateString).toLocaleTimeString('en-ZA', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
   // Filter data based on search term and active tab
-  const filteredAlerts = alerts.filter(alert => 
+  const filteredAlerts = alerts.filter(alert =>
     alert.number_plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.suburb.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -498,26 +521,26 @@ export default function Dashboard() {
   }
 
   // Fixed ternary operator - properly formatted
-  const currentStats = activeTab === 'vehicles' 
+  const currentStats = activeTab === 'vehicles'
     ? {
-        total: stats.totalVehicleAlerts,
-        recent: stats.recentVehicleAlerts,
-        my: stats.myAlerts
-      }
+      total: stats.totalVehicleAlerts,
+      recent: stats.recentVehicleAlerts,
+      my: stats.myAlerts
+    }
     : {
-        total: stats.totalCrimeReports,
-        recent: stats.recentCrimeReports,
-        my: stats.myCrimeReports
-      }
+      total: stats.totalCrimeReports,
+      recent: stats.recentCrimeReports,
+      my: stats.myCrimeReports
+    }
 
   return (
     <div className="space-y-8">
       {/* Welcome Section */}
       <div className="text-center">
         <div className="flex justify-center mb-6">
-          <img 
+          <img
             src="/rapid911-ireport-logo2.png"
-            alt="Rapid Rangers Logo" 
+            alt="Rapid Rangers Logo"
             className="w-30 h-auto"
           />
         </div>
@@ -528,22 +551,20 @@ export default function Dashboard() {
       <div className="flex space-x-4 mb-6">
         <button
           onClick={() => setActiveTab('vehicles')}
-          className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
-            activeTab === 'vehicles' 
-              ? 'bg-accent-gold text-black' 
+          className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${activeTab === 'vehicles'
+              ? 'bg-accent-gold text-black'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-          }`}
+            }`}
         >
           <Car className="w-5 h-5 inline mr-2" />
           Stolen Vehicles
         </button>
         <button
           onClick={() => setActiveTab('crimes')}
-          className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
-            activeTab === 'crimes' 
-              ? 'bg-red-600 text-white' 
+          className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${activeTab === 'crimes'
+              ? 'bg-red-600 text-white'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-          }`}
+            }`}
         >
           <Shield className="w-5 h-5 inline mr-2" />
           Crime Reports
@@ -552,15 +573,13 @@ export default function Dashboard() {
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className={`card p-6 border-l-4 ${
-          activeTab === 'vehicles' ? 'border-accent-gold' : 'border-red-600'
-        }`}>
+        <div className={`card p-6 border-l-4 ${activeTab === 'vehicles' ? 'border-accent-gold' : 'border-red-600'
+          }`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-400">Total {activeTab === 'vehicles' ? 'Vehicle' : 'Crime'} Reports</p>
-              <p className={`text-3xl font-bold ${
-                activeTab === 'vehicles' ? 'text-accent-gold' : 'text-red-600'
-              }`}>
+              <p className={`text-3xl font-bold ${activeTab === 'vehicles' ? 'text-accent-gold' : 'text-red-600'
+                }`}>
                 {currentStats.total}
               </p>
             </div>
@@ -605,11 +624,10 @@ export default function Dashboard() {
           <div className="flex justify-center space-x-4">
             <button
               onClick={() => setShowAddForm(!showAddForm)}
-              className={`inline-flex items-center space-x-2 py-2 px-4 rounded-lg font-medium transition-colors ${
-                activeTab === 'vehicles' 
-                  ? 'bg-accent-gold text-black hover:bg-yellow-500' 
+              className={`inline-flex items-center space-x-2 py-2 px-4 rounded-lg font-medium transition-colors ${activeTab === 'vehicles'
+                  ? 'bg-accent-gold text-black hover:bg-yellow-500'
                   : 'bg-red-600 text-white hover:bg-red-700'
-              }`}
+                }`}
             >
               <Plus className="w-5 h-5" />
               <span>{showAddForm ? 'Cancel' : `File New ${activeTab === 'vehicles' ? 'Vehicle' : 'Crime'} Report`}</span>
@@ -621,22 +639,22 @@ export default function Dashboard() {
               <span>Refresh</span>
             </button>
           </div>
-          
+
           {showAddForm && activeTab === 'vehicles' && (
-            <AddAlertForm 
+            <AddAlertForm
               onAlertAdded={() => {
                 setShowAddForm(false)
                 refreshAlerts()
-              }} 
+              }}
             />
           )}
 
           {showAddForm && activeTab === 'crimes' && (
-            <AddCrimeForm 
+            <AddCrimeForm
               onCrimeReportAdded={() => {
                 setShowAddForm(false)
                 refreshAlerts()
-              }} 
+              }}
             />
           )}
 
@@ -658,7 +676,7 @@ export default function Dashboard() {
 
       {/* Edit Report Form */}
       {editingAlert && (
-        <EditAlertForm 
+        <EditAlertForm
           alert={editingAlert}
           onAlertUpdated={() => {
             setEditingAlert(null)
@@ -684,9 +702,9 @@ export default function Dashboard() {
               </button>
             </div>
             <div className="p-4 flex items-center justify-center min-h-[400px]">
-              <img 
-                src={imagePreview.url} 
-                alt="Report evidence" 
+              <img
+                src={imagePreview.url}
+                alt="Report evidence"
                 className="max-w-full max-h-[70vh] object-contain rounded"
               />
             </div>
@@ -711,127 +729,334 @@ export default function Dashboard() {
       )}
 
       {/* Map Modal - Dark Theme & Mobile Optimized */}
-{mapModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-2 sm:p-4">
-    <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-full overflow-hidden flex flex-col">
-      {/* Header */}
-      <div className="p-4 sm:p-6 border-b border-gray-700 flex justify-between items-center bg-dark-gray sticky top-0 z-10">
-        <div>
-          <h3 className="text-lg sm:text-xl font-bold text-primary-white">
-            {mapModal.type === 'vehicle' ? 'Vehicle Location' : 'Crime Scene Location'}
-          </h3>
-          <p className="text-sm text-gray-400 mt-1">
-            {mapModal.type === 'vehicle' 
-              ? `${mapModal.item.number_plate} - ${mapModal.item.make} ${mapModal.item.model}`
-              : `${mapModal.item.crime_type} - ${mapModal.item.suburb}`
-            }
-          </p>
-        </div>
-        <button
-          onClick={() => setMapModal(null)}
-          className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
-        >
-          <X className="w-5 h-5 sm:w-6 sm:h-6" />
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
-        <div className="p-4 sm:p-6 space-y-4">
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
-              className="btn-primary flex items-center justify-center space-x-2 py-3 px-4 text-sm sm:text-base"
-            >
-              <Map className="w-4 h-4" />
-              <span>Open in OpenStreetMap</span>
-            </button>
-            {userLocation && (
-              <button
-                onClick={() => getDirections(mapModal.item.latitude, mapModal.item.longitude)}
-                className="btn-primary flex items-center justify-center space-x-2 py-3 px-4 text-sm sm:text-base"
-              >
-                <Navigation className="w-4 h-4" />
-                <span>Get Directions</span>
-              </button>
-            )}
-          </div>
-          
-          {/* Location Details */}
-          <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
-            <h4 className="font-semibold text-primary-white mb-3 text-sm sm:text-base">Location Details</h4>
-            <div className="space-y-2 text-sm">
-              <p className="text-gray-300">
-                <strong className="text-accent-gold">Coordinates:</strong> {mapModal.item.latitude?.toFixed(6)}, {mapModal.item.longitude?.toFixed(6)}
-              </p>
-              <p className="text-gray-300">
-                <strong className="text-accent-gold">Suburb:</strong> {mapModal.item.suburb}
-              </p>
-              {mapModal.type === 'crime' && (
-                <p className="text-gray-300">
-                  <strong className="text-accent-gold">Specific Location:</strong> {mapModal.item.location}
+      {mapModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-full overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-4 sm:p-6 border-b border-gray-700 flex justify-between items-center bg-dark-gray sticky top-0 z-10">
+              <div>
+                <h3 className="text-lg sm:text-xl font-bold text-primary-white">
+                  {mapModal.type === 'vehicle' ? 'Vehicle Location' : 'Crime Scene Location'}
+                </h3>
+                <p className="text-sm text-gray-400 mt-1">
+                  {mapModal.type === 'vehicle'
+                    ? `${mapModal.item.number_plate} - ${mapModal.item.make} ${mapModal.item.model}`
+                    : `${mapModal.item.crime_type} - ${mapModal.item.suburb}`
+                  }
                 </p>
-              )}
+              </div>
+              <button
+                onClick={() => setMapModal(null)}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-auto">
+              <div className="p-4 sm:p-6 space-y-4">
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
+                    className="btn-primary flex items-center justify-center space-x-2 py-3 px-4 text-sm sm:text-base"
+                  >
+                    <Map className="w-4 h-4" />
+                    <span>Open in OpenStreetMap</span>
+                  </button>
+                  {userLocation && (
+                    <button
+                      onClick={() => getDirections(mapModal.item.latitude, mapModal.item.longitude)}
+                      className="btn-primary flex items-center justify-center space-x-2 py-3 px-4 text-sm sm:text-base"
+                    >
+                      <Navigation className="w-4 h-4" />
+                      <span>Get Directions</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Location Details */}
+                <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
+                  <h4 className="font-semibold text-primary-white mb-3 text-sm sm:text-base">Location Details</h4>
+                  <div className="space-y-2 text-sm">
+                    <p className="text-gray-300">
+                      <strong className="text-accent-gold">Coordinates:</strong> {mapModal.item.latitude?.toFixed(6)}, {mapModal.item.longitude?.toFixed(6)}
+                    </p>
+                    <p className="text-gray-300">
+                      <strong className="text-accent-gold">Suburb:</strong> {mapModal.item.suburb}
+                    </p>
+                    {mapModal.type === 'crime' && (
+                      <p className="text-gray-300">
+                        <strong className="text-accent-gold">Specific Location:</strong> {mapModal.item.location}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Embedded OpenStreetMap */}
+                <div className="w-full h-64 sm:h-80 md:h-96 rounded-lg overflow-hidden border-2 border-gray-600 bg-gray-900">
+                  <iframe
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    scrolling="no"
+                    marginHeight={0}
+                    marginWidth={0}
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapModal.item.longitude - 0.01},${mapModal.item.latitude - 0.01},${mapModal.item.longitude + 0.01},${mapModal.item.latitude + 0.01}&layer=mapnik&marker=${mapModal.item.latitude},${mapModal.item.longitude}`}
+                    className="bg-gray-900"
+                    title="Location Map"
+                  />
+                </div>
+
+                {/* External Link */}
+                <div className="text-center pt-2">
+                  <a
+                    href={`https://www.openstreetmap.org/?mlat=${mapModal.item.latitude}&mlon=${mapModal.item.longitude}#map=16/${mapModal.item.latitude}/${mapModal.item.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent-blue hover:text-accent-blue/80 text-sm transition-colors inline-flex items-center space-x-1"
+                  >
+                    <span>View Larger Map on OpenStreetMap</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer - Quick Actions for Mobile */}
+            <div className="p-4 border-t border-gray-700 bg-dark-gray sm:hidden">
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
+                  className="flex-1 bg-accent-gold text-black py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center space-x-1"
+                >
+                  <Map className="w-4 h-4" />
+                  <span>Open Map</span>
+                </button>
+                {userLocation && (
+                  <button
+                    onClick={() => getDirections(mapModal.item.latitude, mapModal.item.longitude)}
+                    className="flex-1 bg-green-600 text-white py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center space-x-1"
+                  >
+                    <Navigation className="w-4 h-4" />
+                    <span>Directions</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Embedded OpenStreetMap */}
-          <div className="w-full h-64 sm:h-80 md:h-96 rounded-lg overflow-hidden border-2 border-gray-600 bg-gray-900">
-            <iframe
-              width="100%"
-              height="100%"
-              frameBorder="0"
-              scrolling="no"
-              marginHeight={0}
-              marginWidth={0}
-              src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapModal.item.longitude - 0.01},${mapModal.item.latitude - 0.01},${mapModal.item.longitude + 0.01},${mapModal.item.latitude + 0.01}&layer=mapnik&marker=${mapModal.item.latitude},${mapModal.item.longitude}`}
-              className="bg-gray-900"
-              title="Location Map"
-            />
-          </div>
-          
-          {/* External Link */}
-          <div className="text-center pt-2">
-            <a
-              href={`https://www.openstreetmap.org/?mlat=${mapModal.item.latitude}&mlon=${mapModal.item.longitude}#map=16/${mapModal.item.latitude}/${mapModal.item.longitude}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-accent-blue hover:text-accent-blue/80 text-sm transition-colors inline-flex items-center space-x-1"
-            >
-              <span>View Larger Map on OpenStreetMap</span>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
+      {/* View Report Modal */}
+      {viewReportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-full overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-4 sm:p-6 border-b border-gray-700 flex justify-between items-center bg-dark-gray sticky top-0 z-10">
+              <div>
+                <h3 className="text-lg sm:text-xl font-bold text-primary-white">
+                  {viewReportModal.type === 'vehicle' ? 'Vehicle Report Details' : 'Crime Report Details'}
+                </h3>
+                <p className="text-sm text-gray-400 mt-1">
+                  OB Number: {viewReportModal.item.ob_number}
+                </p>
+              </div>
+              <button
+                onClick={() => setViewReportModal(null)}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-auto">
+              <div className="p-4 sm:p-6 space-y-6">
+                {/* Report Status & Actions */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
+                    <h4 className="font-semibold text-primary-white mb-3 flex items-center">
+                      <FileCheck className="w-5 h-5 mr-2 text-accent-gold" />
+                      Report Status
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Current Status:</span>
+                        <span className="bg-green-600 text-white px-2 py-1 rounded text-sm">Active</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300">Report Filed:</span>
+                        <span className="text-accent-gold">{formatDate(viewReportModal.item.created_at)}</span>
+                      </div>
+                      {viewReportModal.item.incident_date && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-300">Incident Date:</span>
+                          <span className="text-accent-gold">{formatDate(viewReportModal.item.incident_date)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-blue">
+                    <h4 className="font-semibold text-primary-white mb-3 flex items-center">
+                      <Users className="w-5 h-5 mr-2 text-accent-blue" />
+                      Actions Taken
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-start space-x-2">
+                        <div className="w-2 h-2 bg-accent-blue rounded-full mt-2 flex-shrink-0"></div>
+                        <span className="text-gray-300">Report logged in community database</span>
+                      </div>
+                      <div className="flex items-start space-x-2">
+                        <div className="w-2 h-2 bg-accent-blue rounded-full mt-2 flex-shrink-0"></div>
+                        <span className="text-gray-300">Alert sent to community members</span>
+                      </div>
+                      {viewReportModal.item.case_number && (
+                        <div className="flex items-start space-x-2">
+                          <div className="w-2 h-2 bg-accent-blue rounded-full mt-2 flex-shrink-0"></div>
+                          <span className="text-gray-300">SAPS case filed: {viewReportModal.item.case_number}</span>
+                        </div>
+                      )}
+                      {viewReportModal.item.station_reported_at && (
+                        <div className="flex items-start space-x-2">
+                          <div className="w-2 h-2 bg-accent-blue rounded-full mt-2 flex-shrink-0"></div>
+                          <span className="text-gray-300">Reported at {viewReportModal.item.station_reported_at}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Report Details */}
+                <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
+                  <h4 className="font-semibold text-primary-white mb-3 flex items-center">
+                    <FileText className="w-5 h-5 mr-2 text-accent-gold" />
+                    Report Details
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {viewReportModal.type === 'vehicle' ? (
+                      <>
+                        <div>
+                          <p className="text-sm text-gray-400">Number Plate</p>
+                          <p className="text-primary-white font-medium">{viewReportModal.item.number_plate}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-400">Vehicle</p>
+                          <p className="text-primary-white font-medium">{viewReportModal.item.color} {viewReportModal.item.make} {viewReportModal.item.model}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-400">Incident Type</p>
+                          <p className="text-primary-white font-medium">{viewReportModal.item.reason}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-400">Location</p>
+                          <p className="text-primary-white font-medium">{viewReportModal.item.suburb}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <p className="text-sm text-gray-400">Crime Type</p>
+                          <p className="text-primary-white font-medium">{viewReportModal.item.crime_type}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-400">Location</p>
+                          <p className="text-primary-white font-medium">{viewReportModal.item.location}, {viewReportModal.item.suburb}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-400">Date Occurred</p>
+                          <p className="text-primary-white font-medium">
+                            {viewReportModal.item.date_occurred ? formatDate(viewReportModal.item.date_occurred) : 'Not specified'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-400">Time Occurred</p>
+                          <p className="text-primary-white font-medium">
+                            {viewReportModal.item.time_occurred || 'Not specified'}
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Additional Information */}
+                {(viewReportModal.item.comments || viewReportModal.item.suspects_description) && (
+                  <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
+                    <h4 className="font-semibold text-primary-white mb-3 flex items-center">
+                      <MessageCircle className="w-5 h-5 mr-2 text-accent-gold" />
+                      Additional Information
+                    </h4>
+                    {viewReportModal.item.comments && (
+                      <div className="mb-3">
+                        <p className="text-sm text-gray-400 mb-1">Report Details:</p>
+                        <p className="text-gray-300 text-sm whitespace-pre-wrap">{viewReportModal.item.comments}</p>
+                      </div>
+                    )}
+                    {viewReportModal.item.suspects_description && (
+                      <div>
+                        <p className="text-sm text-gray-400 mb-1">Suspects Description:</p>
+                        <p className="text-gray-300 text-sm">{viewReportModal.item.suspects_description}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Reporter Information */}
+                <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-blue">
+                  <h4 className="font-semibold text-primary-white mb-3 flex items-center">
+                    <User className="w-5 h-5 mr-2 text-accent-blue" />
+                    Reporter Information
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-400">Reported By</p>
+                      <p className="text-primary-white font-medium">{getUserDisplayName(viewReportModal.item)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400">Report Date</p>
+                      <p className="text-primary-white font-medium">{formatDate(viewReportModal.item.created_at)} at {formatTime(viewReportModal.item.created_at)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-700 bg-dark-gray">
+              <div className="flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0">
+                <div className="text-sm text-gray-400">
+                  Report ID: {viewReportModal.item.ob_number}
+                </div>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => setViewReportModal(null)}
+                    className="px-4 py-2 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors"
+                  >
+                    Close
+                  </button>
+                  {viewReportModal.item.latitude && viewReportModal.item.longitude && (
+                    <button
+                      onClick={() => {
+                        setViewReportModal(null)
+                        setTimeout(() => showMapModal(viewReportModal.item, viewReportModal.type), 100)
+                      }}
+                      className="btn-primary flex items-center space-x-2"
+                    >
+                      <Map className="w-4 h-4" />
+                      <span>View Map</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* Footer - Quick Actions for Mobile */}
-      <div className="p-4 border-t border-gray-700 bg-dark-gray sm:hidden">
-        <div className="flex space-x-3">
-          <button
-            onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
-            className="flex-1 bg-accent-gold text-black py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center space-x-1"
-          >
-            <Map className="w-4 h-4" />
-            <span>Open Map</span>
-          </button>
-          {userLocation && (
-            <button
-              onClick={() => getDirections(mapModal.item.latitude, mapModal.item.longitude)}
-              className="flex-1 bg-green-600 text-white py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center space-x-1"
-            >
-              <Navigation className="w-4 h-4" />
-              <span>Directions</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       {/* Search and Reports */}
       {user ? (
@@ -841,32 +1066,30 @@ export default function Dashboard() {
               <h2 className="text-2xl font-bold text-primary-white">
                 {viewMode === 'all' ? 'Community' : 'My'} {activeTab === 'vehicles' ? 'Vehicle Reports' : 'Crime Reports'}
               </h2>
-              
+
               {/* View Mode Toggle */}
               <div className="flex space-x-2">
                 <button
                   onClick={() => setViewMode('all')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    viewMode === 'all' 
-                      ? 'bg-accent-gold text-black' 
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'all'
+                      ? 'bg-accent-gold text-black'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
+                    }`}
                 >
                   All Reports
                 </button>
                 <button
                   onClick={() => setViewMode('my')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    viewMode === 'my' 
-                      ? 'bg-accent-blue text-white' 
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'my'
+                      ? 'bg-accent-blue text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
+                    }`}
                 >
                   My Reports
                 </button>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <div className="relative w-full sm:w-64">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -894,11 +1117,10 @@ export default function Dashboard() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between">
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          alert.reason.includes('Hijack') ? 'bg-red-600 text-white' :
-                          alert.reason.includes('Stolen') ? 'bg-green-500 text-white' :
-                          'bg-yellow-900 text-yellow-300'
-                        }`}>
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${alert.reason.includes('Hijack') ? 'bg-red-600 text-white' :
+                            alert.reason.includes('Stolen') ? 'bg-green-500 text-white' :
+                              'bg-yellow-900 text-yellow-300'
+                          }`}>
                           {alert.reason}
                         </span>
                         <span className="bg-white text-blue-900 px-3 py-1 rounded-full text-sm font-bold border border-gray-300">
@@ -906,7 +1128,7 @@ export default function Dashboard() {
                         </span>
                         <span className="text-sm text-gray-400">{alert.suburb}</span>
                       </div>
-                      
+
                       <div className="flex flex-wrap items-center gap-4 mb-2">
                         <div className="flex items-center space-x-2">
                           <Hash className="w-4 h-4 text-accent-gold" />
@@ -929,11 +1151,21 @@ export default function Dashboard() {
                           </div>
                         )}
                       </div>
-                      
+
                       <p className="text-primary-white font-medium">
                         {alert.color} {alert.make} {alert.model}
                       </p>
-                      
+
+                      {/* Incident Date */}
+                      <div className="flex items-center space-x-2 mt-2">
+                        <Calendar className="w-3 h-3 text-accent-gold" />
+                        <span className="text-sm text-gray-400">
+                          Incident Date: <span className="text-accent-gold">
+                            {alert.incident_date ? formatDate(alert.incident_date) : formatDate(alert.created_at)}
+                          </span>
+                        </span>
+                      </div>
+
                       {/* Location Section */}
                       {alert.latitude && alert.longitude && (
                         <div className="mt-3 p-3 bg-gray-800 rounded-lg border-l-4 border-accent-gold">
@@ -968,14 +1200,14 @@ export default function Dashboard() {
                           </div>
                         </div>
                       )}
-                      
+
                       <div className="flex items-center space-x-2 mt-2">
                         <User className="w-3 h-3 text-accent-gold" />
                         <span className="text-sm text-gray-400">
                           Reported by: <span className="text-accent-gold">{getUserDisplayName(alert)}</span>
                         </span>
                       </div>
-                      
+
                       {alert.image_urls && alert.image_urls.length > 0 && (
                         <div className="mt-3">
                           <div className="flex items-center space-x-2 mb-2">
@@ -986,13 +1218,13 @@ export default function Dashboard() {
                           </div>
                           <div className="flex space-x-2 overflow-x-auto pb-2">
                             {alert.image_urls.map((url, index) => (
-                              <div 
+                              <div
                                 key={index}
                                 className="relative group cursor-pointer flex-shrink-0"
                                 onClick={() => handleImagePreview(alert.image_urls!, index)}
                               >
-                                <img 
-                                  src={url} 
+                                <img
+                                  src={url}
                                   alt={`Evidence ${index + 1}`}
                                   className="w-20 h-20 object-cover rounded border-2 border-gray-600 hover:border-accent-gold transition-colors"
                                 />
@@ -1015,32 +1247,41 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="mt-2 sm:mt-0 sm:ml-4 flex items-center space-x-2">
                       <div className="text-sm text-gray-400 text-right">
                         <div>{new Date(alert.created_at).toLocaleDateString('en-ZA')}</div>
-                        <div>{new Date(alert.created_at).toLocaleTimeString('en-ZA', { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
+                        <div>{new Date(alert.created_at).toLocaleTimeString('en-ZA', {
+                          hour: '2-digit',
+                          minute: '2-digit'
                         })}</div>
                       </div>
-                      
-                      {alert.user_id === user.id && (
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleEditAlert(alert)}
-                            className="p-2 text-accent-gold hover:bg-accent-gold hover:text-black rounded transition-colors"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteAlert(alert.id, 'vehicle')}
-                            className="p-2 text-accent-red hover:bg-accent-red hover:text-white rounded transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
+
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => showViewReportModal(alert, 'vehicle')}
+                          className="p-2 text-accent-blue hover:bg-accent-blue hover:text-white rounded transition-colors"
+                          title="View Full Report"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {alert.user_id === user.id && (
+                          <>
+                            <button
+                              onClick={() => handleEditAlert(alert)}
+                              className="p-2 text-accent-gold hover:bg-accent-gold hover:text-black rounded transition-colors"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAlert(alert.id, 'vehicle')}
+                              className="p-2 text-accent-red hover:bg-accent-red hover:text-white rounded transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1067,7 +1308,7 @@ export default function Dashboard() {
                           </span>
                         )}
                       </div>
-                      
+
                       <div className="flex flex-wrap items-center gap-4 mb-2">
                         <div className="flex items-center space-x-2">
                           <Hash className="w-4 h-4 text-red-400" />
@@ -1090,14 +1331,24 @@ export default function Dashboard() {
                           </div>
                         )}
                       </div>
-                      
+
                       <p className="text-primary-white font-medium mb-2">
                         {report.location}
                       </p>
-                      
+
                       <p className="text-gray-300 text-sm mb-2">
                         {report.description}
                       </p>
+
+                      {/* Incident Date */}
+                      <div className="flex items-center space-x-2 mt-2">
+                        <Calendar className="w-3 h-3 text-red-400" />
+                        <span className="text-sm text-gray-400">
+                          Incident Date: <span className="text-red-400">
+                            {report.date_occurred ? formatDate(report.date_occurred) : formatDate(report.created_at)}
+                          </span>
+                        </span>
+                      </div>
 
                       {/* Location Section */}
                       {report.latitude && report.longitude && (
@@ -1143,14 +1394,14 @@ export default function Dashboard() {
                           <p className="text-xs text-gray-300">{report.suspects_description}</p>
                         </div>
                       )}
-                      
+
                       <div className="flex items-center space-x-2 mt-2">
                         <User className="w-3 h-3 text-red-400" />
                         <span className="text-sm text-gray-400">
                           Reported by: <span className="text-red-400">{getUserDisplayName(report)}</span>
                         </span>
                       </div>
-                      
+
                       {report.image_urls && report.image_urls.length > 0 && (
                         <div className="mt-3">
                           <div className="flex items-center space-x-2 mb-2">
@@ -1161,13 +1412,13 @@ export default function Dashboard() {
                           </div>
                           <div className="flex space-x-2 overflow-x-auto pb-2">
                             {report.image_urls.map((url, index) => (
-                              <div 
+                              <div
                                 key={index}
                                 className="relative group cursor-pointer flex-shrink-0"
                                 onClick={() => handleImagePreview(report.image_urls!, index)}
                               >
-                                <img 
-                                  src={url} 
+                                <img
+                                  src={url}
                                   alt={`Evidence ${index + 1}`}
                                   className="w-20 h-20 object-cover rounded border-2 border-gray-600 hover:border-red-600 transition-colors"
                                 />
@@ -1190,36 +1441,43 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="mt-2 sm:mt-0 sm:ml-4 flex items-center space-x-2">
                       <div className="text-sm text-gray-400 text-right">
                         <div>{new Date(report.created_at).toLocaleDateString('en-ZA')}</div>
-                        <div>{new Date(report.created_at).toLocaleTimeString('en-ZA', { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
+                        <div>{new Date(report.created_at).toLocaleTimeString('en-ZA', {
+                          hour: '2-digit',
+                          minute: '2-digit'
                         })}</div>
                       </div>
-                      
-                      {report.user_id === user.id && (
-                        <div className="flex space-x-2">
+
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => showViewReportModal(report, 'crime')}
+                          className="p-2 text-accent-blue hover:bg-accent-blue hover:text-white rounded transition-colors"
+                          title="View Full Report"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {report.user_id === user.id && (
                           <button
                             onClick={() => handleDeleteAlert(report.id, 'crime')}
                             className="p-2 text-red-400 hover:bg-red-600 hover:text-white rounded transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               ))}
-              
-              {(activeTab === 'vehicles' && filteredAlerts.length === 0) || 
-               (activeTab === 'crimes' && filteredCrimeReports.length === 0) ? (
+
+              {(activeTab === 'vehicles' && filteredAlerts.length === 0) ||
+                (activeTab === 'crimes' && filteredCrimeReports.length === 0) ? (
                 <div className="text-center py-8 text-gray-500">
-                  {searchTerm 
-                    ? `No ${activeTab === 'vehicles' ? 'vehicle' : 'crime'} reports found matching your search.` 
+                  {searchTerm
+                    ? `No ${activeTab === 'vehicles' ? 'vehicle' : 'crime'} reports found matching your search.`
                     : `No ${activeTab === 'vehicles' ? 'vehicle' : 'crime'} reports filed yet.`
                   }
                 </div>
@@ -1231,43 +1489,41 @@ export default function Dashboard() {
 
       {/* Reporting Guidelines */}
       {user && (
-        <div className={`card p-6 border-l-4 ${
-          activeTab === 'vehicles' ? 'border-accent-gold' : 'border-red-600'
-        }`}>
-          <h3 className={`text-xl font-bold mb-6 text-center ${
-            activeTab === 'vehicles' ? 'text-accent-gold' : 'text-red-600'
+        <div className={`card p-6 border-l-4 ${activeTab === 'vehicles' ? 'border-accent-gold' : 'border-red-600'
           }`}>
+          <h3 className={`text-xl font-bold mb-6 text-center ${activeTab === 'vehicles' ? 'text-accent-gold' : 'text-red-600'
+            }`}>
             {activeTab === 'vehicles' ? 'Vehicle Reporting Guide' : 'Crime Reporting Guide'}
           </h3>
-          
+
           <div className="grid grid-cols-1 md:grid-rows-2 lg:grid-cols-5 gap-4">
             {activeTab === 'vehicles' ? (
               <>
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<Clock className="w-6 h-6" />}
                   title="Report Immediately"
                   description="Report stolen vehicles as soon as they are discovered"
                   color="gold"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<Car className="w-6 h-6" />}
                   title="Vehicle Details"
                   description="Include plate number, color, make, model, and distinctive features"
                   color="gold"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<MapPin className="w-6 h-6" />}
                   title="Location & Direction"
                   description="Note last seen location and direction of travel"
                   color="gold"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<Camera className="w-6 h-6" />}
                   title="Upload Evidence"
                   description="Attach CCTV footage or photos of the vehicle"
                   color="gold"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<FileCheck className="w-6 h-6" />}
                   title="SAPS Case Number"
                   description="Always file official SAPS case for stolen vehicles"
@@ -1276,31 +1532,31 @@ export default function Dashboard() {
               </>
             ) : (
               <>
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<Clock className="w-6 h-6" />}
                   title="Report Immediately"
                   description="Report crimes as soon as they occur or are discovered"
                   color="red"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<Shield className="w-6 h-6" />}
                   title="Crime Details"
                   description="Provide specific crime type, location, and description"
                   color="red"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<MapPin className="w-6 h-6" />}
                   title="Exact Location"
                   description="Pinpoint the exact location where the crime occurred"
                   color="red"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<AlertCircle className="w-6 h-6" />}
                   title="Safety First"
                   description="Do not approach suspects. Your safety comes first"
                   color="red"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<FileCheck className="w-6 h-6" />}
                   title="Emergency Contact"
                   description="For emergencies, always call 10111 immediately"
@@ -1316,15 +1572,15 @@ export default function Dashboard() {
 }
 
 // Helper component for guideline cards
-function GuidelineCard({ icon, title, description, color }: { 
-  icon: React.ReactNode; 
-  title: string; 
+function GuidelineCard({ icon, title, description, color }: {
+  icon: React.ReactNode;
+  title: string;
   description: string;
   color: 'gold' | 'red';
 }) {
   const bgColor = color === 'gold' ? 'bg-accent-gold' : 'bg-red-600'
   const textColor = color === 'gold' ? 'text-black' : 'text-white'
-  
+
   return (
     <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
       <div className="flex flex-col items-center text-center">

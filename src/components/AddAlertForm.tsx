@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { AlertTriangle, Upload, X, Image as ImageIcon, Hash, MessageCircle, Building, MapPin, Navigation, Compass } from 'lucide-react'
+import { AlertTriangle, Upload, X, Image as ImageIcon, Hash, MessageCircle, Building, MapPin, Navigation, Compass, Calendar } from 'lucide-react'
 
 interface AlertForm {
   number_plate: string
@@ -15,6 +15,7 @@ interface AlertForm {
   station_reported_at: string
   suburb: string
   comments: string
+  incident_date?: string
   latitude?: number | null
   longitude?: number | null
 }
@@ -266,7 +267,8 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         number_plate: data.number_plate.toUpperCase().replace(/\s/g, ''),
         case_number: data.case_number || null,
         station_reported_at: data.station_reported_at || null,
-        comments: data.comments || null
+        comments: data.comments || null,
+        incident_date: data.incident_date || null
       }
 
       // Insert new alert with OB number and location
@@ -287,7 +289,8 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             comments: formData.comments,
             has_images: imageFiles.length > 0,
             latitude: formData.latitude,
-            longitude: formData.longitude
+            longitude: formData.longitude,
+            incident_date: formData.incident_date
           }
         ])
         .select()
@@ -478,6 +481,27 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             {errors.model && (
               <p className="text-accent-red text-sm mt-1">{errors.model.message}</p>
             )}
+          </div>
+        </div>
+
+        {/* Incident Date */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label htmlFor="incident_date" className="block text-sm font-medium text-gray-300 mb-2">
+              <div className="flex items-center space-x-2">
+                <Calendar className="w-4 h-4 text-accent-gold" />
+                <span>Incident Date (Optional)</span>
+              </div>
+            </label>
+            <input
+              type="date"
+              id="incident_date"
+              {...register('incident_date')}
+              className="form-input"
+            />
+            <p className="text-sm text-gray-400 mt-1">
+              When did the incident occur? (Leave blank for today's date)
+            </p>
           </div>
         </div>
 
