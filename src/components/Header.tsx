@@ -80,7 +80,7 @@ export default function Header() {
           <div className="flex items-center justify-between">
             <div className="flex items-left space-x-4">
               {/* Simple logo container without background */}
-              <div className="flex flex-col items-center justify-left">
+              <div className="flex flex-col items-left justify-left">
                 <img 
             src="/rapid911-ireport-logo1.png"
             alt="Rapid911 Logo" 
