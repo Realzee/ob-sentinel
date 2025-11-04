@@ -78,7 +78,7 @@ export default function Header() {
       <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
         <div className="max-w-6xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-left space-x-4">
               {/* Simple logo container without background */}
               <div className="flex flex-col items-center justify-left">
                 <img 
