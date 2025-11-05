@@ -59,6 +59,97 @@ interface CrimeReport {
   }
 }
 
+interface NewReportAlert {
+  id: string;
+  show: boolean;
+  report: any;
+  type: 'vehicle' | 'crime';
+  timestamp: Date;
+}
+
+// Alert Toast Component
+interface AlertToastProps {
+  alert: NewReportAlert;
+  onView: () => void;
+  onDismiss: () => void;
+}
+
+const AlertToast: React.FC<AlertToastProps> = ({ alert, onView, onDismiss }) => {
+  const [progress, setProgress] = useState(100);
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setProgress(prev => {
+        if (prev <= 0) {
+          onDismiss();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 300); // 30 seconds total (300ms * 100 = 30s)
+
+    return () => clearInterval(timer);
+  }, [onDismiss]);
+
+  return (
+    <div className="bg-dark-gray border-l-4 border-accent-gold rounded-lg shadow-lg p-4 animate-in slide-in-from-right duration-300">
+      <div className="flex items-start space-x-3">
+        <div className={`p-2 rounded-full ${
+          alert.type === 'vehicle' ? 'bg-accent-gold' : 'bg-red-600'
+        }`}>
+          {alert.type === 'vehicle' ? 
+            <Car className="w-4 h-4 text-white" /> : 
+            <Shield className="w-4 h-4 text-white" />
+          }
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          <h4 className="text-sm font-semibold text-primary-white mb-1">
+            {alert.type === 'vehicle' ? 'New Vehicle Report' : 'New Crime Report'}
+          </h4>
+          <p className="text-xs text-gray-300 truncate">
+            {alert.type === 'vehicle' 
+              ? `${alert.report.number_plate} - ${alert.report.reason}`
+              : `${alert.report.crime_type}`
+            }
+          </p>
+          <p className="text-xs text-accent-gold mt-1">
+            {alert.report.suburb} • {new Date(alert.timestamp).toLocaleTimeString('en-ZA', {
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </p>
+          
+          {/* Progress bar */}
+          <div className="w-full bg-gray-700 rounded-full h-1 mt-2">
+            <div 
+              className="bg-accent-gold h-1 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+        
+        <div className="flex flex-col space-y-1">
+          <button
+            onClick={onView}
+            className="p-1 text-accent-gold hover:bg-accent-gold hover:text-black rounded transition-colors"
+            title="View Report"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onDismiss}
+            className="p-1 text-gray-400 hover:bg-gray-700 rounded transition-colors"
+            title="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function Dashboard() {
   const [alerts, setAlerts] = useState<AlertVehicle[]>([])
   const [crimeReports, setCrimeReports] = useState<CrimeReport[]>([])
@@ -75,6 +166,7 @@ export default function Dashboard() {
   const [mapModal, setMapModal] = useState<{show: boolean, item: any, type: 'vehicle' | 'crime'} | null>(null)
   const [viewReportModal, setViewReportModal] = useState<{show: boolean, item: any, type: 'vehicle' | 'crime'} | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
+  const [newReportAlerts, setNewReportAlerts] = useState<NewReportAlert[]>([])
 
   // Get user's current location
   useEffect(() => {
@@ -93,6 +185,63 @@ export default function Dashboard() {
       )
     }
   }, [])
+
+  // Alert management functions
+  const showNewReportAlert = (report: any, type: 'vehicle' | 'crime') => {
+    // Don't show alerts for user's own reports
+    if (user && report.user_id === user.id) return;
+    
+    const newAlert: NewReportAlert = {
+      id: `alert-${report.id}-${Date.now()}`,
+      show: true,
+      report,
+      type,
+      timestamp: new Date()
+    };
+
+    setNewReportAlerts(prev => [newAlert, ...prev]);
+    
+    // Play alert sound
+    playAlertSound();
+  };
+
+  const removeAlert = (alertId: string) => {
+    setNewReportAlerts(prev => prev.filter(alert => alert.id !== alertId));
+  };
+
+  const playAlertSound = () => {
+    try {
+      // Create a simple beep sound using Web Audio API
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+      console.log('Audio not supported or blocked');
+    }
+  };
+
+  const handleAlertViewReport = (alert: NewReportAlert) => {
+    // Show the report in the view report modal
+    setViewReportModal({
+      show: true,
+      item: alert.report,
+      type: alert.type
+    });
+    // Remove the alert
+    removeAlert(alert.id);
+  };
 
   // Fetch user data for reports
   const fetchUserData = async (userIds: string[]) => {
@@ -207,13 +356,30 @@ export default function Dashboard() {
   useEffect(() => {
     if (!user) return
 
-    // Subscribe to vehicle alerts
+    // Subscribe to vehicle alerts - UPDATED for alerts
     const vehicleSubscription = supabase
       .channel('alerts-changes')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'alerts_vehicles'
+        },
+        (payload) => {
+          console.log('New vehicle alert:', payload)
+          // Refresh the alerts list
+          fetchAlerts()
+          // Show notification for new reports
+          if (payload.new && payload.eventType === 'INSERT') {
+            showNewReportAlert(payload.new, 'vehicle')
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
           schema: 'public',
           table: 'alerts_vehicles'
         },
@@ -222,20 +388,61 @@ export default function Dashboard() {
           fetchAlerts()
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'alerts_vehicles'
+        },
+        (payload) => {
+          console.log('Vehicle alert delete:', payload)
+          fetchAlerts()
+        }
+      )
       .subscribe()
 
-    // Subscribe to crime reports
+    // Subscribe to crime reports - UPDATED for alerts
     const crimeSubscription = supabase
       .channel('crimes-changes')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'crime_reports'
+        },
+        (payload) => {
+          console.log('New crime report:', payload)
+          // Refresh the crime reports list
+          fetchAlerts()
+          // Show notification for new reports
+          if (payload.new && payload.eventType === 'INSERT') {
+            showNewReportAlert(payload.new, 'crime')
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
           schema: 'public',
           table: 'crime_reports'
         },
         (payload) => {
           console.log('Crime report update:', payload)
+          fetchAlerts()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'crime_reports'
+        },
+        (payload) => {
+          console.log('Crime report delete:', payload)
           fetchAlerts()
         }
       )
@@ -1078,6 +1285,18 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* New Report Alerts Container */}
+      <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
+        {newReportAlerts.map(alert => (
+          <AlertToast
+            key={alert.id}
+            alert={alert}
+            onView={() => handleAlertViewReport(alert)}
+            onDismiss={() => removeAlert(alert.id)}
+          />
+        ))}
+      </div>
 
       {/* Search and Reports */}
       {user ? (
