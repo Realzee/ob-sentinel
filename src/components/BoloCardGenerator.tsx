@@ -43,7 +43,7 @@ export default function BoloCardGenerator({ alert, onClose }: BoloCardGeneratorP
     suburb: alert?.suburb || '',
     incident_date: alert?.incident_date || '',
     comments: alert?.comments || '',
-    contact_number: '0620313134',
+    contact_number: '08469-10111',
     vehicle_image: alert?.image_urls?.[0] || ''
   })
 
