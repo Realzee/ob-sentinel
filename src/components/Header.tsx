@@ -138,6 +138,12 @@ export default function Header() {
                 >
                   View Reports
                 </a>
+                <a 
+                  href="/bolo-generator" 
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
+                >
+                  BOLO Generator
+                </a>
                 
                 {/* Admin Links */}
                 {user.email === 'riedwaan@multi-sound.co.za' && (
@@ -235,6 +241,13 @@ export default function Header() {
                   onClick={() => setMenuOpen(false)}
                 >
                   View Reports
+                </a>
+                <a 
+                  href="/bolo-generator" 
+                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  BOLO Generator
                 </a>
                 
                 {/* Admin Links */}

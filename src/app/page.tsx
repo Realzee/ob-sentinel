@@ -6,6 +6,7 @@ import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Ima
 import AddAlertForm from '@/components/AddAlertForm'
 import AddCrimeForm from '@/components/AddCrimeForm'
 import EditAlertForm from '@/components/EditAlertForm'
+import BoloCardGenerator from '@/components/BoloCardGenerator'
 
 interface AlertVehicle {
   id: string
@@ -169,6 +170,7 @@ export default function Dashboard() {
   const [viewReportModal, setViewReportModal] = useState<{show: boolean, item: any, type: 'vehicle' | 'crime'} | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
   const [newReportAlerts, setNewReportAlerts] = useState<NewReportAlert[]>([])
+  const [boloAlert, setBoloAlert] = useState<AlertVehicle | null>(null) // Add BOLO state
 
   // Get user's current location
   useEffect(() => {
@@ -1375,6 +1377,20 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* BOLO Card Generator Modal */}
+      {boloAlert && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-full overflow-auto">
+            <div className="p-6">
+              <BoloCardGenerator 
+                alert={boloAlert}
+                onClose={() => setBoloAlert(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Search and Reports */}
       {user ? (
         <div className="card p-6">
@@ -1597,6 +1613,15 @@ export default function Dashboard() {
                       </div>
                       
                       <div className="flex space-x-2">
+                        {/* BOLO Card Button */}
+                        <button
+                          onClick={() => setBoloAlert(alert)}
+                          className="p-2 text-blue-400 hover:bg-blue-600 hover:text-white rounded transition-colors"
+                          title="Generate BOLO Card"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </button>
+
                         <button
                           onClick={() => showViewReportModal(alert, 'vehicle')}
                           className="p-2 text-accent-blue hover:bg-accent-blue hover:text-white rounded transition-colors"
