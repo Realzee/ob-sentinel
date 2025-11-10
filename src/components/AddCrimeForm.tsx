@@ -277,7 +277,8 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
             comments: formData.comments,
             has_images: imageFiles.length > 0,
             latitude: formData.latitude,
-            longitude: formData.longitude
+            longitude: formData.longitude,
+            status: 'ACTIVE' // Default status for new reports
           }
         ])
         .select()
@@ -759,6 +760,7 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
           <p>⚠️ This crime report will be visible to all community members</p>
           <p>🚨 Emergency situations: Always call 10111 immediately</p>
           <p>🔢 CR Number: <strong>{obNumber}</strong> will be assigned to this report</p>
+          <p>🟢 Status: <strong>ACTIVE</strong> (You can update to RESOLVED later)</p>
           {location.latitude && location.longitude && (
             <p>📍 Exact location pin will be added to this report</p>
           )}

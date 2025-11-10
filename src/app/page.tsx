@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
-import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map, Calendar, Eye } from 'lucide-react'
+import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map, Calendar, Eye, CheckCircle, AlertCircle as AlertCircleIcon } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import AddCrimeForm from '@/components/AddCrimeForm'
 import EditAlertForm from '@/components/EditAlertForm'
@@ -26,6 +26,7 @@ interface AlertVehicle {
   incident_date?: string
   user_id: string
   comments?: string
+  status: 'ACTIVE' | 'RECOVERED' // Added status field
   users: {
     name: string
     email: string
@@ -53,6 +54,7 @@ interface CrimeReport {
   longitude?: number
   created_at: string
   user_id: string
+  status: 'ACTIVE' | 'RECOVERED' // Added status field
   users: {
     name: string
     email: string
@@ -574,6 +576,57 @@ export default function Dashboard() {
     await fetchAlerts()
   }
 
+  // Update report status function
+  const handleUpdateStatus = async (reportId: string, type: 'vehicle' | 'crime', newStatus: 'ACTIVE' | 'RECOVERED') => {
+    if (!user) return
+
+    try {
+      const table = type === 'vehicle' ? 'alerts_vehicles' : 'crime_reports'
+      const { error } = await supabase
+        .from(table)
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', reportId)
+        .eq('user_id', user.id)
+
+      if (error) {
+        console.error('Status update error:', error)
+        throw error
+      }
+
+      console.log(`Report status updated to ${newStatus}`)
+      
+      // Update local state
+      if (type === 'vehicle') {
+        setAlerts(prev => prev.map(alert => 
+          alert.id === reportId ? { ...alert, status: newStatus } : alert
+        ))
+      } else {
+        setCrimeReports(prev => prev.map(report => 
+          report.id === reportId ? { ...report, status: newStatus } : report
+        ))
+      }
+
+      // Log the action
+      await supabase
+        .from('user_logs')
+        .insert([
+          {
+            user_id: user.id,
+            action: `update_${type}_status`,
+            ip_address: '',
+            user_agent: navigator.userAgent
+          }
+        ])
+
+    } catch (error: any) {
+      console.error('Error updating report status:', error)
+      alert('Failed to update report status: ' + error.message)
+    }
+  }
+
   const handleDeleteAlert = async (alertId: string, type: 'vehicle' | 'crime') => {
     if (!user) return
 
@@ -706,7 +759,8 @@ export default function Dashboard() {
     alert.users?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.comments?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.ob_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    alert.station_reported_at?.toLowerCase().includes(searchTerm.toLowerCase())
+    alert.station_reported_at?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    alert.status?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const filteredCrimeReports = crimeReports.filter(report =>
@@ -718,7 +772,8 @@ export default function Dashboard() {
     report.users?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     report.comments?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     report.ob_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    report.station_reported_at?.toLowerCase().includes(searchTerm.toLowerCase())
+    report.station_reported_at?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    report.status?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const stats = {
@@ -740,7 +795,9 @@ export default function Dashboard() {
     ])).length,
     myAlerts: alerts.filter(a => a.user_id === user?.id).length,
     myCrimeReports: crimeReports.filter(c => c.user_id === user?.id).length,
-    reportsWithLocation: alerts.filter(a => a.latitude && a.longitude).length + crimeReports.filter(c => c.latitude && c.longitude).length
+    reportsWithLocation: alerts.filter(a => a.latitude && a.longitude).length + crimeReports.filter(c => c.latitude && c.longitude).length,
+    activeReports: alerts.filter(a => a.status === 'ACTIVE').length + crimeReports.filter(c => c.status === 'ACTIVE').length,
+    recoveredReports: alerts.filter(a => a.status === 'RECOVERED').length + crimeReports.filter(c => c.status === 'RECOVERED').length
   }
 
   // Fixed ternary operator - properly formatted
@@ -748,12 +805,16 @@ export default function Dashboard() {
     ? {
         total: stats.totalVehicleAlerts,
         recent: stats.recentVehicleAlerts,
-        my: stats.myAlerts
+        my: stats.myAlerts,
+        active: alerts.filter(a => a.status === 'ACTIVE').length,
+        recovered: alerts.filter(a => a.status === 'RECOVERED').length
       }
     : {
         total: stats.totalCrimeReports,
         recent: stats.recentCrimeReports,
-        my: stats.myCrimeReports
+        my: stats.myCrimeReports,
+        active: crimeReports.filter(c => c.status === 'ACTIVE').length,
+        recovered: crimeReports.filter(c => c.status === 'RECOVERED').length
       }
 
   return (
@@ -797,7 +858,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <div className={`card p-6 border-l-4 ${
           activeTab === 'vehicles' ? 'border-accent-gold' : 'border-red-600'
         }`}>
@@ -824,13 +885,23 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="card p-6 border-l-4 border-accent-gold">
+        <div className="card p-6 border-l-4 border-green-600">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-400">Active Areas</p>
-              <p className="text-3xl font-bold text-accent-gold">{stats.activeSuburbs}</p>
+              <p className="text-sm text-gray-400">Active Reports</p>
+              <p className="text-3xl font-bold text-green-400">{currentStats.active}</p>
             </div>
-            <Users className="w-8 h-8 text-accent-gold" />
+            <AlertCircleIcon className="w-8 h-8 text-green-400" />
+          </div>
+        </div>
+
+        <div className="card p-6 border-l-4 border-blue-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-400">Recovered/Resolved</p>
+              <p className="text-3xl font-bold text-blue-400">{currentStats.recovered}</p>
+            </div>
+            <CheckCircle className="w-8 h-8 text-blue-400" />
           </div>
         </div>
 
@@ -1114,7 +1185,13 @@ export default function Dashboard() {
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span className="text-gray-300">Current Status:</span>
-                        <span className="bg-green-600 text-white px-2 py-1 rounded text-sm">Active</span>
+                        <span className={`px-2 py-1 rounded text-sm font-medium ${
+                          viewReportModal.item.status === 'ACTIVE' 
+                            ? 'bg-green-600 text-white' 
+                            : 'bg-blue-500 text-white'
+                        }`}>
+                          {viewReportModal.item.status || 'ACTIVE'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-300">Report Filed:</span>
@@ -1359,6 +1436,25 @@ export default function Dashboard() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between">
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
+                        {/* Status Badge - Prominently Displayed */}
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-1 ${
+                          alert.status === 'ACTIVE' 
+                            ? 'bg-green-600 text-white' 
+                            : 'bg-blue-500 text-white'
+                        }`}>
+                          {alert.status === 'ACTIVE' ? (
+                            <>
+                              <AlertCircleIcon className="w-3 h-3" />
+                              <span>ACTIVE</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-3 h-3" />
+                              <span>RECOVERED</span>
+                            </>
+                          )}
+                        </span>
+                        
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                           alert.reason.includes('Hijack') ? 'bg-red-600 text-white' :
                           alert.reason.includes('Stolen') ? 'bg-green-500 text-white' :
@@ -1510,6 +1606,25 @@ export default function Dashboard() {
                         </button>
                         {alert.user_id === user.id && (
                           <>
+                            {/* Status Update Buttons */}
+                            {alert.status !== 'RECOVERED' && (
+                              <button
+                                onClick={() => handleUpdateStatus(alert.id, 'vehicle', 'RECOVERED')}
+                                className="p-2 text-green-400 hover:bg-green-600 hover:text-white rounded transition-colors"
+                                title="Mark as Recovered"
+                              >
+                                <CheckCircle className="w-4 h-4" />
+                              </button>
+                            )}
+                            {alert.status !== 'ACTIVE' && (
+                              <button
+                                onClick={() => handleUpdateStatus(alert.id, 'vehicle', 'ACTIVE')}
+                                className="p-2 text-orange-400 hover:bg-orange-600 hover:text-white rounded transition-colors"
+                                title="Mark as Active"
+                              >
+                                <AlertCircleIcon className="w-4 h-4" />
+                              </button>
+                            )}
                             <button
                               onClick={() => handleEditAlert(alert)}
                               className="p-2 text-accent-gold hover:bg-accent-gold hover:text-black rounded transition-colors"
@@ -1536,6 +1651,25 @@ export default function Dashboard() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between">
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
+                        {/* Status Badge - Prominently Displayed */}
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-1 ${
+                          report.status === 'ACTIVE' 
+                            ? 'bg-green-600 text-white' 
+                            : 'bg-blue-500 text-white'
+                        }`}>
+                          {report.status === 'ACTIVE' ? (
+                            <>
+                              <AlertCircleIcon className="w-3 h-3" />
+                              <span>ACTIVE</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-3 h-3" />
+                              <span>RESOLVED</span>
+                            </>
+                          )}
+                        </span>
+                        
                         <span className="px-3 py-1 rounded-full text-sm font-medium bg-red-600 text-white">
                           {report.crime_type}
                         </span>
@@ -1703,12 +1837,33 @@ export default function Dashboard() {
                           <Eye className="w-4 h-4" />
                         </button>
                         {report.user_id === user.id && (
-                          <button
-                            onClick={() => handleDeleteAlert(report.id, 'crime')}
-                            className="p-2 text-red-400 hover:bg-red-600 hover:text-white rounded transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <>
+                            {/* Status Update Buttons */}
+                            {report.status !== 'RECOVERED' && (
+                              <button
+                                onClick={() => handleUpdateStatus(report.id, 'crime', 'RECOVERED')}
+                                className="p-2 text-green-400 hover:bg-green-600 hover:text-white rounded transition-colors"
+                                title="Mark as Resolved"
+                              >
+                                <CheckCircle className="w-4 h-4" />
+                              </button>
+                            )}
+                            {report.status !== 'ACTIVE' && (
+                              <button
+                                onClick={() => handleUpdateStatus(report.id, 'crime', 'ACTIVE')}
+                                className="p-2 text-orange-400 hover:bg-orange-600 hover:text-white rounded transition-colors"
+                                title="Mark as Active"
+                              >
+                                <AlertCircleIcon className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteAlert(report.id, 'crime')}
+                              className="p-2 text-red-400 hover:bg-red-600 hover:text-white rounded transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -1770,8 +1925,8 @@ export default function Dashboard() {
                 />
                 <GuidelineCard 
                   icon={<FileCheck className="w-6 h-6" />}
-                  title="SAPS Case Number"
-                  description="Always file official SAPS case for stolen vehicles"
+                  title="Update Status"
+                  description="Mark as RECOVERED when vehicle is found"
                   color="gold"
                 />
               </>
@@ -1802,9 +1957,9 @@ export default function Dashboard() {
                   color="red"
                 />
                 <GuidelineCard 
-                  icon={<FileCheck className="w-6 h-6" />}
-                  title="Emergency Contact"
-                  description="For emergencies, always call 10111 immediately"
+                  icon={<CheckCircle className="w-6 h-6" />}
+                  title="Update Status"
+                  description="Mark as RESOLVED when case is closed"
                   color="red"
                 />
               </>

@@ -290,7 +290,8 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             has_images: imageFiles.length > 0,
             latitude: formData.latitude,
             longitude: formData.longitude,
-            incident_date: formData.incident_date
+            incident_date: formData.incident_date,
+            status: 'ACTIVE' // Default status for new reports
           }
         ])
         .select()
@@ -799,6 +800,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
           <p>⚠️ This report will be visible to all community members</p>
           <p>📱 Instant alerts will be sent to the community network</p>
           <p>🔢 OB Number: <strong>{obNumber}</strong> will be assigned to this report</p>
+          <p>🟢 Status: <strong>ACTIVE</strong> (You can update to RECOVERED later)</p>
           {location.latitude && location.longitude && (
             <p>📍 Location pin will be added to this report</p>
           )}
