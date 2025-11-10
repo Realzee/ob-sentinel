@@ -1,24 +1,25 @@
 // types.ts
 export interface AlertVehicle {
   id: string
-  user_id: string
   number_plate: string
   color: string
   make: string
   model: string
   reason: string
-  case_number?: string
-  station_reported_at?: string
+  case_number: string
+  station_reported_at: string
   ob_number: string
   suburb: string
-  comments?: string
   has_images: boolean
   image_urls?: string[]
   latitude?: number
   longitude?: number
   created_at: string
-  updated_at: string
-  users?: {
+  incident_date?: string
+  user_id: string
+  comments?: string
+  status: 'ACTIVE' | 'RECOVERED'
+  users: {
     name: string
     email: string
   }
