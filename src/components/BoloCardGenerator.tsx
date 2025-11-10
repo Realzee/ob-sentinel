@@ -3,7 +3,7 @@
 
 import { useState, useRef } from 'react'
 import { AlertVehicle } from '@/types'
-import { Download, Printer, FileText, Car, MapPin, Calendar, Hash, Shield, X } from 'lucide-react'
+import { Download, Printer, FileText, Car, MapPin, Calendar, Hash, Shield, X, Upload, Image as ImageIcon } from 'lucide-react'
 
 interface BoloCardGeneratorProps {
   alert?: AlertVehicle
@@ -21,10 +21,18 @@ interface BoloFormData {
   incident_date?: string
   comments?: string
   contact_number: string
+  vehicle_image?: string
+}
+
+interface ImageFile {
+  file: File
+  preview: string
 }
 
 export default function BoloCardGenerator({ alert, onClose }: BoloCardGeneratorProps) {
-  const [showForm, setShowForm] = useState(!alert)
+  // Fixed: Completely remove the problematic initialization and use simple state
+  const [showForm, setShowForm] = useState<boolean>(!alert)
+  
   const [formData, setFormData] = useState<BoloFormData>({
     number_plate: alert?.number_plate || '',
     make: alert?.make || '',
@@ -35,12 +43,49 @@ export default function BoloCardGenerator({ alert, onClose }: BoloCardGeneratorP
     suburb: alert?.suburb || '',
     incident_date: alert?.incident_date || '',
     comments: alert?.comments || '',
-    contact_number: '0620313134'
+    contact_number: '0620313134',
+    vehicle_image: alert?.image_urls?.[0] || ''
   })
+
+  const [imageFile, setImageFile] = useState<ImageFile | null>(null)
   const boloRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleInputChange = (field: keyof BoloFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      window.alert('Please upload only image files (JPEG, PNG, etc.)')
+      return
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert('Image size must be less than 5MB')
+      return
+    }
+
+    const preview = URL.createObjectURL(file)
+    setImageFile({ file, preview })
+    setFormData(prev => ({ ...prev, vehicle_image: preview }))
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const removeImage = () => {
+    if (imageFile?.preview) {
+      URL.revokeObjectURL(imageFile.preview)
+    }
+    setImageFile(null)
+    setFormData(prev => ({ ...prev, vehicle_image: '' }))
   }
 
   const generateBolo = () => {
@@ -95,6 +140,26 @@ export default function BoloCardGenerator({ alert, onClose }: BoloCardGeneratorP
             }
             .bolo-content {
               padding: 25px;
+            }
+            .bolo-image-section {
+              text-align: center;
+              margin-bottom: 20px;
+              padding: 15px;
+              background: #f8f9fa;
+              border-radius: 8px;
+              border: 2px dashed #dee2e6;
+            }
+            .bolo-image {
+              max-width: 100%;
+              max-height: 200px;
+              object-fit: contain;
+              border-radius: 6px;
+              border: 2px solid #e74c3c;
+            }
+            .no-image {
+              color: #6c757d;
+              font-style: italic;
+              padding: 20px;
             }
             .bolo-details-grid {
               display: grid;
@@ -229,6 +294,26 @@ export default function BoloCardGenerator({ alert, onClose }: BoloCardGeneratorP
             .bolo-content {
               padding: 25px;
             }
+            .bolo-image-section {
+              text-align: center;
+              margin-bottom: 20px;
+              padding: 15px;
+              background: #f8f9fa;
+              border-radius: 8px;
+              border: 2px dashed #dee2e6;
+            }
+            .bolo-image {
+              max-width: 100%;
+              max-height: 200px;
+              object-fit: contain;
+              border-radius: 6px;
+              border: 2px solid #e74c3c;
+            }
+            .no-image {
+              color: #6c757d;
+              font-style: italic;
+              padding: 20px;
+            }
             .bolo-details-grid {
               display: grid;
               grid-template-columns: 1fr 1fr;
@@ -327,6 +412,22 @@ export default function BoloCardGenerator({ alert, onClose }: BoloCardGeneratorP
 
       {/* Content */}
       <div className="bolo-content">
+        {/* Vehicle Image Section */}
+        <div className="bolo-image-section">
+          {formData.vehicle_image ? (
+            <img 
+              src={formData.vehicle_image} 
+              alt={`${formData.make} ${formData.model} - ${formData.number_plate}`}
+              className="bolo-image"
+            />
+          ) : (
+            <div className="no-image">
+              <Car className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p>No vehicle image available</p>
+            </div>
+          )}
+        </div>
+
         {/* Vehicle Details Grid */}
         <div className="bolo-details-grid">
           <div className="bolo-detail">
@@ -402,7 +503,7 @@ export default function BoloCardGenerator({ alert, onClose }: BoloCardGeneratorP
         <div className="bolo-footer">
           <div className="footer-line">Stolen & Hijacked Vehicles</div>
           <div className="footer-contact">
-            {formData.contact_number || '0620313134'}
+            {formData.contact_number || '08469-10111'}
           </div>
         </div>
       </div>
@@ -429,6 +530,57 @@ export default function BoloCardGenerator({ alert, onClose }: BoloCardGeneratorP
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        {/* Vehicle Image Upload */}
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Vehicle Image (Optional)
+          </label>
+          <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+              id="vehicle-image-upload"
+            />
+            <label
+              htmlFor="vehicle-image-upload"
+              className="cursor-pointer inline-flex items-center space-x-2 text-accent-gold hover:text-accent-gold/80 transition-colors"
+            >
+              <Upload className="w-5 h-5" />
+              <span>Select vehicle image</span>
+            </label>
+            <p className="text-sm text-gray-400 mt-2">
+              Upload a clear photo of the vehicle (Max 5MB)
+            </p>
+          </div>
+
+          {/* Image Preview */}
+          {formData.vehicle_image && (
+            <div className="mt-4">
+              <div className="flex items-center space-x-2 mb-3">
+                <ImageIcon className="w-4 h-4 text-accent-gold" />
+                <span className="text-sm font-medium text-gray-300">Image Preview</span>
+              </div>
+              <div className="relative inline-block">
+                <img
+                  src={formData.vehicle_image}
+                  alt="Vehicle preview"
+                  className="w-48 h-32 object-cover rounded border border-gray-600"
+                />
+                <button
+                  type="button"
+                  onClick={removeImage}
+                  className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
             Number Plate *
@@ -559,7 +711,7 @@ export default function BoloCardGenerator({ alert, onClose }: BoloCardGeneratorP
             value={formData.contact_number}
             onChange={(e) => handleInputChange('contact_number', e.target.value)}
             className="form-input"
-            placeholder="0620313134"
+            placeholder="08469-10111"
           />
         </div>
       </div>
@@ -632,6 +784,7 @@ export default function BoloCardGenerator({ alert, onClose }: BoloCardGeneratorP
 
           <div className="text-center text-sm text-gray-400 mt-4">
             <p>💡 Tip: Use the print button for best results, or download as HTML to share digitally.</p>
+            <p>🖼️ Vehicle image will be included in the BOLO card for better identification.</p>
             <p>🖨️ The BOLO card is optimized for printing and will look great when printed.</p>
           </div>
         </div>

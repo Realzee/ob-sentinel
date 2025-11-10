@@ -1,5 +1,4 @@
 'use client'
-
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
 import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map, Calendar, Eye, CheckCircle, AlertCircle as AlertCircleIcon } from 'lucide-react'
@@ -27,7 +26,7 @@ interface AlertVehicle {
   incident_date?: string
   user_id: string
   comments?: string
-  status: 'ACTIVE' | 'RECOVERED' // Added status field
+  status: 'ACTIVE' | 'RECOVERED'
   users: {
     name: string
     email: string
@@ -55,7 +54,7 @@ interface CrimeReport {
   longitude?: number
   created_at: string
   user_id: string
-  status: 'ACTIVE' | 'RECOVERED' // Added status field
+  status: 'ACTIVE' | 'RECOVERED'
   users: {
     name: string
     email: string
@@ -79,7 +78,7 @@ interface AlertToastProps {
 
 const AlertToast: React.FC<AlertToastProps> = ({ alert, onView, onDismiss }) => {
   const [progress, setProgress] = useState(100);
-  
+ 
   useEffect(() => {
     const timer = setInterval(() => {
       setProgress(prev => {
@@ -89,8 +88,7 @@ const AlertToast: React.FC<AlertToastProps> = ({ alert, onView, onDismiss }) => 
         }
         return prev - 1;
       });
-    }, 300); // 30 seconds total (300ms * 100 = 30s)
-
+    }, 300);
     return () => clearInterval(timer);
   }, [onDismiss]);
 
@@ -100,18 +98,18 @@ const AlertToast: React.FC<AlertToastProps> = ({ alert, onView, onDismiss }) => 
         <div className={`p-2 rounded-full ${
           alert.type === 'vehicle' ? 'bg-accent-gold' : 'bg-red-600'
         }`}>
-          {alert.type === 'vehicle' ? 
-            <Car className="w-4 h-4 text-white" /> : 
+          {alert.type === 'vehicle' ?
+            <Car className="w-4 h-4 text-white" /> :
             <Shield className="w-4 h-4 text-white" />
           }
         </div>
-        
+       
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-semibold text-primary-white mb-1">
             {alert.type === 'vehicle' ? 'New Vehicle Report' : 'New Crime Report'}
           </h4>
           <p className="text-xs text-gray-300 truncate">
-            {alert.type === 'vehicle' 
+            {alert.type === 'vehicle'
               ? `${alert.report.number_plate} - ${alert.report.reason}`
               : `${alert.report.crime_type}`
             }
@@ -122,16 +120,15 @@ const AlertToast: React.FC<AlertToastProps> = ({ alert, onView, onDismiss }) => 
               minute: '2-digit'
             })}
           </p>
-          
-          {/* Progress bar */}
+         
           <div className="w-full bg-gray-700 rounded-full h-1 mt-2">
-            <div 
+            <div
               className="bg-accent-gold h-1 rounded-full transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
         </div>
-        
+       
         <div className="flex flex-col space-y-1">
           <button
             onClick={onView}
@@ -170,9 +167,61 @@ export default function Dashboard() {
   const [viewReportModal, setViewReportModal] = useState<{show: boolean, item: any, type: 'vehicle' | 'crime'} | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
   const [newReportAlerts, setNewReportAlerts] = useState<NewReportAlert[]>([])
-  const [boloAlert, setBoloAlert] = useState<AlertVehicle | null>(null) // Add BOLO state
+  const [boloAlert, setBoloAlert] = useState<AlertVehicle | null>(null)
 
-  // Get user's current location
+  // Fixed: Define removeAlert first with explicit type
+  const removeAlert = (alertId: string) => {
+    setNewReportAlerts(prev => prev.filter(alert => alert.id !== alertId));
+  };
+
+  // Fixed: Added explicit type for alert parameter
+  const handleAlertViewReport = (alert: NewReportAlert) => {
+    setViewReportModal({
+      show: true,
+      item: alert.report,
+      type: alert.type
+    });
+    removeAlert(alert.id);
+  };
+
+  // Fixed: Added explicit type for report parameter
+  const showNewReportAlert = (report: AlertVehicle | CrimeReport, type: 'vehicle' | 'crime') => {
+    if (user && report.user_id === user.id) return;
+   
+    const newAlert: NewReportAlert = {
+      id: `alert-${report.id}-${Date.now()}`,
+      show: true,
+      report,
+      type,
+      timestamp: new Date()
+    };
+    setNewReportAlerts(prev => [newAlert, ...prev]);
+   
+    playAlertSound();
+  };
+
+  const playAlertSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+     
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+     
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+     
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+     
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+      console.log('Audio not supported or blocked');
+    }
+  };
+
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -190,67 +239,9 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Alert management functions
-  const showNewReportAlert = (report: any, type: 'vehicle' | 'crime') => {
-    // Don't show alerts for user's own reports
-    if (user && report.user_id === user.id) return;
-    
-    const newAlert: NewReportAlert = {
-      id: `alert-${report.id}-${Date.now()}`,
-      show: true,
-      report,
-      type,
-      timestamp: new Date()
-    };
-
-    setNewReportAlerts(prev => [newAlert, ...prev]);
-    
-    // Play alert sound
-    playAlertSound();
-  };
-
-  const removeAlert = (alertId: string) => {
-    setNewReportAlerts(prev => prev.filter(alert => alert.id !== alertId));
-  };
-
-  const playAlertSound = () => {
-    try {
-      // Create a simple beep sound using Web Audio API
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.value = 800;
-      oscillator.type = 'sine';
-      
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-      
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.5);
-    } catch (error) {
-      console.log('Audio not supported or blocked');
-    }
-  };
-
-  const handleAlertViewReport = (alert: NewReportAlert) => {
-    // Show the report in the view report modal
-    setViewReportModal({
-      show: true,
-      item: alert.report,
-      type: alert.type
-    });
-    // Remove the alert
-    removeAlert(alert.id);
-  };
-
-  // Fetch user data for reports
   const fetchUserData = async (userIds: string[]) => {
     if (userIds.length === 0) return new globalThis.Map()
-    
+   
     const { data: usersData, error } = await supabase
       .from('users')
       .select('id, name, email')
@@ -262,23 +253,22 @@ export default function Dashboard() {
     }
 
     const usersMap = new globalThis.Map<string, { name: string, email: string }>()
-    usersData?.forEach(user => {
+    usersData?.forEach((user: { id: string; name: string; email: string }) => {
       usersMap.set(user.id, {
         name: user.name || 'Unknown User',
         email: user.email
       })
     })
-    
+   
     return usersMap
   }
 
-  // Helper function to get unique user IDs from array
+  // Fixed: Added explicit type for items parameter
   const getUniqueUserIds = (items: any[]): string[] => {
-    const userIds = items?.map(item => item.user_id) || []
+    const userIds = items?.map((item: any) => item.user_id) || []
     return Array.from(new Set(userIds))
   }
 
-  // Fetch alerts function - UPDATED without joins
   const fetchAlerts = async () => {
     if (!user) {
       setAlerts([])
@@ -288,8 +278,8 @@ export default function Dashboard() {
     }
 
     setLoading(true)
+
     try {
-      // Fetch vehicle alerts without join
       let vehicleQuery = supabase
         .from('alerts_vehicles')
         .select('*')
@@ -305,20 +295,17 @@ export default function Dashboard() {
         console.error('Error fetching alerts:', alertsError)
         setAlerts([])
       } else {
-        // Fetch user data separately
         const userIds = getUniqueUserIds(alertsData || [])
         const usersMap = await fetchUserData(userIds)
-        
-        // Combine data
-        const alertsWithUsers = (alertsData || []).map(alert => ({
+       
+        const alertsWithUsers = (alertsData || []).map((alert: { user_id: any }) => ({
           ...alert,
           users: usersMap.get(alert.user_id) || { name: 'Unknown User', email: '' }
         }))
-        
+       
         setAlerts(alertsWithUsers)
       }
 
-      // Fetch crime reports without join
       let crimeQuery = supabase
         .from('crime_reports')
         .select('*')
@@ -334,19 +321,16 @@ export default function Dashboard() {
         console.error('Error fetching crime reports:', crimesError)
         setCrimeReports([])
       } else {
-        // Fetch user data separately
         const userIds = getUniqueUserIds(crimesData || [])
         const usersMap = await fetchUserData(userIds)
-        
-        // Combine data
-        const crimesWithUsers = (crimesData || []).map(report => ({
+       
+        const crimesWithUsers = (crimesData || []).map((report: { user_id: any }) => ({
           ...report,
           users: usersMap.get(report.user_id) || { name: 'Unknown User', email: '' }
         }))
-        
+       
         setCrimeReports(crimesWithUsers)
       }
-
     } catch (error) {
       console.error('Error fetching data:', error)
       setAlerts([])
@@ -356,11 +340,9 @@ export default function Dashboard() {
     }
   }
 
-  // Set up real-time subscriptions
   useEffect(() => {
     if (!user) return
 
-    // Subscribe to vehicle alerts - UPDATED for alerts
     const vehicleSubscription = supabase
       .channel('alerts-changes')
       .on(
@@ -372,11 +354,10 @@ export default function Dashboard() {
         },
         (payload) => {
           console.log('New vehicle alert:', payload)
-          // Refresh the alerts list
           fetchAlerts()
-          // Show notification for new reports
           if (payload.new && payload.eventType === 'INSERT') {
-            showNewReportAlert(payload.new, 'vehicle')
+            // Fixed: Added type cast
+            showNewReportAlert(payload.new as AlertVehicle, 'vehicle')
           }
         }
       )
@@ -406,7 +387,6 @@ export default function Dashboard() {
       )
       .subscribe()
 
-    // Subscribe to crime reports - UPDATED for alerts
     const crimeSubscription = supabase
       .channel('crimes-changes')
       .on(
@@ -418,11 +398,10 @@ export default function Dashboard() {
         },
         (payload) => {
           console.log('New crime report:', payload)
-          // Refresh the crime reports list
           fetchAlerts()
-          // Show notification for new reports
           if (payload.new && payload.eventType === 'INSERT') {
-            showNewReportAlert(payload.new, 'crime')
+            // Fixed: Added type cast
+            showNewReportAlert(payload.new as CrimeReport, 'crime')
           }
         }
       )
@@ -458,7 +437,6 @@ export default function Dashboard() {
     }
   }, [user, viewMode])
 
-  // Initialize app and set up auth listener
   useEffect(() => {
     let mounted = true
 
@@ -473,11 +451,11 @@ export default function Dashboard() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
         console.log('Initial user:', user)
-        
+       
         if (mounted) {
           setUser(user)
           setAuthChecked(true)
-          
+         
           if (user) {
             ensureUserExists(user.id, {
               email: user.email!,
@@ -485,8 +463,6 @@ export default function Dashboard() {
             }).catch(error => {
               console.warn('User creation failed (non-critical):', error)
             })
-
-            // Auto-refresh after login
             await fetchAlerts()
           } else {
             setLoading(false)
@@ -506,12 +482,12 @@ export default function Dashboard() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event, session?.user)
-        
+       
         if (!mounted) return
-        
+       
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           setUser(session?.user ?? null)
-          
+         
           if (session?.user) {
             ensureUserExists(session.user.id, {
               email: session.user.email!,
@@ -519,8 +495,6 @@ export default function Dashboard() {
             }).catch(error => {
               console.warn('User creation failed (non-critical):', error)
             })
-
-            // Auto-refresh after login - use setTimeout to ensure state is updated
             setTimeout(() => {
               fetchAlerts()
             }, 500)
@@ -540,7 +514,6 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Auto-refresh when user logs in and auth is checked
   useEffect(() => {
     if (authChecked && user) {
       console.log('Auto-refreshing reports after login...')
@@ -548,7 +521,6 @@ export default function Dashboard() {
     }
   }, [authChecked, user])
 
-  // Handle page refresh and visibility changes
   useEffect(() => {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
@@ -571,14 +543,12 @@ export default function Dashboard() {
     }
   }, [user, viewMode])
 
-  // Manual refresh function
   const refreshAlerts = async () => {
     console.log('Manual refresh triggered')
     setLoading(true)
     await fetchAlerts()
   }
 
-  // Update report status function
   const handleUpdateStatus = async (reportId: string, type: 'vehicle' | 'crime', newStatus: 'ACTIVE' | 'RECOVERED') => {
     if (!user) return
 
@@ -586,7 +556,7 @@ export default function Dashboard() {
       const table = type === 'vehicle' ? 'alerts_vehicles' : 'crime_reports'
       const { error } = await supabase
         .from(table)
-        .update({ 
+        .update({
           status: newStatus,
           updated_at: new Date().toISOString()
         })
@@ -599,19 +569,17 @@ export default function Dashboard() {
       }
 
       console.log(`Report status updated to ${newStatus}`)
-      
-      // Update local state
+     
       if (type === 'vehicle') {
-        setAlerts(prev => prev.map(alert => 
+        setAlerts(prev => prev.map(alert =>
           alert.id === reportId ? { ...alert, status: newStatus } : alert
         ))
       } else {
-        setCrimeReports(prev => prev.map(report => 
+        setCrimeReports(prev => prev.map(report =>
           report.id === reportId ? { ...report, status: newStatus } : report
         ))
       }
 
-      // Log the action
       await supabase
         .from('user_logs')
         .insert([
@@ -650,13 +618,13 @@ export default function Dashboard() {
       }
 
       console.log('Report deleted successfully')
-      
+     
       if (type === 'vehicle') {
         setAlerts(prev => prev.filter(alert => alert.id !== alertId))
       } else {
         setCrimeReports(prev => prev.filter(report => report.id !== alertId))
       }
-      
+     
       await supabase
         .from('user_logs')
         .insert([
@@ -689,20 +657,18 @@ export default function Dashboard() {
 
   const navigateImage = (direction: 'prev' | 'next') => {
     if (!imagePreview) return
-    
+   
     let newIndex = direction === 'next' ? imagePreview.index + 1 : imagePreview.index - 1
-    
-    // Wrap around
+   
     if (newIndex >= imagePreview.total) newIndex = 0
     if (newIndex < 0) newIndex = imagePreview.total - 1
-    
+   
     setImagePreview({
       ...imagePreview,
       index: newIndex
     })
   }
 
-  // OpenStreetMap functions
   const openOSM = (lat: number, lon: number) => {
     window.open(`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}`, '_blank')
   }
@@ -723,7 +689,6 @@ export default function Dashboard() {
     setViewReportModal({ show: true, item, type })
   }
 
-  // Helper function to get user display name
   const getUserDisplayName = (item: any) => {
     if (item.users?.name && item.users.name !== 'Unknown User') {
       return item.users.name;
@@ -734,7 +699,6 @@ export default function Dashboard() {
     return 'Community Member';
   }
 
-  // Format date for display
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-ZA', {
       year: 'numeric',
@@ -743,7 +707,6 @@ export default function Dashboard() {
     });
   }
 
-  // Format time for display
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString('en-ZA', {
       hour: '2-digit',
@@ -751,8 +714,7 @@ export default function Dashboard() {
     });
   }
 
-  // Filter data based on search term and active tab
-  const filteredAlerts = alerts.filter(alert => 
+  const filteredAlerts = alerts.filter(alert =>
     alert.number_plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.suburb.toLowerCase().includes(searchTerm.toLowerCase()) ||
     alert.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -802,8 +764,7 @@ export default function Dashboard() {
     recoveredReports: alerts.filter(a => a.status === 'RECOVERED').length + crimeReports.filter(c => c.status === 'RECOVERED').length
   }
 
-  // Fixed ternary operator - properly formatted
-  const currentStats = activeTab === 'vehicles' 
+  const currentStats = activeTab === 'vehicles'
     ? {
         total: stats.totalVehicleAlerts,
         recent: stats.recentVehicleAlerts,
@@ -821,25 +782,23 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Welcome Section */}
       <div className="text-center">
         <div className="flex justify-center mb-6">
-          <img 
+          <img
             src="/rapid911-ireport-logo2.png"
-            alt="Rapid Rangers Logo" 
+            alt="Rapid Rangers Logo"
             className="w-30 h-auto"
           />
         </div>
         <p className="text-gray-400 text-lg">Community Safety Reporting System</p>
       </div>
 
-      {/* Report Type Tabs */}
       <div className="flex space-x-4 mb-6">
         <button
           onClick={() => setActiveTab('vehicles')}
           className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
-            activeTab === 'vehicles' 
-              ? 'bg-accent-gold text-black' 
+            activeTab === 'vehicles'
+              ? 'bg-accent-gold text-black'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
           }`}
         >
@@ -849,8 +808,8 @@ export default function Dashboard() {
         <button
           onClick={() => setActiveTab('crimes')}
           className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
-            activeTab === 'crimes' 
-              ? 'bg-red-600 text-white' 
+            activeTab === 'crimes'
+              ? 'bg-red-600 text-white'
               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
           }`}
         >
@@ -859,7 +818,6 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <div className={`card p-6 border-l-4 ${
           activeTab === 'vehicles' ? 'border-accent-gold' : 'border-red-600'
@@ -918,15 +876,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Quick Actions */}
       {user ? (
         <div className="text-center space-y-4">
           <div className="flex justify-center space-x-4">
             <button
               onClick={() => setShowAddForm(!showAddForm)}
               className={`inline-flex items-center space-x-2 py-2 px-4 rounded-lg font-medium transition-colors ${
-                activeTab === 'vehicles' 
-                  ? 'bg-accent-gold text-black hover:bg-yellow-500' 
+                activeTab === 'vehicles'
+                  ? 'bg-accent-gold text-black hover:bg-yellow-500'
                   : 'bg-red-600 text-white hover:bg-red-700'
               }`}
             >
@@ -940,25 +897,23 @@ export default function Dashboard() {
               <span>Refresh</span>
             </button>
           </div>
-          
+         
           {showAddForm && activeTab === 'vehicles' && (
-            <AddAlertForm 
+            <AddAlertForm
               onAlertAdded={() => {
                 setShowAddForm(false)
                 refreshAlerts()
-              }} 
+              }}
             />
           )}
-
           {showAddForm && activeTab === 'crimes' && (
-            <AddCrimeForm 
+            <AddCrimeForm
               onCrimeReportAdded={() => {
                 setShowAddForm(false)
                 refreshAlerts()
-              }} 
+              }}
             />
           )}
-
           {loading && (
             <div className="text-sm text-gray-400">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-gold mx-auto"></div>
@@ -975,9 +930,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Edit Report Form */}
       {editingAlert && (
-        <EditAlertForm 
+        <EditAlertForm
           alert={editingAlert}
           onAlertUpdated={() => {
             setEditingAlert(null)
@@ -987,7 +941,6 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Enhanced Image Preview Modal */}
       {imagePreview && (
         <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-4xl max-h-full overflow-auto relative">
@@ -1003,9 +956,9 @@ export default function Dashboard() {
               </button>
             </div>
             <div className="p-4 flex items-center justify-center min-h-[400px]">
-              <img 
-                src={imagePreview.url} 
-                alt="Report evidence" 
+              <img
+                src={imagePreview.url}
+                alt="Report evidence"
                 className="max-w-full max-h-[70vh] object-contain rounded"
               />
             </div>
@@ -1029,18 +982,16 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Map Modal - Dark Theme & Mobile Optimized */}
       {mapModal && (
         <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-full overflow-hidden flex flex-col">
-            {/* Header */}
             <div className="p-4 sm:p-6 border-b border-gray-700 flex justify-between items-center bg-dark-gray sticky top-0 z-10">
               <div>
                 <h3 className="text-lg sm:text-xl font-bold text-primary-white">
                   {mapModal.type === 'vehicle' ? 'Vehicle Location' : 'Crime Scene Location'}
                 </h3>
                 <p className="text-sm text-gray-400 mt-1">
-                  {mapModal.type === 'vehicle' 
+                  {mapModal.type === 'vehicle'
                     ? `${mapModal.item.number_plate} - ${mapModal.item.make} ${mapModal.item.model}`
                     : `${mapModal.item.crime_type} - ${mapModal.item.suburb}`
                   }
@@ -1053,11 +1004,8 @@ export default function Dashboard() {
                 <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
-
-            {/* Content */}
             <div className="flex-1 overflow-auto">
               <div className="p-4 sm:p-6 space-y-4">
-                {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
@@ -1076,8 +1024,7 @@ export default function Dashboard() {
                     </button>
                   )}
                 </div>
-                
-                {/* Location Details */}
+               
                 <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
                   <h4 className="font-semibold text-primary-white mb-3 text-sm sm:text-base">Location Details</h4>
                   <div className="space-y-2 text-sm">
@@ -1095,7 +1042,6 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Embedded OpenStreetMap */}
                 <div className="w-full h-64 sm:h-80 md:h-96 rounded-lg overflow-hidden border-2 border-gray-600 bg-gray-900">
                   <iframe
                     width="100%"
@@ -1109,8 +1055,7 @@ export default function Dashboard() {
                     title="Location Map"
                   />
                 </div>
-                
-                {/* External Link */}
+               
                 <div className="text-center pt-2">
                   <a
                     href={`https://www.openstreetmap.org/?mlat=${mapModal.item.latitude}&mlon=${mapModal.item.longitude}#map=16/${mapModal.item.latitude}/${mapModal.item.longitude}`}
@@ -1126,8 +1071,6 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-
-            {/* Footer - Quick Actions for Mobile */}
             <div className="p-4 border-t border-gray-700 bg-dark-gray sm:hidden">
               <div className="flex space-x-3">
                 <button
@@ -1152,11 +1095,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* View Report Modal */}
       {viewReportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-full overflow-hidden flex flex-col">
-            {/* Header */}
             <div className="p-4 sm:p-6 border-b border-gray-700 flex justify-between items-center bg-dark-gray sticky top-0 z-10">
               <div>
                 <h3 className="text-lg sm:text-xl font-bold text-primary-white">
@@ -1173,11 +1114,8 @@ export default function Dashboard() {
                 <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
-
-            {/* Content */}
             <div className="flex-1 overflow-auto">
               <div className="p-4 sm:p-6 space-y-6">
-                {/* Report Status & Actions */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
                     <h4 className="font-semibold text-primary-white mb-3 flex items-center">
@@ -1188,8 +1126,8 @@ export default function Dashboard() {
                       <div className="flex justify-between">
                         <span className="text-gray-300">Current Status:</span>
                         <span className={`px-2 py-1 rounded text-sm font-medium ${
-                          viewReportModal.item.status === 'ACTIVE' 
-                            ? 'bg-green-600 text-white' 
+                          viewReportModal.item.status === 'ACTIVE'
+                            ? 'bg-green-600 text-white'
                             : 'bg-blue-500 text-white'
                         }`}>
                           {viewReportModal.item.status || 'ACTIVE'}
@@ -1238,7 +1176,6 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Report Details */}
                 <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
                   <h4 className="font-semibold text-primary-white mb-3 flex items-center">
                     <FileText className="w-5 h-5 mr-2 text-accent-gold" />
@@ -1291,7 +1228,6 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Additional Information */}
                 {(viewReportModal.item.comments || viewReportModal.item.suspects_description) && (
                   <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-gold">
                     <h4 className="font-semibold text-primary-white mb-3 flex items-center">
@@ -1313,7 +1249,6 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* Reporter Information */}
                 <div className="bg-gray-800 rounded-lg p-4 border-l-4 border-accent-blue">
                   <h4 className="font-semibold text-primary-white mb-3 flex items-center">
                     <User className="w-5 h-5 mr-2 text-accent-blue" />
@@ -1332,8 +1267,6 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-
-            {/* Footer */}
             <div className="p-4 border-t border-gray-700 bg-dark-gray">
               <div className="flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0">
                 <div className="text-sm text-gray-400">
@@ -1365,7 +1298,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* New Report Alerts Container */}
       <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
         {newReportAlerts.map(alert => (
           <AlertToast
@@ -1377,12 +1309,11 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* BOLO Card Generator Modal */}
       {boloAlert && (
         <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
           <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-full overflow-auto">
             <div className="p-6">
-              <BoloCardGenerator 
+              <BoloCardGenerator
                 alert={boloAlert}
                 onClose={() => setBoloAlert(null)}
               />
@@ -1391,7 +1322,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Search and Reports */}
       {user ? (
         <div className="card p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
@@ -1399,14 +1329,13 @@ export default function Dashboard() {
               <h2 className="text-2xl font-bold text-primary-white">
                 {viewMode === 'all' ? 'Community' : 'My'} {activeTab === 'vehicles' ? 'Vehicle Reports' : 'Crime Reports'}
               </h2>
-              
-              {/* View Mode Toggle */}
+             
               <div className="flex space-x-2">
                 <button
                   onClick={() => setViewMode('all')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    viewMode === 'all' 
-                      ? 'bg-accent-gold text-black' 
+                    viewMode === 'all'
+                      ? 'bg-accent-gold text-black'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
@@ -1415,8 +1344,8 @@ export default function Dashboard() {
                 <button
                   onClick={() => setViewMode('my')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    viewMode === 'my' 
-                      ? 'bg-accent-blue text-white' 
+                    viewMode === 'my'
+                      ? 'bg-accent-blue text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                   }`}
                 >
@@ -1424,7 +1353,7 @@ export default function Dashboard() {
                 </button>
               </div>
             </div>
-            
+           
             <div className="flex items-center space-x-4">
               <div className="relative w-full sm:w-64">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -1446,16 +1375,14 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Vehicle Reports */}
               {activeTab === 'vehicles' && filteredAlerts.map((alert) => (
                 <div key={alert.id} className="bg-dark-gray border border-gray-700 rounded-lg p-4 hover:border-accent-gold transition-colors">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between">
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        {/* Status Badge - Prominently Displayed */}
                         <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-1 ${
-                          alert.status === 'ACTIVE' 
-                            ? 'bg-green-600 text-white' 
+                          alert.status === 'ACTIVE'
+                            ? 'bg-green-600 text-white'
                             : 'bg-blue-500 text-white'
                         }`}>
                           {alert.status === 'ACTIVE' ? (
@@ -1470,7 +1397,7 @@ export default function Dashboard() {
                             </>
                           )}
                         </span>
-                        
+                       
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                           alert.reason.includes('Hijack') ? 'bg-red-600 text-white' :
                           alert.reason.includes('Stolen') ? 'bg-green-500 text-white' :
@@ -1483,7 +1410,7 @@ export default function Dashboard() {
                         </span>
                         <span className="text-sm text-gray-400">{alert.suburb}</span>
                       </div>
-                      
+                     
                       <div className="flex flex-wrap items-center gap-4 mb-2">
                         <div className="flex items-center space-x-2">
                           <Hash className="w-4 h-4 text-accent-gold" />
@@ -1506,12 +1433,10 @@ export default function Dashboard() {
                           </div>
                         )}
                       </div>
-                      
+                     
                       <p className="text-primary-white font-medium">
                         {alert.color} {alert.make} {alert.model}
                       </p>
-
-                      {/* Incident Date */}
                       <div className="flex items-center space-x-2 mt-2">
                         <Calendar className="w-3 h-3 text-accent-gold" />
                         <span className="text-sm text-gray-400">
@@ -1520,8 +1445,7 @@ export default function Dashboard() {
                           </span>
                         </span>
                       </div>
-                      
-                      {/* Location Section */}
+                     
                       {alert.latitude && alert.longitude && (
                         <div className="mt-3 p-3 bg-gray-800 rounded-lg border-l-4 border-accent-gold">
                           <div className="flex items-center space-x-2 mb-2">
@@ -1555,14 +1479,14 @@ export default function Dashboard() {
                           </div>
                         </div>
                       )}
-                      
+                     
                       <div className="flex items-center space-x-2 mt-2">
                         <User className="w-3 h-3 text-accent-gold" />
                         <span className="text-sm text-gray-400">
                           Reported by: <span className="text-accent-gold">{getUserDisplayName(alert)}</span>
                         </span>
                       </div>
-                      
+                     
                       {alert.image_urls && alert.image_urls.length > 0 && (
                         <div className="mt-3">
                           <div className="flex items-center space-x-2 mb-2">
@@ -1573,13 +1497,13 @@ export default function Dashboard() {
                           </div>
                           <div className="flex space-x-2 overflow-x-auto pb-2">
                             {alert.image_urls.map((url, index) => (
-                              <div 
+                              <div
                                 key={index}
                                 className="relative group cursor-pointer flex-shrink-0"
                                 onClick={() => handleImagePreview(alert.image_urls!, index)}
                               >
-                                <img 
-                                  src={url} 
+                                <img
+                                  src={url}
                                   alt={`Evidence ${index + 1}`}
                                   className="w-20 h-20 object-cover rounded border-2 border-gray-600 hover:border-accent-gold transition-colors"
                                 />
@@ -1591,7 +1515,6 @@ export default function Dashboard() {
                           </div>
                         </div>
                       )}
-
                       {alert.comments && (
                         <div className="mt-3 p-3 bg-gray-800 rounded-lg border-l-4 border-accent-gold">
                           <div className="flex items-center space-x-2 mb-2">
@@ -1602,18 +1525,17 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                    
+                   
                     <div className="mt-2 sm:mt-0 sm:ml-4 flex items-center space-x-2">
                       <div className="text-sm text-gray-400 text-right">
                         <div>{new Date(alert.created_at).toLocaleDateString('en-ZA')}</div>
-                        <div>{new Date(alert.created_at).toLocaleTimeString('en-ZA', { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
+                        <div>{new Date(alert.created_at).toLocaleTimeString('en-ZA', {
+                          hour: '2-digit',
+                          minute: '2-digit'
                         })}</div>
                       </div>
-                      
+                     
                       <div className="flex space-x-2">
-                        {/* BOLO Card Button */}
                         <button
                           onClick={() => setBoloAlert(alert)}
                           className="p-2 text-blue-400 hover:bg-blue-600 hover:text-white rounded transition-colors"
@@ -1621,7 +1543,6 @@ export default function Dashboard() {
                         >
                           <FileText className="w-4 h-4" />
                         </button>
-
                         <button
                           onClick={() => showViewReportModal(alert, 'vehicle')}
                           className="p-2 text-accent-blue hover:bg-accent-blue hover:text-white rounded transition-colors"
@@ -1631,7 +1552,6 @@ export default function Dashboard() {
                         </button>
                         {alert.user_id === user.id && (
                           <>
-                            {/* Status Update Buttons */}
                             {alert.status !== 'RECOVERED' && (
                               <button
                                 onClick={() => handleUpdateStatus(alert.id, 'vehicle', 'RECOVERED')}
@@ -1670,16 +1590,14 @@ export default function Dashboard() {
                 </div>
               ))}
 
-              {/* Crime Reports */}
               {activeTab === 'crimes' && filteredCrimeReports.map((report) => (
                 <div key={report.id} className="bg-dark-gray border border-gray-700 rounded-lg p-4 hover:border-red-600 transition-colors">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between">
                     <div className="flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        {/* Status Badge - Prominently Displayed */}
                         <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center space-x-1 ${
-                          report.status === 'ACTIVE' 
-                            ? 'bg-green-600 text-white' 
+                          report.status === 'ACTIVE'
+                            ? 'bg-green-600 text-white'
                             : 'bg-blue-500 text-white'
                         }`}>
                           {report.status === 'ACTIVE' ? (
@@ -1694,7 +1612,7 @@ export default function Dashboard() {
                             </>
                           )}
                         </span>
-                        
+                       
                         <span className="px-3 py-1 rounded-full text-sm font-medium bg-red-600 text-white">
                           {report.crime_type}
                         </span>
@@ -1710,7 +1628,7 @@ export default function Dashboard() {
                           </span>
                         )}
                       </div>
-                      
+                     
                       <div className="flex flex-wrap items-center gap-4 mb-2">
                         <div className="flex items-center space-x-2">
                           <Hash className="w-4 h-4 text-red-400" />
@@ -1733,16 +1651,14 @@ export default function Dashboard() {
                           </div>
                         )}
                       </div>
-                      
+                     
                       <p className="text-primary-white font-medium mb-2">
                         {report.location}
                       </p>
-                      
+                     
                       <p className="text-gray-300 text-sm mb-2">
                         {report.description}
                       </p>
-
-                      {/* Incident Date */}
                       <div className="flex items-center space-x-2 mt-2">
                         <Calendar className="w-3 h-3 text-red-400" />
                         <span className="text-sm text-gray-400">
@@ -1751,8 +1667,6 @@ export default function Dashboard() {
                           </span>
                         </span>
                       </div>
-
-                      {/* Location Section */}
                       {report.latitude && report.longitude && (
                         <div className="mt-3 p-3 bg-gray-800 rounded-lg border-l-4 border-red-600">
                           <div className="flex items-center space-x-2 mb-2">
@@ -1786,7 +1700,6 @@ export default function Dashboard() {
                           </div>
                         </div>
                       )}
-
                       {report.suspects_description && (
                         <div className="mt-2 p-2 bg-gray-800 rounded border-l-2 border-red-600">
                           <div className="flex items-center space-x-2 mb-1">
@@ -1796,14 +1709,14 @@ export default function Dashboard() {
                           <p className="text-xs text-gray-300">{report.suspects_description}</p>
                         </div>
                       )}
-                      
+                     
                       <div className="flex items-center space-x-2 mt-2">
                         <User className="w-3 h-3 text-red-400" />
                         <span className="text-sm text-gray-400">
                           Reported by: <span className="text-red-400">{getUserDisplayName(report)}</span>
                         </span>
                       </div>
-                      
+                     
                       {report.image_urls && report.image_urls.length > 0 && (
                         <div className="mt-3">
                           <div className="flex items-center space-x-2 mb-2">
@@ -1814,13 +1727,13 @@ export default function Dashboard() {
                           </div>
                           <div className="flex space-x-2 overflow-x-auto pb-2">
                             {report.image_urls.map((url, index) => (
-                              <div 
+                              <div
                                 key={index}
                                 className="relative group cursor-pointer flex-shrink-0"
                                 onClick={() => handleImagePreview(report.image_urls!, index)}
                               >
-                                <img 
-                                  src={url} 
+                                <img
+                                  src={url}
                                   alt={`Evidence ${index + 1}`}
                                   className="w-20 h-20 object-cover rounded border-2 border-gray-600 hover:border-red-600 transition-colors"
                                 />
@@ -1832,7 +1745,6 @@ export default function Dashboard() {
                           </div>
                         </div>
                       )}
-
                       {report.comments && (
                         <div className="mt-3 p-3 bg-gray-800 rounded-lg border-l-4 border-red-600">
                           <div className="flex items-center space-x-2 mb-2">
@@ -1843,16 +1755,16 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                    
+                   
                     <div className="mt-2 sm:mt-0 sm:ml-4 flex items-center space-x-2">
                       <div className="text-sm text-gray-400 text-right">
                         <div>{new Date(report.created_at).toLocaleDateString('en-ZA')}</div>
-                        <div>{new Date(report.created_at).toLocaleTimeString('en-ZA', { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
+                        <div>{new Date(report.created_at).toLocaleTimeString('en-ZA', {
+                          hour: '2-digit',
+                          minute: '2-digit'
                         })}</div>
                       </div>
-                      
+                     
                       <div className="flex space-x-2">
                         <button
                           onClick={() => showViewReportModal(report, 'crime')}
@@ -1863,7 +1775,6 @@ export default function Dashboard() {
                         </button>
                         {report.user_id === user.id && (
                           <>
-                            {/* Status Update Buttons */}
                             {report.status !== 'RECOVERED' && (
                               <button
                                 onClick={() => handleUpdateStatus(report.id, 'crime', 'RECOVERED')}
@@ -1895,12 +1806,12 @@ export default function Dashboard() {
                   </div>
                 </div>
               ))}
-              
-              {(activeTab === 'vehicles' && filteredAlerts.length === 0) || 
+             
+              {(activeTab === 'vehicles' && filteredAlerts.length === 0) ||
                (activeTab === 'crimes' && filteredCrimeReports.length === 0) ? (
                 <div className="text-center py-8 text-gray-500">
-                  {searchTerm 
-                    ? `No ${activeTab === 'vehicles' ? 'vehicle' : 'crime'} reports found matching your search.` 
+                  {searchTerm
+                    ? `No ${activeTab === 'vehicles' ? 'vehicle' : 'crime'} reports found matching your search.`
                     : `No ${activeTab === 'vehicles' ? 'vehicle' : 'crime'} reports filed yet.`
                   }
                 </div>
@@ -1910,7 +1821,6 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      {/* Reporting Guidelines */}
       {user && (
         <div className={`card p-6 border-l-4 ${
           activeTab === 'vehicles' ? 'border-accent-gold' : 'border-red-600'
@@ -1920,35 +1830,35 @@ export default function Dashboard() {
           }`}>
             {activeTab === 'vehicles' ? 'Vehicle Reporting Guide' : 'Crime Reporting Guide'}
           </h3>
-          
+         
           <div className="grid grid-cols-1 md:grid-rows-2 lg:grid-cols-5 gap-4">
             {activeTab === 'vehicles' ? (
               <>
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<Clock className="w-6 h-6" />}
                   title="Report Immediately"
                   description="Report stolen vehicles as soon as they are discovered"
                   color="gold"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<Car className="w-6 h-6" />}
                   title="Vehicle Details"
                   description="Include plate number, color, make, model, and distinctive features"
                   color="gold"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<MapPin className="w-6 h-6" />}
                   title="Location & Direction"
                   description="Note last seen location and direction of travel"
                   color="gold"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<Camera className="w-6 h-6" />}
                   title="Upload Evidence"
                   description="Attach CCTV footage or photos of the vehicle"
                   color="gold"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<FileCheck className="w-6 h-6" />}
                   title="Update Status"
                   description="Mark as RECOVERED when vehicle is found"
@@ -1957,31 +1867,31 @@ export default function Dashboard() {
               </>
             ) : (
               <>
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<Clock className="w-6 h-6" />}
                   title="Report Immediately"
                   description="Report crimes as soon as they occur or are discovered"
                   color="red"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<Shield className="w-6 h-6" />}
                   title="Crime Details"
                   description="Provide specific crime type, location, and description"
                   color="red"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<MapPin className="w-6 h-6" />}
                   title="Exact Location"
                   description="Pinpoint the exact location where the crime occurred"
                   color="red"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<AlertCircle className="w-6 h-6" />}
                   title="Safety First"
                   description="Do not approach suspects. Your safety comes first"
                   color="red"
                 />
-                <GuidelineCard 
+                <GuidelineCard
                   icon={<CheckCircle className="w-6 h-6" />}
                   title="Update Status"
                   description="Mark as RESOLVED when case is closed"
@@ -1996,16 +1906,15 @@ export default function Dashboard() {
   )
 }
 
-// Helper component for guideline cards
-function GuidelineCard({ icon, title, description, color }: { 
-  icon: React.ReactNode; 
-  title: string; 
+function GuidelineCard({ icon, title, description, color }: {
+  icon: React.ReactNode;
+  title: string;
   description: string;
   color: 'gold' | 'red';
 }) {
   const bgColor = color === 'gold' ? 'bg-accent-gold' : 'bg-red-600'
   const textColor = color === 'gold' ? 'text-black' : 'text-white'
-  
+ 
   return (
     <div className="bg-dark-gray rounded-lg p-4 border border-gray-700 hover:border-accent-gold transition-colors group">
       <div className="flex flex-col items-center text-center">
