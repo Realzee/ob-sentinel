@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, hasValidSupabaseConfig, getCurrentUser } from '@/lib/supabase'
+import { supabase, hasValidSupabaseConfig } from '@/lib/supabase'
 import { ChevronDown, Users, Shield, FileText, Car } from 'lucide-react'
 
 interface UserProfile {
@@ -39,7 +39,7 @@ export default function Header() {
     }
   }, [])
 
-  // Simple profile fetch without complex logic
+  // Simple profile fetch
   const fetchUserProfile = async (userId: string) => {
     try {
       const { data: profile, error } = await supabase
@@ -74,26 +74,29 @@ export default function Header() {
       }
 
       try {
-        // Get initial user state with timeout
-        const userPromise = getCurrentUser()
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout')), 3000)
-        )
+        // Get initial session directly without complex logic
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('Error getting session:', error)
+          if (mounted) {
+            setAuthError(true)
+            setAuthLoading(false)
+          }
+          return
+        }
 
-        const currentUser = await Promise.race([userPromise, timeoutPromise]) as any
-        console.log('Initial user found:', currentUser?.email)
+        console.log('Initial session:', session)
         
         if (mounted) {
-          setUser(currentUser)
+          setUser(session?.user ?? null)
           
-          if (currentUser) {
-            // Fetch profile in background, don't wait for it
-            fetchUserProfile(currentUser.id).then(profile => {
+          if (session?.user) {
+            // Fetch profile in background
+            fetchUserProfile(session.user.id).then(profile => {
               if (mounted) {
                 setUserProfile(profile)
               }
-            }).catch(error => {
-              console.warn('Background profile fetch failed:', error)
             })
           }
           setAuthLoading(false)
@@ -138,8 +141,8 @@ export default function Header() {
           setAuthError(false)
         }
         
-        // Always stop loading on auth state change
-        if (mounted && authLoading) {
+        // Stop loading on any auth state change
+        if (mounted) {
           setAuthLoading(false)
         }
       }
@@ -149,7 +152,7 @@ export default function Header() {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [authLoading])
+  }, [])
 
   const handleLogout = async () => {
     try {

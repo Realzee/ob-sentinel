@@ -223,6 +223,14 @@ export default function Dashboard() {
     }
   };
 
+useEffect(() => {
+  console.log('Environment check:')
+  console.log('Has valid config:', hasValidSupabaseConfig)
+  console.log('Current user:', user)
+  console.log('Auth checked:', authChecked)
+  console.log('Loading:', loading)
+}, [user, authChecked, loading])
+
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -456,7 +464,8 @@ export default function Dashboard() {
     }
   }, [user, viewMode])
 
-  useEffect(() => {
+  // In your dashboard page, replace the main useEffect with this:
+useEffect(() => {
   let mounted = true
 
   const initializeApp = async () => {
@@ -468,26 +477,16 @@ export default function Dashboard() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      console.log('Initial user:', user)
+      const { data: { session } } = await supabase.auth.getSession()
+      console.log('Initial session:', session)
      
       if (mounted) {
-        setUser(user)
+        setUser(session?.user ?? null)
         setAuthChecked(true)
        
-        if (user) {
-          try {
-            await ensureUserExists(user.id, {
-              email: user.email!,
-              name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
-            })
-            // Force refresh alerts after user is set
-            await fetchAlerts()
-          } catch (error) {
-            console.warn('User creation failed (non-critical):', error)
-            // Still try to fetch alerts even if user creation fails
-            await fetchAlerts()
-          }
+        if (session?.user) {
+          // Fetch data immediately
+          await fetchAlerts()
         } else {
           setLoading(false)
         }
@@ -547,42 +546,17 @@ export default function Dashboard() {
      
       if (!mounted) return
      
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        const currentUser = session?.user ?? null
-        setUser(currentUser)
-       
-        if (currentUser) {
-          try {
-            await ensureUserExists(currentUser.id, {
-              email: currentUser.email!,
-              name: currentUser.user_metadata?.name || currentUser.email?.split('@')[0] || 'User'
-            })
-
-            useEffect(() => {
-  if (user && authChecked) {
-    console.log('User authenticated, forcing data refresh')
-    forceRefreshData()
-  }
-}, [user, authChecked])
-
-            // Refresh alerts immediately after login
-            setTimeout(() => {
-              if (mounted) {
-                fetchAlerts()
-              }
-            }, 500)
-          } catch (error) {
-            console.warn('User creation failed after login:', error)
-            // Still try to fetch alerts
-            setTimeout(() => {
-              if (mounted) {
-                fetchAlerts()
-              }
-            }, 500)
+      const currentUser = session?.user ?? null
+      setUser(currentUser)
+     
+      if (event === 'SIGNED_IN' && currentUser) {
+        // Refresh data after login
+        setTimeout(() => {
+          if (mounted) {
+            fetchAlerts()
           }
-        }
+        }, 1000)
       } else if (event === 'SIGNED_OUT') {
-        setUser(null)
         setAlerts([])
         setCrimeReports([])
         setLoading(false)
@@ -739,15 +713,12 @@ export default function Dashboard() {
   }
 
   const forceRefreshData = async () => {
-  console.log('Force refreshing all data...')
+  console.log('Force refreshing data...')
   setLoading(true)
   try {
-    await Promise.all([
-      fetchAlerts(),
-      new Promise(resolve => setTimeout(resolve, 1000)) // Small delay to ensure clean state
-    ])
+    await fetchAlerts()
   } catch (error) {
-    console.error('Error force refreshing data:', error)
+    console.error('Error refreshing data:', error)
   } finally {
     setLoading(false)
   }
