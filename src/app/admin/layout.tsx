@@ -15,7 +15,7 @@ export default function AdminLayout({
   const router = useRouter()
 
   const goToDashboard = () => {
-    router.push('/dashboard')
+    router.push('/')
   }
 
   useEffect(() => {
