@@ -1,13 +1,14 @@
 import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
 import './globals.css'
 import Header from '@/components/Header'
+import OnlinePresenceTracker from '@/components/OnlinePresenceTracker'
+
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'RAPID iREPORT - Smart Reporting System',
-  description: 'Modern, secure incident logging and community alert system for rapid reporting',
-  icons: {
-    icon: '/favicon.ico',
-  },
+  title: 'Rapid911 - Community Safety Reporting System',
+  description: 'Real-time community safety reporting and alert system',
 }
 
 export default function RootLayout({
@@ -17,9 +18,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-primary-black text-primary-white">
+      <body className={inter.className}>
+        <OnlinePresenceTracker />
         <Header />
-        <main className="max-w-6xl mx-auto px-4 py-8">
+        <main className="min-h-screen bg-dark-gray">
           {children}
         </main>
       </body>

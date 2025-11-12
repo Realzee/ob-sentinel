@@ -248,6 +248,19 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         return
       }
 
+      // Check if user is approved
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('approved, role, name')
+        .eq('id', user.id)
+        .single()
+      
+      if (!profile?.approved) {
+        setError('Your account is not approved yet. Please contact an administrator to get approved before filing reports.')
+        setLoading(false)
+        return
+      }
+
       // Ensure user exists in database
       const dbUser = await ensureUserExists(user.id, {
         email: user.email!,
@@ -323,6 +336,33 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
 
       setSuccess(`Report filed successfully! OB Number: ${obNumber} ${imageUrls.length > 0 ? `${imageUrls.length} image(s) uploaded.` : ''} ${data.latitude && data.longitude ? 'Location pin dropped.' : ''}`)
       
+      // Enhanced logging with details
+      await supabase
+        .from('user_logs')
+        .insert([
+          {
+            user_id: user.id,
+            action: 'create_alert',
+            ip_address: '',
+            user_agent: navigator.userAgent,
+            details: {
+              alert_id: alertData.id,
+              number_plate: formData.number_plate,
+              reason: formData.reason,
+              suburb: formData.suburb,
+              ob_number: obNumber,
+              has_images: imageFiles.length > 0,
+              image_count: imageFiles.length,
+              has_location: !!(data.latitude && data.longitude),
+              vehicle_make: formData.make,
+              vehicle_model: formData.model,
+              vehicle_color: formData.color,
+              user_role: profile.role,
+              user_name: profile.name
+            }
+          }
+        ])
+
       // Clean up
       imageFiles.forEach(file => URL.revokeObjectURL(file.preview))
       setImageFiles([])
@@ -340,18 +380,6 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
       if (onAlertAdded) {
         onAlertAdded()
       }
-
-      // Log the action
-      await supabase
-        .from('user_logs')
-        .insert([
-          {
-            user_id: user.id,
-            action: 'create_alert',
-            ip_address: '',
-            user_agent: navigator.userAgent
-          }
-        ])
 
     } catch (error: any) {
       console.error('Form submission error:', error)

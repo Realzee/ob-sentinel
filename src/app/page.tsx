@@ -159,6 +159,7 @@ export default function Dashboard() {
   const [reportType, setReportType] = useState<'vehicle' | 'crime'>('vehicle')
   const [editingAlert, setEditingAlert] = useState<AlertVehicle | null>(null)
   const [user, setUser] = useState<any>(null)
+  const [userProfile, setUserProfile] = useState<any>(null)
   const [imagePreview, setImagePreview] = useState<{url: string, index: number, total: number} | null>(null)
   const [viewMode, setViewMode] = useState<'all' | 'my'>('all')
   const [activeTab, setActiveTab] = useState<'vehicles' | 'crimes'>('vehicles')
@@ -262,6 +263,24 @@ export default function Dashboard() {
    
     return usersMap
   }
+
+  // Add this effect to fetch user profile
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single()
+        setUserProfile(profile)
+      }
+    }
+    
+    if (user) {
+      fetchUserProfile()
+    }
+  }, [user])
 
   // Fixed: Added explicit type for items parameter
   const getUniqueUserIds = (items: any[]): string[] => {
@@ -580,6 +599,7 @@ export default function Dashboard() {
         ))
       }
 
+      // Enhanced logging
       await supabase
         .from('user_logs')
         .insert([
@@ -587,7 +607,12 @@ export default function Dashboard() {
             user_id: user.id,
             action: `update_${type}_status`,
             ip_address: '',
-            user_agent: navigator.userAgent
+            user_agent: navigator.userAgent,
+            details: {
+              report_id: reportId,
+              new_status: newStatus,
+              report_type: type
+            }
           }
         ])
 
@@ -625,6 +650,7 @@ export default function Dashboard() {
         setCrimeReports(prev => prev.filter(report => report.id !== alertId))
       }
      
+      // Enhanced logging
       await supabase
         .from('user_logs')
         .insert([
@@ -632,7 +658,11 @@ export default function Dashboard() {
             user_id: user.id,
             action: `delete_${type}_report`,
             ip_address: '',
-            user_agent: navigator.userAgent
+            user_agent: navigator.userAgent,
+            details: {
+              report_id: alertId,
+              report_type: type
+            }
           }
         ])
 
@@ -878,25 +908,36 @@ export default function Dashboard() {
 
       {user ? (
         <div className="text-center space-y-4">
-          <div className="flex justify-center space-x-4">
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className={`inline-flex items-center space-x-2 py-2 px-4 rounded-lg font-medium transition-colors ${
-                activeTab === 'vehicles'
-                  ? 'bg-accent-gold text-black hover:bg-yellow-500'
-                  : 'bg-red-600 text-white hover:bg-red-700'
-              }`}
-            >
-              <Plus className="w-5 h-5" />
-              <span>{showAddForm ? 'Cancel' : `File New ${activeTab === 'vehicles' ? 'Vehicle' : 'Crime'} Report`}</span>
-            </button>
-            <button
-              onClick={refreshAlerts}
-              className="btn-primary inline-flex items-center space-x-2"
-            >
-              <span>Refresh</span>
-            </button>
-          </div>
+          {userProfile && !userProfile.approved ? (
+            <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 px-4 py-3 rounded mb-4 max-w-2xl mx-auto">
+              <div className="flex items-center justify-center space-x-2 mb-2">
+                <AlertTriangle className="w-5 h-5" />
+                <span className="font-semibold">Account Pending Approval</span>
+              </div>
+              <p className="text-sm">Your account is pending approval. You can view reports but cannot file new ones.</p>
+              <p className="text-sm mt-1">Please contact an administrator to get approved.</p>
+            </div>
+          ) : (
+            <div className="flex justify-center space-x-4">
+              <button
+                onClick={() => setShowAddForm(!showAddForm)}
+                className={`inline-flex items-center space-x-2 py-2 px-4 rounded-lg font-medium transition-colors ${
+                  activeTab === 'vehicles'
+                    ? 'bg-accent-gold text-black hover:bg-yellow-500'
+                    : 'bg-red-600 text-white hover:bg-red-700'
+                }`}
+              >
+                <Plus className="w-5 h-5" />
+                <span>{showAddForm ? 'Cancel' : `File New ${activeTab === 'vehicles' ? 'Vehicle' : 'Crime'} Report`}</span>
+              </button>
+              <button
+                onClick={refreshAlerts}
+                className="btn-primary inline-flex items-center space-x-2"
+              >
+                <span>Refresh</span>
+              </button>
+            </div>
+          )}
          
           {showAddForm && activeTab === 'vehicles' && (
             <AddAlertForm

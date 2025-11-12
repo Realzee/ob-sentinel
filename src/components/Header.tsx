@@ -1,10 +1,22 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, hasValidSupabaseConfig, getCurrentUser } from '@/lib/supabase'
+import { supabase, hasValidSupabaseConfig, getCurrentUser, getCurrentUserProfile } from '@/lib/supabase'
+
+interface UserProfile {
+  id: string
+  email: string
+  name: string | null
+  approved: boolean
+  role: 'user' | 'moderator' | 'admin'
+  last_login: string | null
+  created_at: string
+  updated_at: string
+}
 
 export default function Header() {
   const [user, setUser] = useState<any>(null)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [authError, setAuthError] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
@@ -21,6 +33,11 @@ export default function Header() {
         // Get current user with improved error handling
         const currentUser = await getCurrentUser()
         setUser(currentUser)
+        
+        if (currentUser) {
+          const profile = await getCurrentUserProfile()
+          setUserProfile(profile)
+        }
       } catch (error) {
         console.error('Auth initialization error:', error)
         setAuthError(true)
@@ -39,8 +56,13 @@ export default function Header() {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           setUser(session?.user ?? null)
           setAuthError(false)
+          if (session?.user) {
+            const profile = await getCurrentUserProfile()
+            setUserProfile(profile)
+          }
         } else if (event === 'SIGNED_OUT') {
           setUser(null)
+          setUserProfile(null)
         } else if (event === 'USER_UPDATED') {
           setUser(session?.user ?? null)
         }
@@ -59,6 +81,7 @@ export default function Header() {
         console.error('Logout error:', error)
       } else {
         setUser(null)
+        setUserProfile(null)
         setAuthError(false)
         // Force page refresh to reset state
         window.location.href = '/'
@@ -145,20 +168,20 @@ export default function Header() {
                   BOLO Generator
                 </a>
                 
-                {/* Admin Links */}
-                {user.email === 'riedwaan@multi-sound.co.za' && (
+                {/* Admin Links - Only show for approved admins/moderators */}
+                {userProfile && (userProfile.role === 'admin' || userProfile.role === 'moderator') && userProfile.approved && (
                   <>
+                    <a 
+                      href="/admin/users" 
+                      className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
+                    >
+                      User Management
+                    </a>
                     <a 
                       href="/admin/logs" 
                       className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
                     >
-                      Admin Logs
-                    </a>
-                    <a 
-                      href="/admin/logo" 
-                      className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
-                    >
-                      Branding
+                      System Logs
                     </a>
                   </>
                 )}
@@ -173,9 +196,17 @@ export default function Header() {
                 
                 {/* User Info & Logout */}
                 <div className="flex items-center space-x-4 border-l border-gray-600 pl-4 ml-2">
-                  <span className="text-sm text-gray-400 max-w-xs truncate">
-                    {user.email || user.user_metadata?.name}
-                  </span>
+                  <div className="text-right">
+                    <span className="text-sm text-gray-400 max-w-xs truncate block">
+                      {userProfile?.name || user.email || user.user_metadata?.name}
+                    </span>
+                    {userProfile && !userProfile.approved && (
+                      <span className="text-xs text-yellow-400 block">Pending Approval</span>
+                    )}
+                    {userProfile && (
+                      <span className="text-xs text-gray-500 capitalize block">{userProfile.role}</span>
+                    )}
+                  </div>
                   <button 
                     onClick={handleLogout}
                     className="btn-primary text-sm"
@@ -250,22 +281,22 @@ export default function Header() {
                   BOLO Generator
                 </a>
                 
-                {/* Admin Links */}
-                {user.email === 'clint@rapid911.co.za' && (
+                {/* Admin Links - Mobile */}
+                {userProfile && (userProfile.role === 'admin' || userProfile.role === 'moderator') && userProfile.approved && (
                   <>
+                    <a 
+                      href="/admin/users" 
+                      className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      User Management
+                    </a>
                     <a 
                       href="/admin/logs" 
                       className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
                       onClick={() => setMenuOpen(false)}
                     >
-                      Admin Logs
-                    </a>
-                    <a 
-                      href="/admin/logo" 
-                      className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      Branding
+                      System Logs
                     </a>
                   </>
                 )}
@@ -281,9 +312,15 @@ export default function Header() {
 
                 {/* User Info */}
                 <div className="pt-2 border-t border-gray-600">
-                  <p className="text-sm text-gray-400 mb-3 truncate">
-                    Signed in as: {user.email || user.user_metadata?.name}
+                  <p className="text-sm text-gray-400 mb-1 truncate">
+                    Signed in as: {userProfile?.name || user.email || user.user_metadata?.name}
                   </p>
+                  {userProfile && !userProfile.approved && (
+                    <p className="text-xs text-yellow-400 mb-2">Pending Approval</p>
+                  )}
+                  {userProfile && (
+                    <p className="text-xs text-gray-500 capitalize mb-3">{userProfile.role}</p>
+                  )}
                   <button 
                     onClick={() => {
                       handleLogout()

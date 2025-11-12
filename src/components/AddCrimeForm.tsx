@@ -230,6 +230,19 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
         return
       }
 
+      // Check if user is approved
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('approved, role, name')
+        .eq('id', user.id)
+        .single()
+      
+      if (!profile?.approved) {
+        setError('Your account is not approved yet. Please contact an administrator to get approved before filing crime reports.')
+        setLoading(false)
+        return
+      }
+
       const dbUser = await ensureUserExists(user.id, {
         email: user.email!,
         name: user.user_metadata?.name
@@ -306,6 +319,32 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
         }
       }
 
+      // Enhanced logging with details
+      await supabase
+        .from('user_logs')
+        .insert([
+          {
+            user_id: user.id,
+            action: 'create_crime_report',
+            ip_address: '',
+            user_agent: navigator.userAgent,
+            details: {
+              report_id: reportData.id,
+              crime_type: formData.crime_type,
+              location: formData.location,
+              suburb: formData.suburb,
+              ob_number: obNumber,
+              has_images: imageFiles.length > 0,
+              image_count: imageFiles.length,
+              has_location: !!(data.latitude && data.longitude),
+              weapons_involved: formData.weapons_involved,
+              injuries: formData.injuries,
+              user_role: profile.role,
+              user_name: profile.name
+            }
+          }
+        ])
+
       setSuccess(`Crime report filed successfully! OB Number: ${obNumber} ${imageUrls.length > 0 ? `${imageUrls.length} image(s) uploaded.` : ''} ${data.latitude && data.longitude ? 'Location pin dropped.' : ''}`)
       
       // Clean up
@@ -324,18 +363,6 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
       if (onCrimeReportAdded) {
         onCrimeReportAdded()
       }
-
-      // Log the action
-      await supabase
-        .from('user_logs')
-        .insert([
-          {
-            user_id: user.id,
-            action: 'create_crime_report',
-            ip_address: '',
-            user_agent: navigator.userAgent
-          }
-        ])
 
     } catch (error: any) {
       console.error('Form submission error:', error)
