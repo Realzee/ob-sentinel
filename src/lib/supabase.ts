@@ -153,47 +153,40 @@ export const logUserAction = async (
 /**
  * Update user presence (online status)
  */
-export const updateUserPresence = async (userId: string): Promise<void> => {
-  if (!hasValidSupabaseConfig) {
-    console.warn('Supabase not configured - updateUserPresence skipped')
-    return
-  }
-
+export const updateUserPresence = async (userId: string) => {
   try {
     const { error } = await supabase
-      .from('presence')
-      .upsert([
+      .from('presence') // Changed from 'presence' to 'presence'
+      .upsert(
         {
           user_id: userId,
           last_seen: new Date().toISOString(),
-          online: true
+          online: true,
+          updated_at: new Date().toISOString()
+        },
+        {
+          onConflict: 'user_id',
+          ignoreDuplicates: false
         }
-      ], {
-        onConflict: 'user_id'
-      })
+      );
 
     if (error) {
-      console.error('Error updating presence:', error)
+      console.error('Error updating presence:', error);
+      throw error;
     }
   } catch (error) {
-    console.error('Error in updateUserPresence:', error)
+    console.error('Error in updateUserPresence:', error);
+    // Don't throw here to prevent breaking the app
   }
-}
+};
 
-/**
- * Get currently online users (active in last 5 minutes)
- */
+// Get online users
 export const getOnlineUsers = async (): Promise<OnlineUser[]> => {
-  if (!hasValidSupabaseConfig) {
-    console.warn('Supabase not configured - getOnlineUsers skipped')
-    return []
-  }
-
   try {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     
     const { data, error } = await supabase
-      .from('presence')
+      .from('presence') // Changed from 'presence' to 'presence'
       .select(`
         *,
         profiles:user_id (
@@ -207,19 +200,19 @@ export const getOnlineUsers = async (): Promise<OnlineUser[]> => {
         )
       `)
       .gte('last_seen', fiveMinutesAgo)
-      .order('last_seen', { ascending: false })
+      .order('last_seen', { ascending: false });
 
     if (error) {
-      console.error('Error getting online users:', error)
-      throw error
+      console.error('Error getting online users:', error);
+      return [];
     }
 
-    return data || []
+    return data || [];
   } catch (error) {
-    console.error('Error in getOnlineUsers:', error)
-    return []
+    console.error('Error in getOnlineUsers:', error);
+    return [];
   }
-}
+};
 
 /**
  * Get user profile by ID
