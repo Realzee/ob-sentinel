@@ -159,7 +159,6 @@ export default function Dashboard() {
   const [reportType, setReportType] = useState<'vehicle' | 'crime'>('vehicle')
   const [editingAlert, setEditingAlert] = useState<AlertVehicle | null>(null)
   const [user, setUser] = useState<any>(null)
-  const [userProfile, setUserProfile] = useState<any>(null)
   const [imagePreview, setImagePreview] = useState<{url: string, index: number, total: number} | null>(null)
   const [viewMode, setViewMode] = useState<'all' | 'my'>('all')
   const [activeTab, setActiveTab] = useState<'vehicles' | 'crimes'>('vehicles')
@@ -222,74 +221,6 @@ export default function Dashboard() {
       console.log('Audio not supported or blocked');
     }
   };
-
-  // Simplified authentication check
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        console.log('Dashboard - Initial session:', session)
-        
-        setUser(session?.user ?? null)
-        setAuthChecked(true)
-        
-        if (session?.user) {
-          // Fetch user profile
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single()
-          setUserProfile(profile)
-          
-          // Fetch data
-          await fetchAlerts()
-        } else {
-          setLoading(false)
-        }
-      } catch (error) {
-        console.error('Auth check error:', error)
-        setAuthChecked(true)
-        setLoading(false)
-      }
-    }
-
-    checkAuth()
-
-    // Auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Dashboard - Auth state changed:', event)
-        
-        const currentUser = session?.user ?? null
-        setUser(currentUser)
-        
-        if (currentUser) {
-          // Fetch user profile
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', currentUser.id)
-            .single()
-          setUserProfile(profile)
-          
-          // Fetch data
-          await fetchAlerts()
-        } else {
-          setAlerts([])
-          setCrimeReports([])
-          setUserProfile(null)
-          setLoading(false)
-        }
-        
-        setAuthChecked(true)
-      }
-    )
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [])
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -409,7 +340,6 @@ export default function Dashboard() {
     }
   }
 
-  // Set up real-time subscriptions only when user is authenticated
   useEffect(() => {
     if (!user) return
 
@@ -426,6 +356,7 @@ export default function Dashboard() {
           console.log('New vehicle alert:', payload)
           fetchAlerts()
           if (payload.new && payload.eventType === 'INSERT') {
+            // Fixed: Added type cast
             showNewReportAlert(payload.new as AlertVehicle, 'vehicle')
           }
         }
@@ -469,6 +400,7 @@ export default function Dashboard() {
           console.log('New crime report:', payload)
           fetchAlerts()
           if (payload.new && payload.eventType === 'INSERT') {
+            // Fixed: Added type cast
             showNewReportAlert(payload.new as CrimeReport, 'crime')
           }
         }
@@ -505,12 +437,111 @@ export default function Dashboard() {
     }
   }, [user, viewMode])
 
-  // Refresh when view mode changes
   useEffect(() => {
-    if (user) {
+    let mounted = true
+
+    const initializeApp = async () => {
+      if (!hasValidSupabaseConfig) {
+        console.warn('Supabase not configured')
+        setLoading(false)
+        setAuthChecked(true)
+        return
+      }
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        console.log('Initial user:', user)
+       
+        if (mounted) {
+          setUser(user)
+          setAuthChecked(true)
+         
+          if (user) {
+            ensureUserExists(user.id, {
+              email: user.email!,
+              name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
+            }).catch(error => {
+              console.warn('User creation failed (non-critical):', error)
+            })
+            await fetchAlerts()
+          } else {
+            setLoading(false)
+          }
+        }
+      } catch (error) {
+        console.error('Initialization error:', error)
+        if (mounted) {
+          setLoading(false)
+          setAuthChecked(true)
+        }
+      }
+    }
+
+    initializeApp()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session?.user)
+       
+        if (!mounted) return
+       
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          setUser(session?.user ?? null)
+         
+          if (session?.user) {
+            ensureUserExists(session.user.id, {
+              email: session.user.email!,
+              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User'
+            }).catch(error => {
+              console.warn('User creation failed (non-critical):', error)
+            })
+            setTimeout(() => {
+              fetchAlerts()
+            }, 500)
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null)
+          setAlerts([])
+          setCrimeReports([])
+          setLoading(false)
+        }
+      }
+    )
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (authChecked && user) {
+      console.log('Auto-refreshing reports after login...')
       fetchAlerts()
     }
-  }, [viewMode, user])
+  }, [authChecked, user])
+
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        fetchAlerts()
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user) {
+        fetchAlerts()
+      }
+    }
+
+    window.addEventListener('pageshow', handlePageShow)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [user, viewMode])
 
   const refreshAlerts = async () => {
     console.log('Manual refresh triggered')
@@ -549,7 +580,6 @@ export default function Dashboard() {
         ))
       }
 
-      // Enhanced logging
       await supabase
         .from('user_logs')
         .insert([
@@ -557,12 +587,7 @@ export default function Dashboard() {
             user_id: user.id,
             action: `update_${type}_status`,
             ip_address: '',
-            user_agent: navigator.userAgent,
-            details: {
-              report_id: reportId,
-              new_status: newStatus,
-              report_type: type
-            }
+            user_agent: navigator.userAgent
           }
         ])
 
@@ -600,7 +625,6 @@ export default function Dashboard() {
         setCrimeReports(prev => prev.filter(report => report.id !== alertId))
       }
      
-      // Enhanced logging
       await supabase
         .from('user_logs')
         .insert([
@@ -608,11 +632,7 @@ export default function Dashboard() {
             user_id: user.id,
             action: `delete_${type}_report`,
             ip_address: '',
-            user_agent: navigator.userAgent,
-            details: {
-              report_id: alertId,
-              report_type: type
-            }
+            user_agent: navigator.userAgent
           }
         ])
 
@@ -622,18 +642,6 @@ export default function Dashboard() {
       await refreshAlerts()
     }
   }
-
-  const forceRefreshData = async () => {
-  console.log('Force refreshing data...')
-  setLoading(true)
-  try {
-    await fetchAlerts()
-  } catch (error) {
-    console.error('Error refreshing data:', error)
-  } finally {
-    setLoading(false)
-  }
-}
 
   const handleEditAlert = (alert: AlertVehicle) => {
     setEditingAlert(alert)
@@ -772,27 +780,6 @@ export default function Dashboard() {
         recovered: crimeReports.filter(c => c.status === 'RECOVERED').length
       }
 
-  // Main render with proper authentication checks
-  if (!authChecked) {
-    return (
-      <div className="min-h-screen bg-dark-gray py-8">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="text-center">
-            <div className="flex justify-center mb-6">
-              <img
-                src="/rapid911-ireport-logo2.png"
-                alt="Rapid Rangers Logo"
-                className="w-30 h-auto"
-              />
-            </div>
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
-            <p className="text-gray-400">Loading dashboard...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-8">
       <div className="text-center">
@@ -891,36 +878,25 @@ export default function Dashboard() {
 
       {user ? (
         <div className="text-center space-y-4">
-          {userProfile && !userProfile.approved ? (
-            <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 px-4 py-3 rounded mb-4 max-w-2xl mx-auto">
-              <div className="flex items-center justify-center space-x-2 mb-2">
-                <AlertTriangle className="w-5 h-5" />
-                <span className="font-semibold">Account Pending Approval</span>
-              </div>
-              <p className="text-sm">Your account is pending approval. You can view reports but cannot file new ones.</p>
-              <p className="text-sm mt-1">Please contact an administrator to get approved.</p>
-            </div>
-          ) : (
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={() => setShowAddForm(!showAddForm)}
-                className={`inline-flex items-center space-x-2 py-2 px-4 rounded-lg font-medium transition-colors ${
-                  activeTab === 'vehicles'
-                    ? 'bg-accent-gold text-black hover:bg-yellow-500'
-                    : 'bg-red-600 text-white hover:bg-red-700'
-                }`}
-              >
-                <Plus className="w-5 h-5" />
-                <span>{showAddForm ? 'Cancel' : `File New ${activeTab === 'vehicles' ? 'Vehicle' : 'Crime'} Report`}</span>
-              </button>
-              <button
-                onClick={refreshAlerts}
-                className="btn-primary inline-flex items-center space-x-2"
-              >
-                <span>Refresh</span>
-              </button>
-            </div>
-          )}
+          <div className="flex justify-center space-x-4">
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className={`inline-flex items-center space-x-2 py-2 px-4 rounded-lg font-medium transition-colors ${
+                activeTab === 'vehicles'
+                  ? 'bg-accent-gold text-black hover:bg-yellow-500'
+                  : 'bg-red-600 text-white hover:bg-red-700'
+              }`}
+            >
+              <Plus className="w-5 h-5" />
+              <span>{showAddForm ? 'Cancel' : `File New ${activeTab === 'vehicles' ? 'Vehicle' : 'Crime'} Report`}</span>
+            </button>
+            <button
+              onClick={refreshAlerts}
+              className="btn-primary inline-flex items-center space-x-2"
+            >
+              <span>Refresh</span>
+            </button>
+          </div>
          
           {showAddForm && activeTab === 'vehicles' && (
             <AddAlertForm
@@ -1387,7 +1363,6 @@ export default function Dashboard() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="form-input pl-10"
-                  autoComplete="off"
                 />
               </div>
             </div>
