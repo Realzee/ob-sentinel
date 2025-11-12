@@ -74,7 +74,7 @@ export default function Header() {
       }
 
       try {
-        // Get initial session directly without complex logic
+        // Get initial session
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
@@ -86,18 +86,17 @@ export default function Header() {
           return
         }
 
-        console.log('Initial session:', session)
+        console.log('Header - Initial session:', session)
         
         if (mounted) {
           setUser(session?.user ?? null)
           
           if (session?.user) {
-            // Fetch profile in background
-            fetchUserProfile(session.user.id).then(profile => {
-              if (mounted) {
-                setUserProfile(profile)
-              }
-            })
+            // Fetch profile
+            const profile = await fetchUserProfile(session.user.id)
+            if (mounted) {
+              setUserProfile(profile)
+            }
           }
           setAuthLoading(false)
         }
@@ -112,10 +111,10 @@ export default function Header() {
 
     initializeAuth()
 
-    // Simple auth state listener
+    // Auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email)
+        console.log('Header - Auth state changed:', event, session?.user?.email)
         
         if (!mounted) return
         
@@ -126,12 +125,10 @@ export default function Header() {
           setAuthError(false)
           
           if (currentUser) {
-            // Fetch profile in background
-            fetchUserProfile(currentUser.id).then(profile => {
-              if (mounted) {
-                setUserProfile(profile)
-              }
-            })
+            const profile = await fetchUserProfile(currentUser.id)
+            if (mounted) {
+              setUserProfile(profile)
+            }
           } else {
             setUserProfile(null)
           }
@@ -141,7 +138,7 @@ export default function Header() {
           setAuthError(false)
         }
         
-        // Stop loading on any auth state change
+        // Always stop loading on auth state change
         if (mounted) {
           setAuthLoading(false)
         }

@@ -223,13 +223,73 @@ export default function Dashboard() {
     }
   };
 
-useEffect(() => {
-  console.log('Environment check:')
-  console.log('Has valid config:', hasValidSupabaseConfig)
-  console.log('Current user:', user)
-  console.log('Auth checked:', authChecked)
-  console.log('Loading:', loading)
-}, [user, authChecked, loading])
+  // Simplified authentication check
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        console.log('Dashboard - Initial session:', session)
+        
+        setUser(session?.user ?? null)
+        setAuthChecked(true)
+        
+        if (session?.user) {
+          // Fetch user profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+          setUserProfile(profile)
+          
+          // Fetch data
+          await fetchAlerts()
+        } else {
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error('Auth check error:', error)
+        setAuthChecked(true)
+        setLoading(false)
+      }
+    }
+
+    checkAuth()
+
+    // Auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Dashboard - Auth state changed:', event)
+        
+        const currentUser = session?.user ?? null
+        setUser(currentUser)
+        
+        if (currentUser) {
+          // Fetch user profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', currentUser.id)
+            .single()
+          setUserProfile(profile)
+          
+          // Fetch data
+          await fetchAlerts()
+        } else {
+          setAlerts([])
+          setCrimeReports([])
+          setUserProfile(null)
+          setLoading(false)
+        }
+        
+        setAuthChecked(true)
+      }
+    )
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -271,24 +331,6 @@ useEffect(() => {
    
     return usersMap
   }
-
-  // Add this effect to fetch user profile
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single()
-        setUserProfile(profile)
-      }
-    }
-    
-    if (user) {
-      fetchUserProfile()
-    }
-  }, [user])
 
   // Fixed: Added explicit type for items parameter
   const getUniqueUserIds = (items: any[]): string[] => {
@@ -367,6 +409,7 @@ useEffect(() => {
     }
   }
 
+  // Set up real-time subscriptions only when user is authenticated
   useEffect(() => {
     if (!user) return
 
@@ -383,7 +426,6 @@ useEffect(() => {
           console.log('New vehicle alert:', payload)
           fetchAlerts()
           if (payload.new && payload.eventType === 'INSERT') {
-            // Fixed: Added type cast
             showNewReportAlert(payload.new as AlertVehicle, 'vehicle')
           }
         }
@@ -427,7 +469,6 @@ useEffect(() => {
           console.log('New crime report:', payload)
           fetchAlerts()
           if (payload.new && payload.eventType === 'INSERT') {
-            // Fixed: Added type cast
             showNewReportAlert(payload.new as CrimeReport, 'crime')
           }
         }
@@ -464,142 +505,12 @@ useEffect(() => {
     }
   }, [user, viewMode])
 
-  // In your dashboard page, replace the main useEffect with this:
-useEffect(() => {
-  let mounted = true
-
-  const initializeApp = async () => {
-    if (!hasValidSupabaseConfig) {
-      console.warn('Supabase not configured')
-      setLoading(false)
-      setAuthChecked(true)
-      return
-    }
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      console.log('Initial session:', session)
-     
-      if (mounted) {
-        setUser(session?.user ?? null)
-        setAuthChecked(true)
-       
-        if (session?.user) {
-          // Fetch data immediately
-          await fetchAlerts()
-        } else {
-          setLoading(false)
-        }
-      }
-    } catch (error) {
-      console.error('Initialization error:', error)
-      if (mounted) {
-        setLoading(false)
-        setAuthChecked(true)
-      }
-    }
-  }
-
-  initializeApp()
-
-  // Set up real-time subscriptions
-  const vehicleSubscription = supabase
-    .channel('alerts-changes')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'alerts_vehicles'
-      },
-      (payload) => {
-        console.log('Vehicle alert change:', payload)
-        if (mounted) {
-          fetchAlerts()
-        }
-      }
-    )
-    .subscribe()
-
-  const crimeSubscription = supabase
-    .channel('crimes-changes')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'crime_reports'
-      },
-      (payload) => {
-        console.log('Crime report change:', payload)
-        if (mounted) {
-          fetchAlerts()
-        }
-      }
-    )
-    .subscribe()
-
-  // Auth state change listener
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    async (event, session) => {
-      console.log('Auth state changed:', event, session?.user)
-     
-      if (!mounted) return
-     
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-     
-      if (event === 'SIGNED_IN' && currentUser) {
-        // Refresh data after login
-        setTimeout(() => {
-          if (mounted) {
-            fetchAlerts()
-          }
-        }, 1000)
-      } else if (event === 'SIGNED_OUT') {
-        setAlerts([])
-        setCrimeReports([])
-        setLoading(false)
-      }
-    }
-  )
-
-  return () => {
-    mounted = false
-    vehicleSubscription.unsubscribe()
-    crimeSubscription.unsubscribe()
-    subscription.unsubscribe()
-  }
-}, [])
-
+  // Refresh when view mode changes
   useEffect(() => {
-    if (authChecked && user) {
-      console.log('Auto-refreshing reports after login...')
+    if (user) {
       fetchAlerts()
     }
-  }, [authChecked, user])
-
-  useEffect(() => {
-    const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) {
-        fetchAlerts()
-      }
-    }
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden && user) {
-        fetchAlerts()
-      }
-    }
-
-    window.addEventListener('pageshow', handlePageShow)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      window.removeEventListener('pageshow', handlePageShow)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [user, viewMode])
+  }, [viewMode, user])
 
   const refreshAlerts = async () => {
     console.log('Manual refresh triggered')
@@ -860,6 +771,27 @@ useEffect(() => {
         active: crimeReports.filter(c => c.status === 'ACTIVE').length,
         recovered: crimeReports.filter(c => c.status === 'RECOVERED').length
       }
+
+  // Main render with proper authentication checks
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-dark-gray py-8">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="text-center">
+            <div className="flex justify-center mb-6">
+              <img
+                src="/rapid911-ireport-logo2.png"
+                alt="Rapid Rangers Logo"
+                className="w-30 h-auto"
+              />
+            </div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading dashboard...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8">
@@ -1448,16 +1380,16 @@ useEffect(() => {
            
             <div className="flex items-center space-x-4">
               <div className="relative w-full sm:w-64">
-  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-  <input
-    type="text"
-    placeholder={`Search ${activeTab === 'vehicles' ? 'vehicles, plates, areas...' : 'crimes, locations, descriptions...'}`}
-    value={searchTerm}
-    onChange={(e) => setSearchTerm(e.target.value)}
-    className="form-input pl-10"
-    autoComplete="off"
-  />
-</div>
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder={`Search ${activeTab === 'vehicles' ? 'vehicles, plates, areas...' : 'crimes, locations, descriptions...'}`}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="form-input pl-10"
+                  autoComplete="off"
+                />
+              </div>
             </div>
           </div>
 
