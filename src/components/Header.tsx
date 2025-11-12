@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSafeUserProfile, supabase } from '@/lib/supabase'
 import { User, LogOut, Shield, Menu, X } from 'lucide-react'
 
 export default function Header() {
@@ -12,36 +12,29 @@ export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single()
-        setUserProfile(profile)
-      }
+  const getUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    setUser(user)
+    if (user) {
+      const profile = await getSafeUserProfile(user.id)
+      setUserProfile(profile)
     }
-    getUser()
+  }
+  getUser()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
-        setUserProfile(profile)
-      } else {
-        setUserProfile(null)
-      }
-    })
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    setUser(session?.user ?? null)
+    if (session?.user) {
+      const profile = await getSafeUserProfile(session.user.id)
+      setUserProfile(profile)
+    } else {
+      setUserProfile(null)
+    }
+  })
 
-    return () => subscription.unsubscribe()
-  }, [])
+  return () => subscription.unsubscribe()
+}, [])
+
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -61,7 +54,7 @@ export default function Header() {
                 alt="Rapid911 Logo" 
                 className="w-30 h-auto"
               />
-              <p className="text-sm flashing-text text-accent-gold mt-1">
+              <p className="text-sm flashing-text text-blue-900 mt-1">
                 Smart Reporting System
               </p>
             </div>
