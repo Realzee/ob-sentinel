@@ -114,16 +114,6 @@ export default function Header() {
   <a
     href="/admin/users"
     className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
-    onClick={(e) => {
-      // Double-check role before navigating (optional safety check)
-      if (!userProfile || (userProfile.role !== 'admin' && userProfile.role !== 'moderator')) {
-        e.preventDefault()
-        alert('You do not have permission to access the admin panel.')
-        return
-      }
-      setShowDropdown(false)
-      setMobileMenuOpen(false)
-    }}
   >
     <Shield className="w-4 h-4" />
     <span>Admin Panel</span>
