@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { ensureUserProfile, supabase } from '@/lib/supabase'
 import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map, Calendar, Eye, CheckCircle, AlertCircle as AlertCircleIcon } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import AddCrimeForm from '@/components/AddCrimeForm'
@@ -216,73 +216,92 @@ export default function Dashboard() {
 
   // SIMPLIFIED AUTHENTICATION
   useEffect(() => {
-    console.log('🔄 Dashboard: Starting authentication check...');
-    
-    const initializeAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session?.user) {
-          console.log('✅ Dashboard: User found:', session.user.email);
-          setUser(session.user);
-          
-          // Fetch user profile
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          setUserProfile(profile);
-          
-          // Load reports
-          await fetchAlerts();
-        } else {
-          console.log('❌ Dashboard: No user session');
-          setUser(null);
-          setLoading(false);
-        }
-        
-        setAuthChecked(true);
-      } catch (error) {
-        console.error('❌ Auth initialization error:', error);
+  console.log('🔄 Dashboard: Starting authentication check...');
+  
+  const initializeAuth = async () => {
+    try {
+      // Get current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Session error:', sessionError);
         setAuthChecked(true);
         setLoading(false);
+        return;
       }
-    };
-
-    initializeAuth();
-
-    // Auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('🔄 Dashboard: Auth state changed:', event);
+      
+      if (session?.user) {
+        console.log('✅ Dashboard: User found:', session.user.email);
+        setUser(session.user);
         
+        // Use the new safe profile function
+        const profile = await ensureUserProfile(session.user.id, {
+          email: session.user.email!,
+          name: session.user.user_metadata?.name
+        });
+        
+        setUserProfile(profile);
+        
+        if (profile) {
+          await fetchAlerts();
+        } else {
+          setLoading(false);
+        }
+      } else {
+        console.log('❌ Dashboard: No user session');
+        setUser(null);
+        setUserProfile(null);
+        setLoading(false);
+      }
+      
+      setAuthChecked(true);
+    } catch (error) {
+      console.error('❌ Auth initialization error:', error);
+      setAuthChecked(true);
+      setLoading(false);
+    }
+  };
+
+  initializeAuth();
+
+  // Auth state listener with error handling
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    async (event, session) => {
+      console.log('🔄 Dashboard: Auth state changed:', event);
+      
+      try {
         const currentUser = session?.user ?? null;
         setUser(currentUser);
         
         if (currentUser) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', currentUser.id)
-            .single();
+          const profile = await ensureUserProfile(currentUser.id, {
+            email: currentUser.email!,
+            name: currentUser.user_metadata?.name
+          });
           setUserProfile(profile);
-          await fetchAlerts();
+          
+          if (profile) {
+            await fetchAlerts();
+          } else {
+            setLoading(false);
+          }
         } else {
           setAlerts([]);
           setCrimeReports([]);
           setUserProfile(null);
           setLoading(false);
         }
-        
-        setAuthChecked(true);
+      } catch (error) {
+        console.error('Error in auth state change:', error);
+        setLoading(false);
       }
-    );
+    }
+  );
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
+  return () => {
+    subscription.unsubscribe();
+  };
+}, []);
 
   // Get user location
   useEffect(() => {
@@ -872,10 +891,119 @@ export default function Dashboard() {
             <div className="space-y-4">
               {/* VEHICLE REPORTS */}
               {activeTab === 'vehicles' && filteredAlerts.map((alert) => (
-                <div key={alert.id} className="bg-dark-gray border border-gray-700 rounded-lg p-4 hover:border-accent-gold transition-colors">
-                  {/* Vehicle report content remains the same */}
-                </div>
-              ))}
+  <div key={alert.id} className="bg-dark-gray border border-gray-700 rounded-lg p-4 hover:border-accent-gold transition-colors">
+    <div className="flex flex-col md:flex-row md:items-center justify-between space-y-4 md:space-y-0">
+      <div className="flex items-center space-x-4">
+        <div className="bg-accent-gold p-3 rounded-lg">
+          <Car className="w-6 h-6 text-black" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-primary-white">
+            {alert.number_plate}
+          </h3>
+          <p className="text-sm text-gray-400">
+            {alert.make} {alert.model} • {alert.color}
+          </p>
+          <p className="text-sm text-gray-400">
+            {alert.reason} • {alert.suburb}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Reported by {getUserDisplayName(alert)} • {formatDate(alert.created_at)} at {formatTime(alert.created_at)}
+          </p>
+        </div>
+      </div>
+      
+      <div className="flex items-center space-x-2">
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+          alert.status === 'ACTIVE' ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'
+        }`}>
+          {alert.status}
+        </span>
+        
+        {alert.has_images && (
+          <button
+            onClick={() => alert.image_urls && handleImagePreview(alert.image_urls, 0)}
+            className="p-2 text-accent-gold hover:bg-gray-700 rounded transition-colors"
+            title="View Images"
+          >
+            <ImageIcon className="w-4 h-4" />
+          </button>
+        )}
+        
+        {alert.latitude && alert.longitude && (
+          <button
+            onClick={() => showMapModal(alert, 'vehicle')}
+            className="p-2 text-accent-blue hover:bg-gray-700 rounded transition-colors"
+            title="View Location"
+          >
+            <MapPin className="w-4 h-4" />
+          </button>
+        )}
+        
+        <button
+          onClick={() => showViewReportModal(alert, 'vehicle')}
+          className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+          title="View Details"
+        >
+          <Eye className="w-4 h-4" />
+        </button>
+        
+        {user && alert.user_id === user.id && (
+          <>
+            <button
+              onClick={() => handleEditAlert(alert)}
+              className="p-2 text-accent-gold hover:bg-gray-700 rounded transition-colors"
+              title="Edit Report"
+            >
+              <Edit className="w-4 h-4" />
+            </button>
+            
+            <button
+              onClick={() => setBoloAlert(alert)}
+              className="p-2 text-purple-400 hover:bg-gray-700 rounded transition-colors"
+              title="Generate BOLO Card"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+            
+            <button
+              onClick={() => handleDeleteAlert(alert.id, 'vehicle')}
+              className="p-2 text-red-400 hover:bg-gray-700 rounded transition-colors"
+              title="Delete Report"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+    
+    {alert.comments && (
+      <div className="mt-3 p-3 bg-gray-800 rounded">
+        <p className="text-sm text-gray-300">{alert.comments}</p>
+      </div>
+    )}
+    
+    <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
+      <div className="flex items-center space-x-1">
+        <Hash className="w-3 h-3" />
+        <span>OB: {alert.ob_number}</span>
+      </div>
+      {alert.case_number && (
+        <div className="flex items-center space-x-1">
+          <FileCheck className="w-3 h-3" />
+          <span>SAPS: {alert.case_number}</span>
+        </div>
+      )}
+      {alert.incident_date && (
+        <div className="flex items-center space-x-1">
+          <Calendar className="w-3 h-3" />
+          <span>Incident: {formatDate(alert.incident_date)}</span>
+        </div>
+      )}
+    </div>
+  </div>
+))}
 
               {/* CRIME REPORTS */}
               {activeTab === 'crimes' && filteredCrimeReports.map((report) => (

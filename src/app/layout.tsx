@@ -18,12 +18,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <OnlinePresenceTracker />
+      <body>
         <Header />
-        <main className="min-h-screen bg-dark-gray">
-          {children}
-        </main>
+        <main>{children}</main>
       </body>
     </html>
   )

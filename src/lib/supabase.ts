@@ -527,6 +527,53 @@ export const subscribeToPresence = (
   }
 }
 
+// Add this function to check and fix user profiles
+export const ensureUserProfile = async (userId: string, userData: { email: string; name?: string }) => {
+  try {
+    // First, check if profile exists without triggering recursion
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Error fetching profile:', fetchError);
+      return null;
+    }
+
+    if (!existingProfile) {
+      // Create profile if it doesn't exist
+      const { data: newProfile, error: createError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: userId,
+            email: userData.email,
+            name: userData.name || userData.email.split('@')[0],
+            approved: false,
+            role: 'user',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
+        ])
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('Error creating profile:', createError);
+        return null;
+      }
+      return newProfile;
+    }
+
+    return existingProfile;
+  } catch (error) {
+    console.error('Error in ensureUserProfile:', error);
+    return null;
+  }
+};
+
 /**
  * Get user statistics
  */
@@ -558,8 +605,8 @@ export const getUserStats = async (): Promise<{
     const onlineUsers = await getOnlineUsers()
 
     // Use type-safe filtering
-    const approvedUsersCount = profiles ? profiles.filter(profile => profile.approved).length : 0;
-    const adminUsersCount = profiles ? profiles.filter(profile => 
+    const approvedUsersCount = profiles ? profiles.filter((profile: { approved: any }) => profile.approved).length : 0;
+    const adminUsersCount = profiles ? profiles.filter((profile: { role: string; approved: any }) => 
       (profile.role === 'admin' || profile.role === 'moderator') && profile.approved
     ).length : 0;
 
