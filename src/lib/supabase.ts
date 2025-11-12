@@ -63,75 +63,43 @@ export interface OnlineUser {
 /**
  * Ensure a user exists in the profiles table, create if not exists
  */
-export const ensureUserExists = async (userId: string, userData: { email: string; name?: string }): Promise<UserProfile | null> => {
-  if (!hasValidSupabaseConfig) {
-    console.warn('Supabase not configured - ensureUserExists skipped')
-    return null
-  }
-
+export const ensureUserExists = async (userId: string, userData: { email: string; name?: string }) => {
   try {
-    // Check if profile exists
-    const { data: existingProfile, error: fetchError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-
-    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = no rows returned
-      console.error('Error checking existing profile:', fetchError)
-      throw fetchError
-    }
-
+    // Check if profile exists using safe method
+    const existingProfile = await getSafeUserProfile(userId);
+    
     if (existingProfile) {
-      // Update last login and return existing profile
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ 
-          last_login: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId)
-
-      if (updateError) {
-        console.error('Error updating last login:', updateError)
-      }
-      
-      return existingProfile
+      return existingProfile;
     }
 
     // Create new profile
-    const { data: newProfile, error: insertError } = await supabase
+    const { data: newProfile, error } = await supabase
       .from('profiles')
       .insert([
         {
           id: userId,
           email: userData.email,
           name: userData.name || userData.email.split('@')[0],
-          approved: false, // Default to not approved
+          approved: false,
           role: 'user',
-          last_login: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         }
       ])
       .select()
-      .single()
+      .single();
 
-    if (insertError) {
-      console.error('Error creating user profile:', insertError)
-      throw insertError
+    if (error) {
+      console.error('Error creating profile:', error);
+      return null;
     }
 
-    // Log the user creation
-    await logUserAction(userId, 'user_created', {
-      email: userData.email,
-      name: userData.name
-    })
-
-    return newProfile
+    return newProfile;
   } catch (error) {
-    console.error('Error in ensureUserExists:', error)
-    return null
+    console.error('Error in ensureUserExists:', error);
+    return null;
   }
-}
+};
 
 /**
  * Log user actions for audit trail
@@ -570,6 +538,27 @@ export const ensureUserProfile = async (userId: string, userData: { email: strin
     return existingProfile;
   } catch (error) {
     console.error('Error in ensureUserProfile:', error);
+    return null;
+  }
+};
+
+export const getSafeUserProfile = async (userId: string) => {
+  try {
+    // First try to get profile without triggering RLS issues
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Profile fetch error:', error);
+      return null;
+    }
+
+    return profile;
+  } catch (error) {
+    console.error('Error in getSafeUserProfile:', error);
     return null;
   }
 };

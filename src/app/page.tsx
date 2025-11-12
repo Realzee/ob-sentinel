@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { ensureUserProfile, supabase } from '@/lib/supabase'
+import { ensureUserProfile, getSafeUserProfile, supabase } from '@/lib/supabase'
 import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map, Calendar, Eye, CheckCircle, AlertCircle as AlertCircleIcon } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import AddCrimeForm from '@/components/AddCrimeForm'
@@ -335,16 +335,10 @@ export default function Dashboard() {
   setLoading(true);
 
   try {
-    // Fetch vehicle alerts with user data
+    // Fetch vehicle alerts - simplified without nested query
     let vehicleQuery = supabase
       .from('alerts_vehicles')
-      .select(`
-        *,
-        users:user_id (
-          name,
-          email
-        )
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (viewMode === 'my') {
@@ -358,19 +352,31 @@ export default function Dashboard() {
       setAlerts([]);
     } else {
       console.log(`✅ Loaded ${alertsData?.length || 0} vehicle alerts`);
-      setAlerts(alertsData || []);
+      
+      // Get user data separately for each alert to avoid nested query issues
+      const alertsWithUsers = await Promise.all(
+        (alertsData || []).map(async (alert: { user_id: string }) => {
+          const userProfile = await getSafeUserProfile(alert.user_id);
+          return {
+            ...alert,
+            users: userProfile ? {
+              name: userProfile.name,
+              email: userProfile.email
+            } : {
+              name: 'Unknown User',
+              email: 'unknown@example.com'
+            }
+          };
+        })
+      );
+      
+      setAlerts(alertsWithUsers);
     }
 
-    // Fetch crime reports with user data
+    // Fetch crime reports - simplified without nested query
     let crimeQuery = supabase
       .from('crime_reports')
-      .select(`
-        *,
-        users:user_id (
-          name,
-          email
-        )
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (viewMode === 'my') {
@@ -384,7 +390,25 @@ export default function Dashboard() {
       setCrimeReports([]);
     } else {
       console.log(`✅ Loaded ${crimesData?.length || 0} crime reports`);
-      setCrimeReports(crimesData || []);
+      
+      // Get user data separately for each crime report
+      const crimesWithUsers = await Promise.all(
+        (crimesData || []).map(async (report: { user_id: string }) => {
+          const userProfile = await getSafeUserProfile(report.user_id);
+          return {
+            ...report,
+            users: userProfile ? {
+              name: userProfile.name,
+              email: userProfile.email
+            } : {
+              name: 'Unknown User',
+              email: 'unknown@example.com'
+            }
+          };
+        })
+      );
+      
+      setCrimeReports(crimesWithUsers);
     }
 
   } catch (error) {
