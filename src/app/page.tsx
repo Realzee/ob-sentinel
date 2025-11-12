@@ -476,16 +476,14 @@ export default function Dashboard() {
         setAuthChecked(true)
        
         if (user) {
-          // Use Promise.all for parallel execution
-          await Promise.all([
-            ensureUserExists(user.id, {
-              email: user.email!,
-              name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
-            }).catch(error => {
-              console.warn('User creation failed (non-critical):', error)
-            }),
-            fetchAlerts()
-          ])
+          await ensureUserExists(user.id, {
+            email: user.email!,
+            name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
+          }).catch(error => {
+            console.warn('User creation failed (non-critical):', error)
+          })
+          // Immediately fetch alerts after user is set
+          await fetchAlerts()
         } else {
           setLoading(false)
         }
@@ -503,39 +501,43 @@ export default function Dashboard() {
 
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session?.user)
+    async (event, session) => {
+      console.log('Auth state changed:', event, session?.user)
+     
+      if (!mounted) return
+     
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        const currentUser = session?.user ?? null
+        setUser(currentUser)
        
-        if (!mounted) return
-       
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          setUser(session?.user ?? null)
-         
-          if (session?.user) {
-            ensureUserExists(session.user.id, {
-              email: session.user.email!,
-              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User'
-            }).catch(error => {
-              console.warn('User creation failed (non-critical):', error)
-            })
-            setTimeout(() => {
+        if (currentUser) {
+          await ensureUserExists(currentUser.id, {
+            email: currentUser.email!,
+            name: currentUser.user_metadata?.name || currentUser.email?.split('@')[0] || 'User'
+          }).catch(error => {
+            console.warn('User creation failed (non-critical):', error)
+          })
+          // Force refresh alerts after login
+          setTimeout(() => {
+            if (mounted) {
               fetchAlerts()
-            }, 500)
-          }
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setAlerts([])
-          setCrimeReports([])
-          setLoading(false)
+            }
+          }, 1000)
         }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setAlerts([])
+        setCrimeReports([])
+        setLoading(false)
       }
-    )
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
     }
-  }, [])
+  )
+
+  return () => {
+    mounted = false
+    subscription.unsubscribe()
+  }
+}, [])
 
   useEffect(() => {
     if (authChecked && user) {

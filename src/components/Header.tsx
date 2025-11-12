@@ -41,6 +41,7 @@ export default function Header() {
 
   useEffect(() => {
     let mounted = true
+    let subscription: any = null
 
     const initializeAuth = async () => {
       if (!hasValidSupabaseConfig) {
@@ -67,7 +68,7 @@ export default function Header() {
               setUserProfile(profile)
             } catch (profileError) {
               console.warn('Initial profile fetch failed:', profileError)
-              // Continue without profile - it might be created later
+              // Continue without profile
             }
           }
           setAuthLoading(false)
@@ -83,41 +84,50 @@ export default function Header() {
 
     initializeAuth()
 
-    // Set up auth state listener with proper unsubscribe handling
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session?.user)
-        
-        if (!mounted) return
-        
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-          const currentUser = session?.user ?? null
-          setUser(currentUser)
-          setAuthError(false)
+    // Set up auth state listener with proper error handling
+    try {
+      const authStateChange = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          console.log('Auth state changed:', event, session?.user)
           
-          if (currentUser) {
-            try {
-              const profile = await getCurrentUserProfile()
-              console.log('Profile after auth change:', profile)
-              setUserProfile(profile)
-            } catch (error) {
-              console.warn('Profile fetch failed after auth change:', error)
+          if (!mounted) return
+          
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+            const currentUser = session?.user ?? null
+            setUser(currentUser)
+            setAuthError(false)
+            
+            if (currentUser) {
+              try {
+                const profile = await getCurrentUserProfile()
+                console.log('Profile after auth change:', profile)
+                setUserProfile(profile)
+              } catch (error) {
+                console.warn('Profile fetch failed after auth change:', error)
+                setUserProfile(null)
+              }
+            } else {
               setUserProfile(null)
             }
-          } else {
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null)
             setUserProfile(null)
+            setAuthError(false)
           }
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setUserProfile(null)
-          setAuthError(false)
+          
+          if (mounted && authLoading) {
+            setAuthLoading(false)
+          }
         }
-        
-        if (mounted && authLoading) {
-          setAuthLoading(false)
-        }
+      )
+      
+      subscription = authStateChange.data.subscription
+    } catch (error) {
+      console.error('Error setting up auth listener:', error)
+      if (mounted) {
+        setAuthLoading(false)
       }
-    )
+    }
 
     // Safety timeout to prevent infinite loading
     const loadingTimeout = setTimeout(() => {
@@ -125,12 +135,16 @@ export default function Header() {
         console.warn('Auth loading timeout - forcing state to false')
         setAuthLoading(false)
       }
-    }, 10000) // 10 second timeout
+    }, 5000) // Reduced to 5 seconds
 
     return () => {
       mounted = false
       if (subscription) {
-        subscription.unsubscribe()
+        try {
+          subscription.unsubscribe()
+        } catch (error) {
+          console.error('Error unsubscribing:', error)
+        }
       }
       clearTimeout(loadingTimeout)
     }
@@ -305,7 +319,9 @@ export default function Header() {
                       <span className="text-xs text-yellow-400 block">Pending Approval</span>
                     )}
                     {userProfile && (
-                      <span className="text-xs text-gray-500 capitalize block">{userProfile.role}</span>
+                      <span className="text-xs text-gray-500 capitalize block">
+                        {userProfile.role === 'admin' ? 'Administrator' : userProfile.role}
+                      </span>
                     )}
                   </div>
                   <button 
@@ -433,7 +449,9 @@ export default function Header() {
                     <p className="text-xs text-yellow-400 mb-2">Pending Approval</p>
                   )}
                   {userProfile && (
-                    <p className="text-xs text-gray-500 capitalize mb-3">{userProfile.role}</p>
+                    <p className="text-xs text-gray-500 capitalize mb-3">
+                      {userProfile.role === 'admin' ? 'Administrator' : userProfile.role}
+                    </p>
                   )}
                   <button 
                     onClick={() => {

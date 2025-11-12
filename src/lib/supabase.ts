@@ -316,41 +316,48 @@ export const getCurrentUserProfile = async (): Promise<UserProfile | null> => {
     }
     
     if (!user) {
-      console.log('No user found');
       return null;
     }
 
-    console.log('Fetching profile for user:', user.id);
+    // Try to get profile with retry logic
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
 
-    // Simple approach without timeout race conditions
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+        if (!profileError && profile) {
+          return profile;
+        }
 
-    if (profileError) {
-      console.error('Error fetching profile:', profileError);
-      
-      // If profile doesn't exist, try to create it
-      if (profileError.code === 'PGRST116') { // Record not found
-        console.log('Profile not found, attempting to create...');
-        try {
+        // If profile doesn't exist, create it
+        if (profileError?.code === 'PGRST116') {
+          console.log('Creating profile for user:', user.id);
           const newProfile = await ensureUserExists(user.id, {
             email: user.email!,
             name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
           });
           return newProfile;
-        } catch (createError) {
-          console.error('Error creating profile:', createError);
-          return null;
+        }
+
+        retries--;
+        if (retries > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        console.error(`Profile fetch attempt ${4 - retries} failed:`, error);
+        retries--;
+        if (retries > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
-      return null;
     }
 
-    console.log('Profile found:', profile);
-    return profile;
+    console.error('All profile fetch attempts failed');
+    return null;
   } catch (error) {
     console.error('Unexpected error in getCurrentUserProfile:', error);
     return null;
