@@ -37,6 +37,53 @@ export default function AdminUsersPage() {
   const [currentUser, setCurrentUser] = useState<any>(null)
 
   useEffect(() => {
+  const checkAdminAccess = async () => {
+    setLoading(true)
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        window.location.href = '/login'
+        return
+      }
+
+      // Get user profile to check role
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('role, approved')
+        .eq('id', user.id)
+        .single()
+
+      if (error) {
+        console.error('Error fetching profile:', error)
+        window.location.href = '/dashboard'
+        return
+      }
+
+      // Only allow admin and moderator roles
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'moderator')) {
+        window.location.href = '/dashboard'
+        return
+      }
+
+      setCurrentUser(user)
+      
+      // Now fetch the users data
+      await fetchUsers()
+      
+    } catch (error) {
+      console.error('Error checking admin access:', error)
+      window.location.href = '/dashboard'
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  checkAdminAccess()
+}, [])
+
+  useEffect(() => {
     checkAuth()
     fetchUsers()
     startPresenceUpdates()

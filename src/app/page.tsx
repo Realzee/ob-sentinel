@@ -322,68 +322,80 @@ export default function Dashboard() {
 
   // MAIN FUNCTION TO FETCH REPORTS
   const fetchAlerts = async () => {
-    console.log('📊 Fetching reports...');
-    
-    if (!user) {
-      console.log('👤 No user, clearing reports');
-      setAlerts([]);
-      setCrimeReports([]);
-      setLoading(false);
-      return;
+  console.log('📊 Fetching reports...');
+  
+  if (!user) {
+    console.log('👤 No user, clearing reports');
+    setAlerts([]);
+    setCrimeReports([]);
+    setLoading(false);
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    // Fetch vehicle alerts with user data
+    let vehicleQuery = supabase
+      .from('alerts_vehicles')
+      .select(`
+        *,
+        users:user_id (
+          name,
+          email
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (viewMode === 'my') {
+      vehicleQuery = vehicleQuery.eq('user_id', user.id);
     }
 
-    setLoading(true);
+    const { data: alertsData, error: alertsError } = await vehicleQuery;
 
-    try {
-      // Fetch vehicle alerts
-      let vehicleQuery = supabase
-        .from('alerts_vehicles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (viewMode === 'my') {
-        vehicleQuery = vehicleQuery.eq('user_id', user.id);
-      }
-
-      const { data: alertsData, error: alertsError } = await vehicleQuery;
-
-      if (alertsError) {
-        console.error('❌ Error fetching alerts:', alertsError);
-        setAlerts([]);
-      } else {
-        console.log(`✅ Loaded ${alertsData?.length || 0} vehicle alerts`);
-        setAlerts(alertsData || []);
-      }
-
-      // Fetch crime reports
-      let crimeQuery = supabase
-        .from('crime_reports')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (viewMode === 'my') {
-        crimeQuery = crimeQuery.eq('user_id', user.id);
-      }
-
-      const { data: crimesData, error: crimesError } = await crimeQuery;
-
-      if (crimesError) {
-        console.error('❌ Error fetching crime reports:', crimesError);
-        setCrimeReports([]);
-      } else {
-        console.log(`✅ Loaded ${crimesData?.length || 0} crime reports`);
-        setCrimeReports(crimesData || []);
-      }
-
-    } catch (error) {
-      console.error('❌ Error fetching data:', error);
+    if (alertsError) {
+      console.error('❌ Error fetching alerts:', alertsError);
       setAlerts([]);
-      setCrimeReports([]);
-    } finally {
-      setLoading(false);
-      console.log('✅ Reports loading complete');
+    } else {
+      console.log(`✅ Loaded ${alertsData?.length || 0} vehicle alerts`);
+      setAlerts(alertsData || []);
     }
-  };
+
+    // Fetch crime reports with user data
+    let crimeQuery = supabase
+      .from('crime_reports')
+      .select(`
+        *,
+        users:user_id (
+          name,
+          email
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (viewMode === 'my') {
+      crimeQuery = crimeQuery.eq('user_id', user.id);
+    }
+
+    const { data: crimesData, error: crimesError } = await crimeQuery;
+
+    if (crimesError) {
+      console.error('❌ Error fetching crime reports:', crimesError);
+      setCrimeReports([]);
+    } else {
+      console.log(`✅ Loaded ${crimesData?.length || 0} crime reports`);
+      setCrimeReports(crimesData || []);
+    }
+
+  } catch (error) {
+    console.error('❌ Error fetching data:', error);
+    setAlerts([]);
+    setCrimeReports([]);
+  } finally {
+    setLoading(false);
+    console.log('✅ Reports loading complete');
+  }
+};
 
   // Set up real-time subscriptions - SIMPLIFIED
   useEffect(() => {
@@ -1006,11 +1018,132 @@ export default function Dashboard() {
 ))}
 
               {/* CRIME REPORTS */}
-              {activeTab === 'crimes' && filteredCrimeReports.map((report) => (
-                <div key={report.id} className="bg-dark-gray border border-gray-700 rounded-lg p-4 hover:border-red-600 transition-colors">
-                  {/* Crime report content remains the same */}
-                </div>
-              ))}
+{activeTab === 'crimes' && filteredCrimeReports.map((report) => (
+  <div key={report.id} className="bg-dark-gray border border-gray-700 rounded-lg p-4 hover:border-red-600 transition-colors">
+    <div className="flex flex-col md:flex-row md:items-center justify-between space-y-4 md:space-y-0">
+      <div className="flex items-center space-x-4">
+        <div className="bg-red-600 p-3 rounded-lg">
+          <Shield className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-primary-white">
+            {report.crime_type}
+          </h3>
+          <p className="text-sm text-gray-400">
+            {report.location} • {report.suburb}
+          </p>
+          <p className="text-sm text-gray-400 line-clamp-2">
+            {report.description}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Reported by {getUserDisplayName(report)} • {formatDate(report.created_at)} at {formatTime(report.created_at)}
+          </p>
+        </div>
+      </div>
+      
+      <div className="flex items-center space-x-2">
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+          report.status === 'ACTIVE' ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'
+        }`}>
+          {report.status}
+        </span>
+        
+        {report.has_images && (
+          <button
+            onClick={() => report.image_urls && handleImagePreview(report.image_urls, 0)}
+            className="p-2 text-red-400 hover:bg-gray-700 rounded transition-colors"
+            title="View Images"
+          >
+            <ImageIcon className="w-4 h-4" />
+          </button>
+        )}
+        
+        {report.latitude && report.longitude && (
+          <button
+            onClick={() => showMapModal(report, 'crime')}
+            className="p-2 text-accent-blue hover:bg-gray-700 rounded transition-colors"
+            title="View Location"
+          >
+            <MapPin className="w-4 h-4" />
+          </button>
+        )}
+        
+        <button
+          onClick={() => showViewReportModal(report, 'crime')}
+          className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+          title="View Details"
+        >
+          <Eye className="w-4 h-4" />
+        </button>
+        
+        {user && report.user_id === user.id && (
+          <>
+            <button
+              onClick={() => handleDeleteAlert(report.id, 'crime')}
+              className="p-2 text-red-400 hover:bg-gray-700 rounded transition-colors"
+              title="Delete Report"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+    
+    {/* Additional crime details */}
+    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+      {report.suspects_description && (
+        <div className="flex items-center space-x-1 text-gray-400">
+          <User className="w-3 h-3" />
+          <span>Suspects: {report.suspects_description.substring(0, 50)}...</span>
+        </div>
+      )}
+      {report.weapons_involved && (
+        <div className="flex items-center space-x-1 text-red-400">
+          <AlertTriangle className="w-3 h-3" />
+          <span>Weapons Involved</span>
+        </div>
+      )}
+      {report.injuries && (
+        <div className="flex items-center space-x-1 text-yellow-400">
+          <AlertTriangle className="w-3 h-3" />
+          <span>Injuries Sustained</span>
+        </div>
+      )}
+    </div>
+    
+    {report.comments && (
+      <div className="mt-3 p-3 bg-gray-800 rounded">
+        <p className="text-sm text-gray-300">{report.comments}</p>
+      </div>
+    )}
+    
+    <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
+      <div className="flex items-center space-x-1">
+        <Hash className="w-3 h-3" />
+        <span>CR: {report.ob_number}</span>
+      </div>
+      {report.case_number && (
+        <div className="flex items-center space-x-1">
+          <FileCheck className="w-3 h-3" />
+          <span>SAPS: {report.case_number}</span>
+        </div>
+      )}
+      {report.station_reported_at && (
+        <div className="flex items-center space-x-1">
+          <Building className="w-3 h-3" />
+          <span>Station: {report.station_reported_at}</span>
+        </div>
+      )}
+      {report.date_occurred && (
+        <div className="flex items-center space-x-1">
+          <Calendar className="w-3 h-3" />
+          <span>Occurred: {formatDate(report.date_occurred)}</span>
+        </div>
+      )}
+    </div>
+  </div>
+))}
              
               {/* EMPTY STATE */}
               {(activeTab === 'vehicles' && filteredAlerts.length === 0) ||

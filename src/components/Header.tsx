@@ -3,12 +3,13 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { User, LogOut, Settings, Shield, AlertTriangle } from 'lucide-react'
+import { User, LogOut, Shield, Menu, X } from 'lucide-react'
 
 export default function Header() {
   const [user, setUser] = useState<any>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [showDropdown, setShowDropdown] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     const getUser = async () => {
@@ -45,27 +46,39 @@ export default function Header() {
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     setShowDropdown(false)
+    setMobileMenuOpen(false)
   }
 
   return (
     <header className="bg-dark-gray border-b border-gray-700">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center py-4">
-          {/* Logo */}
-          <div className="flex items-center space-x-3">
-            <img
-              src="/rapid911-ireport-logo2.png"
-              alt="Rapid Rangers Logo"
-              className="w-12 h-12"
-            />
-            <div>
-              <h1 className="text-2xl font-bold text-primary-white">Rapid Rangers</h1>
-              <p className="text-sm text-gray-400">Community Safety Reporting</p>
+          {/* Logo - Fixed alignment */}
+          <div className="flex items-center space-x-4">
+            <div className="flex flex-col">
+              <img 
+                src="/rapid911-ireport-logo1.png"
+                alt="Rapid911 Logo" 
+                className="w-30 h-auto"
+              />
+              <p className="text-sm flashing-text text-accent-gold mt-1">
+                Smart Reporting System
+              </p>
             </div>
           </div>
 
-          {/* User Menu */}
-          <div className="flex items-center space-x-4">
+          {/* Mobile menu button */}
+          <div className="md:hidden">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="text-gray-400 hover:text-white p-2"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
+
+          {/* Desktop User Menu */}
+          <div className="hidden md:flex items-center space-x-4">
             {user ? (
               <div className="relative">
                 <button
@@ -74,11 +87,18 @@ export default function Header() {
                 >
                   <div className="text-right">
                     <p className="text-sm font-medium text-primary-white">
-                      {userProfile?.name || user.email}
+                      {user.email}
                     </p>
-                    <p className="text-xs text-gray-400 capitalize">
-                      {userProfile?.role}
-                    </p>
+                    <div className="flex items-center space-x-2">
+                      {userProfile?.name && (
+                        <p className="text-xs text-accent-gold">
+                          {userProfile.name}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-400 capitalize">
+                        {userProfile?.role}
+                      </p>
+                    </div>
                   </div>
                   <div className="w-10 h-10 bg-accent-gold rounded-full flex items-center justify-center text-black font-bold">
                     {userProfile?.name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase()}
@@ -89,22 +109,38 @@ export default function Header() {
                   <div className="absolute right-0 mt-2 w-48 bg-dark-gray border border-gray-700 rounded-lg shadow-lg z-50">
                     <div className="p-2">
                       <div className="px-3 py-2 text-sm text-gray-400 border-b border-gray-700">
-                        Signed in as {user.email}
+                        <div className="font-medium text-primary-white">{user.email}</div>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-accent-gold">{userProfile?.name}</span>
+                          <span className="text-gray-400 capitalize">{userProfile?.role}</span>
+                        </div>
                       </div>
                       
-                      {userProfile?.role === 'admin' && (
-                        <a
-                          href="/admin/users"
-                          className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                        >
-                          <Shield className="w-4 h-4" />
-                          <span>Admin Panel</span>
-                        </a>
-                      )}
+                      {/* Show Admin Panel for Admin and Moderator roles */}
+                      {(userProfile?.role === 'admin' || userProfile?.role === 'moderator') && (
+  <a
+    href="/admin/users"
+    className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
+    onClick={(e) => {
+      // Double-check role before navigating (optional safety check)
+      if (!userProfile || (userProfile.role !== 'admin' && userProfile.role !== 'moderator')) {
+        e.preventDefault()
+        alert('You do not have permission to access the admin panel.')
+        return
+      }
+      setShowDropdown(false)
+      setMobileMenuOpen(false)
+    }}
+  >
+    <Shield className="w-4 h-4" />
+    <span>Admin Panel</span>
+  </a>
+)}
                       
                       <a
                         href="/profile"
                         className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
+                        onClick={() => setShowDropdown(false)}
                       >
                         <User className="w-4 h-4" />
                         <span>My Profile</span>
@@ -134,7 +170,75 @@ export default function Header() {
             )}
           </div>
         </div>
+
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-700 pt-4 pb-4">
+            {user ? (
+              <div className="space-y-3">
+                <div className="text-center text-gray-400 pb-2 border-b border-gray-700">
+                  <div className="font-medium text-primary-white">{user.email}</div>
+                  <div className="flex justify-center items-center space-x-4 mt-1">
+                    {userProfile?.name && (
+                      <span className="text-accent-gold text-sm">{userProfile.name}</span>
+                    )}
+                    <span className="text-gray-400 text-sm capitalize">{userProfile?.role}</span>
+                  </div>
+                </div>
+                
+                {(userProfile?.role === 'admin' || userProfile?.role === 'moderator') && (
+                  <a
+                    href="/admin/users"
+                    className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <Shield className="w-4 h-4" />
+                    <span>Admin Panel</span>
+                  </a>
+                )}
+                
+                <a
+                  href="/profile"
+                  className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <User className="w-4 h-4" />
+                  <span>My Profile</span>
+                </a>
+                
+                <button
+                  onClick={handleSignOut}
+                  className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-gray-700 rounded transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <a
+                  href="/login"
+                  className="btn-primary flex items-center justify-center space-x-2 w-full"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <User className="w-4 h-4" />
+                  <span>Sign In</span>
+                </a>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      <style jsx>{`
+        @keyframes flash {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        .flashing-text {
+          animation: flash 2s infinite;
+        }
+      `}</style>
     </header>
   )
 }
