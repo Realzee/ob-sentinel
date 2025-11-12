@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, getAllUsers, updateUserProfile, getOnlineUsers, getUserLogs, getCurrentUserProfile } from '@/lib/supabase'
-import { Users, Shield, CheckCircle, XCircle, Edit, Search, RefreshCw, Eye, UserCheck, UserX, Clock, X } from 'lucide-react'
+import { supabase, hasValidSupabaseConfig, logUserAction, updateUserPresence, getOnlineUsers } from '@/lib/supabase'
+import { Users, Shield, CheckCircle, XCircle, Edit, Save, X, User, Clock, Search, Filter, Wifi, WifiOff } from 'lucide-react'
 
 interface UserProfile {
   id: string
@@ -15,166 +15,150 @@ interface UserProfile {
   updated_at: string
 }
 
-interface OnlineUser {
-  last_seen: string
-  user_agent: string
-  ip_address: string
-  profiles: UserProfile
-}
-
-interface UserLog {
-  id: string
-  user_id: string
-  action: string
-  ip_address: string
-  user_agent: string
-  details: any
-  created_at: string
-}
+// Use the correct OnlineUser type from supabase
+type OnlineUser = Awaited<ReturnType<typeof getOnlineUsers>>[number]
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserProfile[]>([])
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([])
   const [loading, setLoading] = useState(true)
-  const [updating, setUpdating] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
-  const [activeTab, setActiveTab] = useState<'all' | 'online'>('all')
-  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null)
-  const [userLogs, setUserLogs] = useState<UserLog[]>([])
-  const [logsLoading, setLogsLoading] = useState(false)
-  const [currentUserRole, setCurrentUserRole] = useState<'user' | 'moderator' | 'admin'>('user')
-  const [authChecked, setAuthChecked] = useState(false)
+  const [filterRole, setFilterRole] = useState('all')
+  const [filterApproved, setFilterApproved] = useState('all')
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<{approved: boolean, role: 'user' | 'moderator' | 'admin'}>({approved: false, role: 'user'})
+  const [currentUser, setCurrentUser] = useState<any>(null)
+
+  useEffect(() => {
+    checkAuth()
+    fetchUsers()
+    startPresenceUpdates()
+  }, [])
+
+  const checkAuth = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    setCurrentUser(user)
+    
+    if (user) {
+      updateUserPresence(user.id)
+    }
+  }
 
   const fetchUsers = async () => {
+    if (!hasValidSupabaseConfig) {
+      setError('System not configured')
+      setLoading(false)
+      return
+    }
+
     try {
-      setLoading(true)
-      const usersData = await getAllUsers()
-      if (usersData) {
-        setUsers(usersData)
-      }
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setUsers(profiles || [])
     } catch (error: any) {
-      console.error('Error fetching users:', error)
-      if (error.message === 'Insufficient permissions') {
-        setAuthChecked(true)
-      }
+      setError(error.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchOnlineUsers = async () => {
-    try {
-      const onlineData = await getOnlineUsers()
-      if (onlineData) {
-        setOnlineUsers(onlineData)
+  const startPresenceUpdates = async () => {
+    // Update presence every minute
+    const presenceInterval = setInterval(async () => {
+      if (currentUser) {
+        await updateUserPresence(currentUser.id)
       }
-    } catch (error) {
-      console.error('Error fetching online users:', error)
-    }
-  }
+      const onlineUsersData = await getOnlineUsers()
+      setOnlineUsers(onlineUsersData)
+    }, 60000)
 
-  const handleUpdateUser = async (userId: string, updates: any) => {
-    try {
-      setUpdating(userId)
-      await updateUserProfile(userId, updates)
-      await fetchUsers() // Refresh the list
-    } catch (error: any) {
-      console.error('Error updating user:', error)
-      alert(`Error: ${error.message}`)
-    } finally {
-      setUpdating(null)
-    }
-  }
-
-  const fetchUserLogs = async (userId: string) => {
-    try {
-      setLogsLoading(true)
-      const logs = await getUserLogs(userId)
-      if (logs) {
-        setUserLogs(logs)
-      }
-      setSelectedUser(users.find(u => u.id === userId) || null)
-    } catch (error: any) {
-      console.error('Error fetching user logs:', error)
-      alert(`Error: ${error.message}`)
-    } finally {
-      setLogsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        const profile = await getCurrentUserProfile()
-        if (profile) {
-          setCurrentUserRole(profile.role)
-          setAuthChecked(true)
-          if (profile.role === 'admin' || profile.role === 'moderator') {
-            await Promise.all([fetchUsers(), fetchOnlineUsers()])
-          }
-        } else {
-          setAuthChecked(true)
-        }
-      } catch (error) {
-        console.error('Initialization error:', error)
-        setAuthChecked(true)
-      }
-    }
-
-    initialize()
-
-    // Set up real-time subscription for online users
-    const channel = supabase.channel('online-users')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'online_users'
-        },
-        () => {
-          fetchOnlineUsers()
-        }
-      )
-      .subscribe()
+    // Initial load
+    const onlineUsersData = await getOnlineUsers()
+    setOnlineUsers(onlineUsersData)
 
     return () => {
-      channel.unsubscribe()
+      clearInterval(presenceInterval)
     }
-  }, [])
-
-  const filteredUsers = users.filter(user =>
-    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.role.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
-  const canManageUsers = currentUserRole === 'admin' || currentUserRole === 'moderator'
-  const canAssignAdmin = currentUserRole === 'admin'
-
-  if (!authChecked) {
-    return (
-      <div className="min-h-screen bg-dark-gray py-8">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="card p-6 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-400">Checking permissions...</p>
-          </div>
-        </div>
-      </div>
-    )
   }
 
-  if (!canManageUsers) {
+  const handleEdit = (user: UserProfile) => {
+    setEditingUserId(user.id)
+    setEditForm({ approved: user.approved, role: user.role })
+  }
+
+  const handleSave = async (userId: string) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update(editForm)
+        .eq('id', userId)
+
+      if (error) throw error
+
+      // Log the action
+      if (currentUser) {
+        await logUserAction(currentUser.id, 'update_user_profile', {
+          target_user_id: userId,
+          changes: editForm
+        })
+      }
+
+      setUsers(users.map(user => user.id === userId ? { ...user, ...editForm } : user))
+      setEditingUserId(null)
+      setSuccess('User updated successfully')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (error: any) {
+      setError(error.message)
+    }
+  }
+
+  const handleCancel = () => {
+    setEditingUserId(null)
+  }
+
+  const getOnlineStatus = (userId: string) => {
+    const onlineUser = onlineUsers.find(u => u.user_id === userId)
+    if (onlineUser) {
+      const lastSeen = new Date(onlineUser.last_seen)
+      const now = new Date()
+      const diffMinutes = Math.floor((now.getTime() - lastSeen.getTime()) / 60000)
+      return diffMinutes < 2 ? 'online' : `active ${diffMinutes}m ago`
+    }
+    return 'offline'
+  }
+
+  const isUserOnline = (userId: string) => {
+    const status = getOnlineStatus(userId)
+    return status === 'online'
+  }
+
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = 
+      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.role.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    const matchesRole = filterRole === 'all' || user.role === filterRole
+    const matchesApproved = filterApproved === 'all' || 
+      (filterApproved === 'approved' && user.approved) ||
+      (filterApproved === 'pending' && !user.approved)
+    
+    return matchesSearch && matchesRole && matchesApproved
+  })
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-dark-gray py-8">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="card p-6 text-center">
-            <Shield className="w-16 h-16 text-red-600 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-primary-white mb-4">Access Denied</h1>
-            <p className="text-gray-400">
-              You don't have permission to access the admin panel. Please contact an administrator.
-            </p>
+      <div className="min-h-screen bg-dark-gray p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading users...</p>
           </div>
         </div>
       </div>
@@ -182,36 +166,45 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-dark-gray py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <div className="bg-blue-600 p-3 rounded-full">
-              <Shield className="w-8 h-8 text-white" />
+    <div className="min-h-screen bg-dark-gray p-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-3">
+            <div className="bg-accent-gold p-2 rounded-lg">
+              <Users className="w-6 h-6 text-black" />
             </div>
+            <h1 className="text-3xl font-bold text-primary-white">User Management</h1>
           </div>
-          <h1 className="text-3xl font-bold text-primary-white mb-2">
-            User Management
-          </h1>
-          <p className="text-gray-400 text-lg">
-            Manage user accounts, permissions, and monitor activity
-          </p>
+          <div className="text-sm text-gray-400">
+            {onlineUsers.filter(u => isUserOnline(u.user_id)).length} users online
+          </div>
         </div>
 
-        {/* Stats */}
+        {error && (
+          <div className="bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded mb-6">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="bg-green-900 border border-green-700 text-green-300 px-4 py-3 rounded mb-6">
+            {success}
+          </div>
+        )}
+
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="card p-6 border-l-4 border-blue-500">
+          <div className="card p-6 border-l-4 border-accent-gold">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Total Users</p>
-                <p className="text-3xl font-bold text-blue-400">{users.length}</p>
+                <p className="text-3xl font-bold text-accent-gold">{users.length}</p>
               </div>
-              <Users className="w-8 h-8 text-blue-400" />
+              <Users className="w-8 h-8 text-accent-gold" />
             </div>
           </div>
 
-          <div className="card p-6 border-l-4 border-green-500">
+          <div className="card p-6 border-l-4 border-green-600">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Approved Users</p>
@@ -219,26 +212,28 @@ export default function AdminUsersPage() {
                   {users.filter(u => u.approved).length}
                 </p>
               </div>
-              <UserCheck className="w-8 h-8 text-green-400" />
+              <CheckCircle className="w-8 h-8 text-green-400" />
             </div>
           </div>
 
-          <div className="card p-6 border-l-4 border-yellow-500">
+          <div className="card p-6 border-l-4 border-blue-500">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Online Now</p>
-                <p className="text-3xl font-bold text-yellow-400">{onlineUsers.length}</p>
+                <p className="text-3xl font-bold text-blue-400">
+                  {onlineUsers.filter(u => isUserOnline(u.user_id)).length}
+                </p>
               </div>
-              <Clock className="w-8 h-8 text-yellow-400" />
+              <Wifi className="w-8 h-8 text-blue-400" />
             </div>
           </div>
 
-          <div className="card p-6 border-l-4 border-purple-500">
+          <div className="card p-6 border-l-4 border-purple-600">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-400">Admins</p>
+                <p className="text-sm text-gray-400">Admins/Mods</p>
                 <p className="text-3xl font-bold text-purple-400">
-                  {users.filter(u => u.role === 'admin').length}
+                  {users.filter(u => u.role === 'admin' || u.role === 'moderator').length}
                 </p>
               </div>
               <Shield className="w-8 h-8 text-purple-400" />
@@ -246,226 +241,214 @@ export default function AdminUsersPage() {
           </div>
         </div>
 
-        {/* Tabs and Search */}
+        {/* Filters and Search */}
         <div className="card p-6 mb-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setActiveTab('all')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeTab === 'all'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                All Users
-              </button>
-              <button
-                onClick={() => setActiveTab('online')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeTab === 'online'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Online Users
-              </button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search users..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="form-input pl-10"
+              />
             </div>
 
-            <div className="flex items-center space-x-4">
-              <div className="relative w-64">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Search users..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="form-input pl-10"
-                  autoComplete="username"
-                />
-              </div>
-              <button
-                onClick={() => {
-                  fetchUsers()
-                  fetchOnlineUsers()
-                }}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
-                title="Refresh"
-              >
-                <RefreshCw className="w-5 h-5" />
-              </button>
-            </div>
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              className="form-input"
+            >
+              <option value="all">All Roles</option>
+              <option value="user">Users</option>
+              <option value="moderator">Moderators</option>
+              <option value="admin">Admins</option>
+            </select>
+
+            <select
+              value={filterApproved}
+              onChange={(e) => setFilterApproved(e.target.value)}
+              className="form-input"
+            >
+              <option value="all">All Status</option>
+              <option value="approved">Approved</option>
+              <option value="pending">Pending</option>
+            </select>
           </div>
         </div>
 
         {/* Users Table */}
         <div className="card p-6">
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-400">Loading users...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-700">
-                    <th className="text-left py-3 px-4 text-gray-400 font-medium">User</th>
-                    <th className="text-left py-3 px-4 text-gray-400 font-medium">Role</th>
-                    <th className="text-left py-3 px-4 text-gray-400 font-medium">Status</th>
-                    <th className="text-left py-3 px-4 text-gray-400 font-medium">Last Login</th>
-                    <th className="text-left py-3 px-4 text-gray-400 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(activeTab === 'all' ? filteredUsers : onlineUsers.map(ou => ou.profiles)).map((user) => (
-                    <tr key={user.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                      <td className="py-3 px-4">
-                        <div>
-                          <p className="text-primary-white font-medium">{user.name || 'No name'}</p>
-                          <p className="text-sm text-gray-400">{user.email}</p>
-                          <p className="text-xs text-gray-500">
-                            Joined {new Date(user.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <select
-                          value={user.role}
-                          onChange={(e) => handleUpdateUser(user.id, { role: e.target.value as any })}
-                          disabled={updating === user.id || !canAssignAdmin}
-                          className="bg-dark-gray border border-gray-600 rounded px-2 py-1 text-sm text-primary-white disabled:opacity-50"
-                          autoComplete="off"
-                        >
-                          <option value="user">User</option>
-                          <option value="moderator">Moderator</option>
-                          {canAssignAdmin && <option value="admin">Admin</option>}
-                        </select>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center space-x-2">
-                          {user.approved ? (
-                            <CheckCircle className="w-4 h-4 text-green-400" />
-                          ) : (
-                            <XCircle className="w-4 h-4 text-red-400" />
-                          )}
-                          <button
-                            onClick={() => handleUpdateUser(user.id, { approved: !user.approved })}
-                            disabled={updating === user.id}
-                            className={`px-2 py-1 rounded text-xs font-medium ${
-                              user.approved
-                                ? 'bg-red-600 hover:bg-red-700 text-white'
-                                : 'bg-green-600 hover:bg-green-700 text-white'
-                            } disabled:opacity-50`}
-                          >
-                            {user.approved ? 'Revoke' : 'Approve'}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-400">
-                        {user.last_login
-                          ? new Date(user.last_login).toLocaleDateString()
-                          : 'Never'}
-                      </td>
-                      <td className="py-3 px-4">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="text-left p-4 text-gray-400 font-medium">User</th>
+                  <th className="text-left p-4 text-gray-400 font-medium">Status</th>
+                  <th className="text-left p-4 text-gray-400 font-medium">Role</th>
+                  <th className="text-left p-4 text-gray-400 font-medium">Last Login</th>
+                  <th className="text-left p-4 text-gray-400 font-medium">Online</th>
+                  <th className="text-left p-4 text-gray-400 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map(user => (
+                  <tr key={user.id} className="border-b border-gray-800 hover:bg-gray-800 transition-colors">
+                    <td className="p-4">
+                      <div>
+                        <p className="font-medium text-primary-white">
+                          {user.name || 'No name'}
+                        </p>
+                        <p className="text-sm text-gray-400">{user.email}</p>
+                        <p className="text-xs text-gray-500">
+                          Joined {new Date(user.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      {user.approved ? (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-600 text-white">
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          Approved
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-600 text-white">
+                          <Clock className="w-3 h-3 mr-1" />
+                          Pending
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        user.role === 'admin' ? 'bg-purple-600 text-white' :
+                        user.role === 'moderator' ? 'bg-blue-600 text-white' :
+                        'bg-gray-600 text-white'
+                      }`}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="p-4 text-sm text-gray-400">
+                      {user.last_login 
+                        ? new Date(user.last_login).toLocaleString()
+                        : 'Never'
+                      }
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center space-x-2">
+                        {isUserOnline(user.id) ? (
+                          <>
+                            <Wifi className="w-4 h-4 text-green-400" />
+                            <span className="text-green-400 text-sm">Online</span>
+                          </>
+                        ) : (
+                          <>
+                            <WifiOff className="w-4 h-4 text-gray-500" />
+                            <span className="text-gray-500 text-sm">
+                              {getOnlineStatus(user.id)}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      {editingUserId === user.id ? (
                         <div className="flex space-x-2">
                           <button
-                            onClick={() => fetchUserLogs(user.id)}
-                            className="p-1 text-blue-400 hover:bg-blue-600 hover:text-white rounded transition-colors"
-                            title="View Logs"
+                            onClick={() => handleSave(user.id)}
+                            className="text-green-500 hover:text-green-400 p-1 rounded transition-colors"
+                            title="Save"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Save className="w-4 h-4" />
                           </button>
-                          {onlineUsers.some(ou => ou.profiles.id === user.id) && (
-                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Online" />
-                          )}
+                          <button
+                            onClick={handleCancel}
+                            className="text-red-500 hover:text-red-400 p-1 rounded transition-colors"
+                            title="Cancel"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      ) : (
+                        <button
+                          onClick={() => handleEdit(user)}
+                          className="text-accent-gold hover:text-yellow-400 p-1 rounded transition-colors"
+                          title="Edit User"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-              {filteredUsers.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  No users found matching your search.
+            {filteredUsers.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No users found matching your criteria</p>
+              </div>
+            )}
+          </div>
+
+          {/* Edit Modal */}
+          {editingUserId && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-md">
+                <div className="p-6 border-b border-gray-700">
+                  <h3 className="text-lg font-semibold text-primary-white">Edit User</h3>
                 </div>
-              )}
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Approval Status
+                    </label>
+                    <label className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        checked={editForm.approved}
+                        onChange={e => setEditForm({...editForm, approved: e.target.checked})}
+                        className="rounded border-gray-600 bg-dark-gray text-accent-gold focus:ring-accent-gold"
+                      />
+                      <span className="text-sm text-gray-300">Approved</span>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Role
+                    </label>
+                    <select
+                      value={editForm.role}
+                      onChange={e => setEditForm({...editForm, role: e.target.value as any})}
+                      className="form-input"
+                    >
+                      <option value="user">User</option>
+                      <option value="moderator">Moderator</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="p-6 border-t border-gray-700 flex justify-end space-x-3">
+                  <button
+                    onClick={handleCancel}
+                    className="px-4 py-2 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleSave(editingUserId)}
+                    className="btn-primary"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
       </div>
-
-      {/* User Logs Modal */}
-      {selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-gray-700 flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold text-primary-white">
-                  User Logs: {selectedUser.name || selectedUser.email}
-                </h3>
-                <p className="text-sm text-gray-400 mt-1">
-                  Role: {selectedUser.role} • Approved: {selectedUser.approved ? 'Yes' : 'No'}
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setSelectedUser(null)
-                  setUserLogs([])
-                }}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-auto">
-              {logsLoading ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                  <p className="text-gray-400">Loading logs...</p>
-                </div>
-              ) : (
-                <div className="p-6">
-                  {userLogs.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      No activity logs found for this user.
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {userLogs.map((log) => (
-                        <div key={log.id} className="bg-gray-800 rounded-lg p-4 border-l-4 border-blue-500">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-sm font-medium text-blue-400 capitalize">
-                              {log.action.replace(/_/g, ' ')}
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              {new Date(log.created_at).toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="text-sm text-gray-300 space-y-1">
-                            <p><strong>IP:</strong> {log.ip_address || 'Unknown'}</p>
-                            <p><strong>User Agent:</strong> {log.user_agent}</p>
-                            {log.details && (
-                              <div>
-                                <strong>Details:</strong>
-                                <pre className="text-xs mt-1 bg-gray-900 p-2 rounded overflow-x-auto">
-                                  {JSON.stringify(log.details, null, 2)}
-                                </pre>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
