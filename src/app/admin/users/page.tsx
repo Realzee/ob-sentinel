@@ -49,7 +49,9 @@ export default function AdminUsersPage() {
     try {
       setLoading(true)
       const usersData = await getAllUsers()
-      setUsers(usersData)
+      if (usersData) {
+        setUsers(usersData)
+      }
     } catch (error: any) {
       console.error('Error fetching users:', error)
       if (error.message === 'Insufficient permissions') {
@@ -63,7 +65,9 @@ export default function AdminUsersPage() {
   const fetchOnlineUsers = async () => {
     try {
       const onlineData = await getOnlineUsers()
-      setOnlineUsers(onlineData)
+      if (onlineData) {
+        setOnlineUsers(onlineData)
+      }
     } catch (error) {
       console.error('Error fetching online users:', error)
     }
@@ -86,7 +90,9 @@ export default function AdminUsersPage() {
     try {
       setLogsLoading(true)
       const logs = await getUserLogs(userId)
-      setUserLogs(logs)
+      if (logs) {
+        setUserLogs(logs)
+      }
       setSelectedUser(users.find(u => u.id === userId) || null)
     } catch (error: any) {
       console.error('Error fetching user logs:', error)
@@ -98,15 +104,19 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     const initialize = async () => {
-      const profile = await getCurrentUserProfile()
-      if (profile) {
-        setCurrentUserRole(profile.role)
-        setAuthChecked(true)
-        if (profile.role === 'admin' || profile.role === 'moderator') {
-          await fetchUsers()
-          await fetchOnlineUsers()
+      try {
+        const profile = await getCurrentUserProfile()
+        if (profile) {
+          setCurrentUserRole(profile.role)
+          setAuthChecked(true)
+          if (profile.role === 'admin' || profile.role === 'moderator') {
+            await Promise.all([fetchUsers(), fetchOnlineUsers()])
+          }
+        } else {
+          setAuthChecked(true)
         }
-      } else {
+      } catch (error) {
+        console.error('Initialization error:', error)
         setAuthChecked(true)
       }
     }
@@ -327,7 +337,7 @@ export default function AdminUsersPage() {
                         >
                           <option value="user">User</option>
                           <option value="moderator">Moderator</option>
-                          <option value="admin">Admin</option>
+                          {canAssignAdmin && <option value="admin">Admin</option>}
                         </select>
                       </td>
                       <td className="py-3 px-4">

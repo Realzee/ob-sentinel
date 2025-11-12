@@ -26,30 +26,20 @@ export const getCurrentUser = async () => {
   }
 }
 
-export const ensureUserExists = async (userId: string, userData: { email: string; name?: string }) => {
-  if (!hasValidSupabaseConfig) {
-    return null
-  }
-
+export const ensureUserExists = async (userId: string, userData: { email: string; name: string }) => {
   try {
-    // Check if user already exists in profiles
+    // First check if user exists
     const { data: existingUser } = await supabase
       .from('profiles')
       .select('id')
       .eq('id', userId)
-      .single()
+      .single();
 
     if (existingUser) {
-      // Update last login
-      await supabase
-        .from('profiles')
-        .update({ last_login: new Date().toISOString() })
-        .eq('id', userId)
-      
-      return existingUser
+      return existingUser;
     }
 
-    // Create new user profile
+    // Create new user
     const { data: newUser, error } = await supabase
       .from('profiles')
       .insert([
@@ -57,24 +47,25 @@ export const ensureUserExists = async (userId: string, userData: { email: string
           id: userId,
           email: userData.email,
           name: userData.name,
-          last_login: new Date().toISOString()
+          approved: false,
+          role: 'user',
+          last_login: new Date().toISOString(),
         }
       ])
       .select()
-      .single()
+      .single();
 
     if (error) {
-      console.error('Error creating user profile:', error)
-      return null
+      console.error('Error creating user profile:', error);
+      throw error;
     }
 
-    return newUser
+    return newUser;
   } catch (error) {
-    console.error('Error ensuring user exists:', error)
-    return null
+    console.error('Error in ensureUserExists:', error);
+    throw error;
   }
-}
-
+};
 // User management functions
 export const getUserProfile = async (userId: string) => {
   const { data, error } = await supabase
@@ -243,14 +234,24 @@ export const getOnlineUsers = async () => {
 }
 
 export const getCurrentUserProfile = async () => {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-  
-  return profile
-}
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching user profile:', error);
+      return null;
+    }
+
+    return profile;
+  } catch (error) {
+    console.error('Error in getCurrentUserProfile:', error);
+    return null;
+  }
+};

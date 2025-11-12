@@ -460,43 +460,47 @@ export default function Dashboard() {
     let mounted = true
 
     const initializeApp = async () => {
-      if (!hasValidSupabaseConfig) {
-        console.warn('Supabase not configured')
-        setLoading(false)
-        setAuthChecked(true)
-        return
-      }
+    if (!hasValidSupabaseConfig) {
+      console.warn('Supabase not configured')
+      setLoading(false)
+      setAuthChecked(true)
+      return
+    }
 
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        console.log('Initial user:', user)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      console.log('Initial user:', user)
+     
+      if (mounted) {
+        setUser(user)
+        setAuthChecked(true)
        
-        if (mounted) {
-          setUser(user)
-          setAuthChecked(true)
-         
-          if (user) {
+        if (user) {
+          // Use Promise.all for parallel execution
+          await Promise.all([
             ensureUserExists(user.id, {
               email: user.email!,
               name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
             }).catch(error => {
               console.warn('User creation failed (non-critical):', error)
-            })
-            await fetchAlerts()
-          } else {
-            setLoading(false)
-          }
-        }
-      } catch (error) {
-        console.error('Initialization error:', error)
-        if (mounted) {
+            }),
+            fetchAlerts()
+          ])
+        } else {
           setLoading(false)
-          setAuthChecked(true)
         }
       }
+    } catch (error) {
+      console.error('Initialization error:', error)
+      if (mounted) {
+        setLoading(false)
+        setAuthChecked(true)
+      }
     }
+  }
 
-    initializeApp()
+  initializeApp()
+
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {

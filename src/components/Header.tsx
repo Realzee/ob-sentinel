@@ -35,8 +35,13 @@ export default function Header() {
         setUser(currentUser)
         
         if (currentUser) {
-          const profile = await getCurrentUserProfile()
-          setUserProfile(profile)
+          try {
+            const profile = await getCurrentUserProfile()
+            setUserProfile(profile)
+          } catch (profileError) {
+            console.warn('Profile fetch failed, continuing without profile:', profileError)
+            // Continue without profile - it might be created later
+          }
         }
       } catch (error) {
         console.error('Auth initialization error:', error)
@@ -57,8 +62,12 @@ export default function Header() {
           setUser(session?.user ?? null)
           setAuthError(false)
           if (session?.user) {
-            const profile = await getCurrentUserProfile()
-            setUserProfile(profile)
+            try {
+              const profile = await getCurrentUserProfile()
+              setUserProfile(profile)
+            } catch (error) {
+              console.warn('Profile fetch failed after auth change:', error)
+            }
           }
         } else if (event === 'SIGNED_OUT') {
           setUser(null)
