@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, hasValidSupabaseConfig, getCurrentUser, getCurrentUserProfile } from '@/lib/supabase'
+import { ChevronDown, Users, Shield, FileText, Car, AlertTriangle } from 'lucide-react'
 
 interface UserProfile {
   id: string
@@ -20,6 +21,23 @@ export default function Header() {
   const [authError, setAuthError] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
+  const [reportsDropdownOpen, setReportsDropdownOpen] = useState(false)
+  const [adminDropdownOpen, setAdminDropdownOpen] = useState(false)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.dropdown-container')) {
+        setReportsDropdownOpen(false)
+        setAdminDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -30,7 +48,6 @@ export default function Header() {
       }
 
       try {
-        // Get current user with improved error handling
         const currentUser = await getCurrentUser()
         setUser(currentUser)
         
@@ -40,7 +57,6 @@ export default function Header() {
             setUserProfile(profile)
           } catch (profileError) {
             console.warn('Profile fetch failed, continuing without profile:', profileError)
-            // Continue without profile - it might be created later
           }
         }
       } catch (error) {
@@ -53,7 +69,6 @@ export default function Header() {
 
     initializeAuth()
 
-    // Set up auth state listener with better error handling
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event)
@@ -92,7 +107,6 @@ export default function Header() {
         setUser(null)
         setUserProfile(null)
         setAuthError(false)
-        // Force page refresh to reset state
         window.location.href = '/'
       }
     } catch (error) {
@@ -104,23 +118,21 @@ export default function Header() {
     setMenuOpen(!menuOpen)
   }
 
-  // Show loading state
+  const canAccessAdmin = userProfile && (userProfile.role === 'admin' || userProfile.role === 'moderator') && userProfile.approved
+
   if (authLoading) {
     return (
       <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
         <div className="max-w-6xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-left space-x-4">
-              {/* Simple logo container without background */}
               <div className="flex flex-col items-left justify-left">
                 <img 
-            src="/rapid911-ireport-logo1.png"
-            alt="Rapid911 Logo" 
-            className="w-30 h-auto"
-          />
-          <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
-              </div>
-              <div>
+                  src="/rapid911-ireport-logo1.png"
+                  alt="Rapid911 Logo" 
+                  className="w-30 h-auto"
+                />
+                <p className="text-sm flashing-text">Smart Reporting System</p>
               </div>
             </div>
             <div className="text-sm text-gray-400">Loading...</div>
@@ -134,17 +146,16 @@ export default function Header() {
     <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
       <div className="max-w-6xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
-          {/* Logo and Brand - Logo without container */}
+          {/* Logo and Brand */}
           <div className="flex items-center space-x-4">
             <div className="flex flex-col items-left justify-center">
-                <img 
-                  src="/rapid911-ireport-logo1.png"
-                  alt="Rapid911 Logo" 
-                  className="w-30 h-auto"
-            />
-            <p className="text-sm flashing-text flashing-text">Smart Reporting System</p>
+              <img 
+                src="/rapid911-ireport-logo1.png"
+                alt="Rapid911 Logo" 
+                className="w-30 h-auto"
+              />
+              <p className="text-sm flashing-text">Smart Reporting System</p>
             </div>
-            
           </div>
 
           {/* Authentication Status */}
@@ -155,47 +166,86 @@ export default function Header() {
           )}
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-6">
+          <nav className="hidden md:flex items-center space-x-4">
             {user ? (
               <>
                 <a 
                   href="/" 
-                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium flex items-center space-x-1"
                 >
-                  Dashboard
+                  <FileText className="w-4 h-4" />
+                  <span>Dashboard</span>
                 </a>
-                <a 
-                  href="/alerts" 
-                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
-                >
-                  View Reports
-                </a>
-                <a 
-                  href="/bolo-generator" 
-                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
-                >
-                  BOLO Generator
-                </a>
-                
-                {/* Admin Links - Only show for approved admins/moderators */}
-                {userProfile && (userProfile.role === 'admin' || userProfile.role === 'moderator') && userProfile.approved && (
-                  <>
-                    <a 
-                      href="/admin/users" 
-                      className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
+
+                {/* Reports Dropdown */}
+                <div className="relative dropdown-container">
+                  <button
+                    onClick={() => setReportsDropdownOpen(!reportsDropdownOpen)}
+                    className="text-gray-300 hover:text-accent-gold transition-colors font-medium flex items-center space-x-1"
+                  >
+                    <Car className="w-4 h-4" />
+                    <span>Reports</span>
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                  
+                  {reportsDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-48 bg-dark-gray border border-gray-700 rounded-lg shadow-lg z-50">
+                      <a 
+                        href="/alerts" 
+                        className="flex items-center space-x-2 px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-accent-gold transition-colors border-b border-gray-700"
+                        onClick={() => setReportsDropdownOpen(false)}
+                      >
+                        <Car className="w-4 h-4" />
+                        <span>View All Reports</span>
+                      </a>
+                      <a 
+                        href="/bolo-generator" 
+                        className="flex items-center space-x-2 px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-accent-gold transition-colors"
+                        onClick={() => setReportsDropdownOpen(false)}
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span>BOLO Generator</span>
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Admin Dropdown - Only show for approved admins/moderators */}
+                {canAccessAdmin && (
+                  <div className="relative dropdown-container">
+                    <button
+                      onClick={() => setAdminDropdownOpen(!adminDropdownOpen)}
+                      className="text-gray-300 hover:text-accent-gold transition-colors font-medium flex items-center space-x-1"
                     >
-                      User Management
-                    </a>
-                    <a 
-                      href="/admin/logs" 
-                      className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
-                    >
-                      System Logs
-                    </a>
-                  </>
+                      <Shield className="w-4 h-4" />
+                      <span>Admin</span>
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                    
+                    {adminDropdownOpen && (
+                      <div className="absolute top-full left-0 mt-2 w-56 bg-dark-gray border border-gray-700 rounded-lg shadow-lg z-50">
+                        <a 
+                          href="/admin/users" 
+                          className="flex items-center space-x-2 px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-accent-gold transition-colors border-b border-gray-700"
+                          onClick={() => setAdminDropdownOpen(false)}
+                        >
+                          <Users className="w-4 h-4" />
+                          <span>User Management</span>
+                        </a>
+                        <a 
+                          href="/admin/logs" 
+                          className="flex items-center space-x-2 px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-accent-gold transition-colors"
+                          onClick={() => setAdminDropdownOpen(false)}
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span>System Logs</span>
+                        </a>
+                      </div>
+                    )}
+                  </div>
                 )}
 
-                {/* User Links */}
+                {/* User Settings */}
                 <a 
                   href="/change-password" 
                   className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
@@ -270,57 +320,70 @@ export default function Header() {
               <div className="space-y-3">
                 <a 
                   href="/" 
-                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
+                  className="flex items-center space-x-2 text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
                   onClick={() => setMenuOpen(false)}
                 >
-                  Dashboard
+                  <FileText className="w-4 h-4" />
+                  <span>Dashboard</span>
                 </a>
-                <a 
-                  href="/alerts" 
-                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  View Reports
-                </a>
-                <a 
-                  href="/bolo-generator" 
-                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  BOLO Generator
-                </a>
-                
-                {/* Admin Links - Mobile */}
-                {userProfile && (userProfile.role === 'admin' || userProfile.role === 'moderator') && userProfile.approved && (
-                  <>
+
+                {/* Mobile Reports Section */}
+                <div className="border-t border-gray-700 pt-3">
+                  <p className="text-sm text-gray-400 mb-2 font-medium">REPORTS</p>
+                  <a 
+                    href="/alerts" 
+                    className="flex items-center space-x-2 text-gray-300 hover:text-accent-gold transition-colors py-2 pl-4"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <Car className="w-4 h-4" />
+                    <span>View All Reports</span>
+                  </a>
+                  <a 
+                    href="/bolo-generator" 
+                    className="flex items-center space-x-2 text-gray-300 hover:text-accent-gold transition-colors py-2 pl-4"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>BOLO Generator</span>
+                  </a>
+                </div>
+
+                {/* Mobile Admin Section */}
+                {canAccessAdmin && (
+                  <div className="border-t border-gray-700 pt-3">
+                    <p className="text-sm text-gray-400 mb-2 font-medium">ADMIN</p>
                     <a 
                       href="/admin/users" 
-                      className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
+                      className="flex items-center space-x-2 text-gray-300 hover:text-accent-gold transition-colors py-2 pl-4"
                       onClick={() => setMenuOpen(false)}
                     >
-                      User Management
+                      <Users className="w-4 h-4" />
+                      <span>User Management</span>
                     </a>
                     <a 
                       href="/admin/logs" 
-                      className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
+                      className="flex items-center space-x-2 text-gray-300 hover:text-accent-gold transition-colors py-2 pl-4"
                       onClick={() => setMenuOpen(false)}
                     >
-                      System Logs
+                      <FileText className="w-4 h-4" />
+                      <span>System Logs</span>
                     </a>
-                  </>
+                  </div>
                 )}
 
-                {/* User Links */}
-                <a 
-                  href="/change-password" 
-                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  Settings
-                </a>
+                {/* Mobile User Settings */}
+                <div className="border-t border-gray-700 pt-3">
+                  <a 
+                    href="/change-password" 
+                    className="text-gray-300 hover:text-accent-gold transition-colors font-medium py-2 block"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    Settings
+                  </a>
+                </div>
 
-                {/* User Info */}
-                <div className="pt-2 border-t border-gray-600">
+                {/* Mobile User Info */}
+                <div className="pt-3 border-t border-gray-600">
                   <p className="text-sm text-gray-400 mb-1 truncate">
                     Signed in as: {userProfile?.name || user.email || user.user_metadata?.name}
                   </p>
@@ -345,21 +408,21 @@ export default function Header() {
               <div className="space-y-3">
                 <a 
                   href="/" 
-                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium py-2 block"
                   onClick={() => setMenuOpen(false)}
                 >
                   Home
                 </a>
                 <a 
                   href="/login" 
-                  className="block text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium py-2 block"
                   onClick={() => setMenuOpen(false)}
                 >
                   Login
                 </a>
                 <a 
                   href="/register" 
-                  className="block btn-primary text-center"
+                  className="btn-primary text-center block"
                   onClick={() => setMenuOpen(false)}
                 >
                   Get Started

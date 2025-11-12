@@ -12,6 +12,35 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 export const hasValidSupabaseConfig = !!(supabaseUrl && supabaseAnonKey)
 
+// UserProfile type definition
+export interface UserProfile {
+  id: string
+  email: string
+  name: string | null
+  approved: boolean
+  role: 'user' | 'moderator' | 'admin'
+  last_login: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface OnlineUser {
+  last_seen: string
+  user_agent: string
+  ip_address: string
+  profiles: UserProfile
+}
+
+export interface UserLog {
+  id: string
+  user_id: string
+  action: string
+  ip_address: string
+  user_agent: string
+  details: any
+  created_at: string
+}
+
 export const getCurrentUser = async () => {
   if (!hasValidSupabaseConfig) {
     return null
@@ -65,193 +94,264 @@ export const ensureUserExists = async (userId: string, userData: { email: string
     console.error('Error in ensureUserExists:', error);
     throw error;
   }
-};
-// User management functions
-export const getUserProfile = async (userId: string) => {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single()
-  
-  if (error) throw error
-  return data
 }
 
-export const getAllUsers = async () => {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
-  
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-  
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'moderator') || !profile.approved) {
-    throw new Error('Insufficient permissions')
+// User management functions
+export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+    
+    if (error) {
+      console.error('Error fetching user profile:', error);
+      return null;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error in getUserProfile:', error);
+    return null;
   }
-  
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .order('created_at', { ascending: false })
-  
-  if (error) throw error
-  return data
+}
+
+export const getAllUsers = async (): Promise<UserProfile[]> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+    
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single()
+    
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'moderator') || !profile.approved) {
+      throw new Error('Insufficient permissions')
+    }
+    
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false })
+    
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    console.error('Error fetching all users:', error)
+    throw error
+  }
 }
 
 export const updateUserProfile = async (userId: string, updates: {
   approved?: boolean
   role?: 'user' | 'moderator' | 'admin'
   name?: string
-}) => {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
-  
-  const { data: currentUserProfile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-  
-  if (!currentUserProfile || (currentUserProfile.role !== 'admin' && currentUserProfile.role !== 'moderator') || !currentUserProfile.approved) {
-    throw new Error('Insufficient permissions')
+}): Promise<UserProfile> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+    
+    const { data: currentUserProfile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    
+    if (!currentUserProfile || (currentUserProfile.role !== 'admin' && currentUserProfile.role !== 'moderator') || !currentUserProfile.approved) {
+      throw new Error('Insufficient permissions')
+    }
+    
+    // Only admins can assign admin role
+    if (updates.role === 'admin' && currentUserProfile.role !== 'admin') {
+      throw new Error('Only admins can assign admin role')
+    }
+    
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ 
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select()
+      .single()
+    
+    if (error) throw error
+    
+    if (!data) {
+      throw new Error('User not found')
+    }
+    
+    return data
+  } catch (error) {
+    console.error('Error updating user profile:', error)
+    throw error
   }
-  
-  // Only admins can assign admin role
-  if (updates.role === 'admin' && currentUserProfile.role !== 'admin') {
-    throw new Error('Only admins can assign admin role')
-  }
-  
-  const { data, error } = await supabase
-    .from('profiles')
-    .update({ 
-      ...updates,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', userId)
-    .select()
-    .single()
-  
-  if (error) throw error
-  return data
 }
 
-export const getUserLogs = async (userId?: string) => {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
-  
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-  
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'moderator') || !profile.approved) {
-    throw new Error('Insufficient permissions')
+export const getUserLogs = async (userId?: string): Promise<UserLog[]> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+    
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'moderator') || !profile.approved) {
+      throw new Error('Insufficient permissions')
+    }
+    
+    let query = supabase
+      .from('user_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+    
+    if (userId) {
+      query = query.eq('user_id', userId)
+    }
+    
+    const { data, error } = await query
+    
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    console.error('Error fetching user logs:', error)
+    throw error
   }
-  
-  let query = supabase
-    .from('user_logs')
-    .select('*')
-    .order('created_at', { ascending: false })
-  
-  if (userId) {
-    query = query.eq('user_id', userId)
-  }
-  
-  const { data, error } = await query
-  
-  if (error) throw error
-  return data
 }
 
 // Presence tracking
-export const updateOnlineStatus = async () => {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-  
+export const updateOnlineStatus = async (): Promise<void> => {
   try {
-    const { error } = await supabase.rpc('update_online_status', {
-      p_user_agent: navigator.userAgent,
-      p_ip_address: ''
-    })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    
+    try {
+      const { error } = await supabase.rpc('update_online_status', {
+        p_user_agent: navigator.userAgent,
+        p_ip_address: ''
+      })
+      
+      if (error) throw error
+    } catch (error) {
+      console.error('Error updating online status with function:', error)
+      // Fallback to direct table update if function doesn't exist
+      const { error: upsertError } = await supabase
+        .from('online_users')
+        .upsert({
+          id: user.id,
+          last_seen: new Date().toISOString(),
+          user_agent: navigator.userAgent,
+          ip_address: ''
+        })
+      
+      if (upsertError) console.error('Fallback online status update failed:', upsertError)
+    }
+  } catch (error) {
+    console.error('Error in updateOnlineStatus:', error)
+  }
+}
+
+export const getOnlineUsers = async (): Promise<OnlineUser[]> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+    
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'moderator') || !profile.approved) {
+      throw new Error('Insufficient permissions')
+    }
+    
+    // Get users active in the last 5 minutes
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    
+    const { data, error } = await supabase
+      .from('online_users')
+      .select(`
+        last_seen,
+        user_agent,
+        ip_address,
+        profiles (
+          id,
+          name,
+          email,
+          role,
+          approved,
+          last_login,
+          created_at,
+          updated_at
+        )
+      `)
+      .gt('last_seen', fiveMinutesAgo)
+      .order('last_seen', { ascending: false })
     
     if (error) throw error
+    return data || []
   } catch (error) {
-    console.error('Error updating online status:', error)
-    // Fallback to direct table update if function doesn't exist
-    const { error: upsertError } = await supabase
-      .from('online_users')
-      .upsert({
-        id: user.id,
-        last_seen: new Date().toISOString(),
-        user_agent: navigator.userAgent,
-        ip_address: ''
-      })
-    
-    if (upsertError) console.error('Fallback online status update failed:', upsertError)
+    console.error('Error fetching online users:', error)
+    throw error
   }
 }
 
-export const getOnlineUsers = async () => {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
-  
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-  
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'moderator') || !profile.approved) {
-    throw new Error('Insufficient permissions')
-  }
-  
-  // Get users active in the last 5 minutes
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
-  
-  const { data, error } = await supabase
-    .from('online_users')
-    .select(`
-      last_seen,
-      user_agent,
-      ip_address,
-      profiles (
-        id,
-        name,
-        email,
-        role,
-        approved
-      )
-    `)
-    .gt('last_seen', fiveMinutesAgo)
-    .order('last_seen', { ascending: false })
-  
-  if (error) throw error
-  return data
-}
-
-export const getCurrentUserProfile = async () => {
+export const getCurrentUserProfile = async (): Promise<UserProfile | null> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const { data: profile, error } = await supabase
+    // Use a timeout to prevent hanging requests
+    const timeoutPromise = new Promise<null>((resolve) => 
+      setTimeout(() => resolve(null), 5000)
+    );
+
+    const profilePromise = supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single();
 
-    if (error) {
-      console.error('Error fetching user profile:', error);
+    const result = await Promise.race([profilePromise, timeoutPromise]);
+    
+    if (!result || (result as any).error) {
+      console.warn('Profile fetch failed or timed out');
       return null;
     }
 
-    return profile;
+    return (result as any).data;
   } catch (error) {
     console.error('Error in getCurrentUserProfile:', error);
     return null;
   }
-};
+}
+
+// Helper function to check if user has admin permissions
+export const hasAdminPermissions = async (): Promise<boolean> => {
+  try {
+    const profile = await getCurrentUserProfile();
+    return !!(profile && (profile.role === 'admin' || profile.role === 'moderator') && profile.approved);
+  } catch (error) {
+    console.error('Error checking admin permissions:', error);
+    return false;
+  }
+}
+
+// Helper function to get user role
+export const getUserRole = async (): Promise<'user' | 'moderator' | 'admin' | null> => {
+  try {
+    const profile = await getCurrentUserProfile();
+    return profile?.role || null;
+  } catch (error) {
+    console.error('Error getting user role:', error);
+    return null;
+  }
+}
