@@ -457,9 +457,9 @@ export default function Dashboard() {
   }, [user, viewMode])
 
   useEffect(() => {
-    let mounted = true
+  let mounted = true
 
-    const initializeApp = async () => {
+  const initializeApp = async () => {
     if (!hasValidSupabaseConfig) {
       console.warn('Supabase not configured')
       setLoading(false)
@@ -476,14 +476,18 @@ export default function Dashboard() {
         setAuthChecked(true)
        
         if (user) {
-          await ensureUserExists(user.id, {
-            email: user.email!,
-            name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
-          }).catch(error => {
+          try {
+            await ensureUserExists(user.id, {
+              email: user.email!,
+              name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
+            })
+            // Force refresh alerts after user is set
+            await fetchAlerts()
+          } catch (error) {
             console.warn('User creation failed (non-critical):', error)
-          })
-          // Immediately fetch alerts after user is set
-          await fetchAlerts()
+            // Still try to fetch alerts even if user creation fails
+            await fetchAlerts()
+          }
         } else {
           setLoading(false)
         }
@@ -499,8 +503,45 @@ export default function Dashboard() {
 
   initializeApp()
 
+  // Set up real-time subscriptions
+  const vehicleSubscription = supabase
+    .channel('alerts-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'alerts_vehicles'
+      },
+      (payload) => {
+        console.log('Vehicle alert change:', payload)
+        if (mounted) {
+          fetchAlerts()
+        }
+      }
+    )
+    .subscribe()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+  const crimeSubscription = supabase
+    .channel('crimes-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'crime_reports'
+      },
+      (payload) => {
+        console.log('Crime report change:', payload)
+        if (mounted) {
+          fetchAlerts()
+        }
+      }
+    )
+    .subscribe()
+
+  // Auth state change listener
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
     async (event, session) => {
       console.log('Auth state changed:', event, session?.user)
      
@@ -511,18 +552,34 @@ export default function Dashboard() {
         setUser(currentUser)
        
         if (currentUser) {
-          await ensureUserExists(currentUser.id, {
-            email: currentUser.email!,
-            name: currentUser.user_metadata?.name || currentUser.email?.split('@')[0] || 'User'
-          }).catch(error => {
-            console.warn('User creation failed (non-critical):', error)
-          })
-          // Force refresh alerts after login
-          setTimeout(() => {
-            if (mounted) {
-              fetchAlerts()
-            }
-          }, 1000)
+          try {
+            await ensureUserExists(currentUser.id, {
+              email: currentUser.email!,
+              name: currentUser.user_metadata?.name || currentUser.email?.split('@')[0] || 'User'
+            })
+
+            useEffect(() => {
+  if (user && authChecked) {
+    console.log('User authenticated, forcing data refresh')
+    forceRefreshData()
+  }
+}, [user, authChecked])
+
+            // Refresh alerts immediately after login
+            setTimeout(() => {
+              if (mounted) {
+                fetchAlerts()
+              }
+            }, 500)
+          } catch (error) {
+            console.warn('User creation failed after login:', error)
+            // Still try to fetch alerts
+            setTimeout(() => {
+              if (mounted) {
+                fetchAlerts()
+              }
+            }, 500)
+          }
         }
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
@@ -535,6 +592,8 @@ export default function Dashboard() {
 
   return () => {
     mounted = false
+    vehicleSubscription.unsubscribe()
+    crimeSubscription.unsubscribe()
     subscription.unsubscribe()
   }
 }, [])
@@ -678,6 +737,21 @@ export default function Dashboard() {
       await refreshAlerts()
     }
   }
+
+  const forceRefreshData = async () => {
+  console.log('Force refreshing all data...')
+  setLoading(true)
+  try {
+    await Promise.all([
+      fetchAlerts(),
+      new Promise(resolve => setTimeout(resolve, 1000)) // Small delay to ensure clean state
+    ])
+  } catch (error) {
+    console.error('Error force refreshing data:', error)
+  } finally {
+    setLoading(false)
+  }
+}
 
   const handleEditAlert = (alert: AlertVehicle) => {
     setEditingAlert(alert)

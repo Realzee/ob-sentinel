@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, hasValidSupabaseConfig, getCurrentUser, getCurrentUserProfile } from '@/lib/supabase'
-import { ChevronDown, Users, Shield, FileText, Car, AlertTriangle } from 'lucide-react'
+import { supabase, hasValidSupabaseConfig, getCurrentUser } from '@/lib/supabase'
+import { ChevronDown, Users, Shield, FileText, Car } from 'lucide-react'
 
 interface UserProfile {
   id: string
@@ -39,9 +39,29 @@ export default function Header() {
     }
   }, [])
 
+  // Simple profile fetch without complex logic
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error) {
+        console.error('Error fetching profile:', error)
+        return null
+      }
+
+      return profile
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error)
+      return null
+    }
+  }
+
   useEffect(() => {
     let mounted = true
-    let subscription: any = null
 
     const initializeAuth = async () => {
       if (!hasValidSupabaseConfig) {
@@ -54,22 +74,27 @@ export default function Header() {
       }
 
       try {
-        // Get initial user state
-        const currentUser = await getCurrentUser()
-        console.log('Initial user:', currentUser)
+        // Get initial user state with timeout
+        const userPromise = getCurrentUser()
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout')), 3000)
+        )
+
+        const currentUser = await Promise.race([userPromise, timeoutPromise]) as any
+        console.log('Initial user found:', currentUser?.email)
         
         if (mounted) {
           setUser(currentUser)
           
           if (currentUser) {
-            try {
-              const profile = await getCurrentUserProfile()
-              console.log('Initial profile:', profile)
-              setUserProfile(profile)
-            } catch (profileError) {
-              console.warn('Initial profile fetch failed:', profileError)
-              // Continue without profile
-            }
+            // Fetch profile in background, don't wait for it
+            fetchUserProfile(currentUser.id).then(profile => {
+              if (mounted) {
+                setUserProfile(profile)
+              }
+            }).catch(error => {
+              console.warn('Background profile fetch failed:', error)
+            })
           }
           setAuthLoading(false)
         }
@@ -84,69 +109,45 @@ export default function Header() {
 
     initializeAuth()
 
-    // Set up auth state listener with proper error handling
-    try {
-      const authStateChange = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          console.log('Auth state changed:', event, session?.user)
+    // Simple auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email)
+        
+        if (!mounted) return
+        
+        const currentUser = session?.user ?? null
+        
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          setUser(currentUser)
+          setAuthError(false)
           
-          if (!mounted) return
-          
-          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-            const currentUser = session?.user ?? null
-            setUser(currentUser)
-            setAuthError(false)
-            
-            if (currentUser) {
-              try {
-                const profile = await getCurrentUserProfile()
-                console.log('Profile after auth change:', profile)
+          if (currentUser) {
+            // Fetch profile in background
+            fetchUserProfile(currentUser.id).then(profile => {
+              if (mounted) {
                 setUserProfile(profile)
-              } catch (error) {
-                console.warn('Profile fetch failed after auth change:', error)
-                setUserProfile(null)
               }
-            } else {
-              setUserProfile(null)
-            }
-          } else if (event === 'SIGNED_OUT') {
-            setUser(null)
+            })
+          } else {
             setUserProfile(null)
-            setAuthError(false)
           }
-          
-          if (mounted && authLoading) {
-            setAuthLoading(false)
-          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null)
+          setUserProfile(null)
+          setAuthError(false)
         }
-      )
-      
-      subscription = authStateChange.data.subscription
-    } catch (error) {
-      console.error('Error setting up auth listener:', error)
-      if (mounted) {
-        setAuthLoading(false)
+        
+        // Always stop loading on auth state change
+        if (mounted && authLoading) {
+          setAuthLoading(false)
+        }
       }
-    }
-
-    // Safety timeout to prevent infinite loading
-    const loadingTimeout = setTimeout(() => {
-      if (mounted && authLoading) {
-        console.warn('Auth loading timeout - forcing state to false')
-        setAuthLoading(false)
-      }
-    }, 5000) // Reduced to 5 seconds
+    )
 
     return () => {
       mounted = false
-      if (subscription) {
-        try {
-          subscription.unsubscribe()
-        } catch (error) {
-          console.error('Error unsubscribing:', error)
-        }
-      }
-      clearTimeout(loadingTimeout)
+      subscription.unsubscribe()
     }
   }, [authLoading])
 
@@ -172,7 +173,6 @@ export default function Header() {
 
   const canAccessAdmin = userProfile && (userProfile.role === 'admin' || userProfile.role === 'moderator') && userProfile.approved
 
-  // Show loading state only for a reasonable time
   if (authLoading) {
     return (
       <header className="bg-dark-gray border-b border-gray-700 shadow-xl">

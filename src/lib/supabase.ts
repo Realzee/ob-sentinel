@@ -49,10 +49,16 @@ export const getCurrentUser = async () => {
   }
 
   try {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user }, error } = await supabase.auth.getUser()
+    
+    if (error) {
+      console.error('Error getting current user:', error)
+      return null
+    }
+    
     return user
   } catch (error) {
-    console.error('Error getting current user:', error)
+    console.error('Unexpected error in getCurrentUser:', error)
     return null
   }
 }
@@ -316,54 +322,63 @@ export const getCurrentUserProfile = async (): Promise<UserProfile | null> => {
     }
     
     if (!user) {
+      console.log('No user found');
       return null;
     }
 
-    // Try to get profile with retry logic
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
+    console.log('Fetching profile for user:', user.id, user.email);
 
-        if (!profileError && profile) {
-          return profile;
-        }
+    // Try direct profile fetch without complex timeout logic
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
 
-        // If profile doesn't exist, create it
-        if (profileError?.code === 'PGRST116') {
-          console.log('Creating profile for user:', user.id);
-          const newProfile = await ensureUserExists(user.id, {
-            email: user.email!,
-            name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
-          });
+    if (profileError) {
+      console.error('Error fetching profile:', profileError);
+      
+      // If profile doesn't exist, create it immediately
+      if (profileError.code === 'PGRST116') {
+        console.log('Profile not found, creating...');
+        try {
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert([
+              {
+                id: user.id,
+                email: user.email,
+                name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+                approved: false,
+                role: 'user',
+                last_login: new Date().toISOString(),
+              }
+            ])
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('Error creating profile:', createError);
+            return null;
+          }
+
+          console.log('New profile created:', newProfile);
           return newProfile;
-        }
-
-        retries--;
-        if (retries > 0) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      } catch (error) {
-        console.error(`Profile fetch attempt ${4 - retries} failed:`, error);
-        retries--;
-        if (retries > 0) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (createError) {
+          console.error('Error in profile creation:', createError);
+          return null;
         }
       }
+      return null;
     }
 
-    console.error('All profile fetch attempts failed');
-    return null;
+    console.log('Profile found:', profile);
+    return profile;
   } catch (error) {
     console.error('Unexpected error in getCurrentUserProfile:', error);
     return null;
   }
 };
-
 // Helper function to check if user has admin permissions
 export const hasAdminPermissions = async (): Promise<boolean> => {
   try {
