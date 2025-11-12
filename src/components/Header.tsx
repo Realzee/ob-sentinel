@@ -41,7 +41,6 @@ export default function Header() {
 
   useEffect(() => {
     let mounted = true
-    let authSubscription: any = null
 
     const initializeAuth = async () => {
       if (!hasValidSupabaseConfig) {
@@ -84,8 +83,8 @@ export default function Header() {
 
     initializeAuth()
 
-    // Set up auth state listener
-    authSubscription = supabase.auth.onAuthStateChange(
+    // Set up auth state listener with proper unsubscribe handling
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event, session?.user)
         
@@ -130,8 +129,8 @@ export default function Header() {
 
     return () => {
       mounted = false
-      if (authSubscription) {
-        authSubscription.unsubscribe()
+      if (subscription) {
+        subscription.unsubscribe()
       }
       clearTimeout(loadingTimeout)
     }
