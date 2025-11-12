@@ -281,6 +281,7 @@ export default function AdminUsersPage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="form-input pl-10"
+                  autoComplete="username"
                 />
               </div>
               <button
@@ -334,6 +335,7 @@ export default function AdminUsersPage() {
                           onChange={(e) => handleUpdateUser(user.id, { role: e.target.value as any })}
                           disabled={updating === user.id || !canAssignAdmin}
                           className="bg-dark-gray border border-gray-600 rounded px-2 py-1 text-sm text-primary-white disabled:opacity-50"
+                          autoComplete="off"
                         >
                           <option value="user">User</option>
                           <option value="moderator">Moderator</option>
