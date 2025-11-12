@@ -306,33 +306,54 @@ export const getOnlineUsers = async (): Promise<OnlineUser[]> => {
 
 export const getCurrentUserProfile = async (): Promise<UserProfile | null> => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError) {
+      console.error('Error getting user:', userError);
+      return null;
+    }
+    
+    if (!user) {
+      console.log('No user found');
+      return null;
+    }
 
-    // Use a timeout to prevent hanging requests
-    const timeoutPromise = new Promise<null>((resolve) => 
-      setTimeout(() => resolve(null), 5000)
-    );
+    console.log('Fetching profile for user:', user.id);
 
-    const profilePromise = supabase
+    // Simple approach without timeout race conditions
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single();
 
-    const result = await Promise.race([profilePromise, timeoutPromise]);
-    
-    if (!result || (result as any).error) {
-      console.warn('Profile fetch failed or timed out');
+    if (profileError) {
+      console.error('Error fetching profile:', profileError);
+      
+      // If profile doesn't exist, try to create it
+      if (profileError.code === 'PGRST116') { // Record not found
+        console.log('Profile not found, attempting to create...');
+        try {
+          const newProfile = await ensureUserExists(user.id, {
+            email: user.email!,
+            name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
+          });
+          return newProfile;
+        } catch (createError) {
+          console.error('Error creating profile:', createError);
+          return null;
+        }
+      }
       return null;
     }
 
-    return (result as any).data;
+    console.log('Profile found:', profile);
+    return profile;
   } catch (error) {
-    console.error('Error in getCurrentUserProfile:', error);
+    console.error('Unexpected error in getCurrentUserProfile:', error);
     return null;
   }
-}
+};
 
 // Helper function to check if user has admin permissions
 export const hasAdminPermissions = async (): Promise<boolean> => {

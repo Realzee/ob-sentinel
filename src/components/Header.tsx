@@ -40,63 +40,102 @@ export default function Header() {
   }, [])
 
   useEffect(() => {
+    let mounted = true
+    let authSubscription: any = null
+
     const initializeAuth = async () => {
       if (!hasValidSupabaseConfig) {
-        setAuthError(true)
-        setAuthLoading(false)
+        console.warn('Supabase not configured')
+        if (mounted) {
+          setAuthError(true)
+          setAuthLoading(false)
+        }
         return
       }
 
       try {
+        // Get initial user state
         const currentUser = await getCurrentUser()
-        setUser(currentUser)
+        console.log('Initial user:', currentUser)
         
-        if (currentUser) {
-          try {
-            const profile = await getCurrentUserProfile()
-            setUserProfile(profile)
-          } catch (profileError) {
-            console.warn('Profile fetch failed, continuing without profile:', profileError)
+        if (mounted) {
+          setUser(currentUser)
+          
+          if (currentUser) {
+            try {
+              const profile = await getCurrentUserProfile()
+              console.log('Initial profile:', profile)
+              setUserProfile(profile)
+            } catch (profileError) {
+              console.warn('Initial profile fetch failed:', profileError)
+              // Continue without profile - it might be created later
+            }
           }
+          setAuthLoading(false)
         }
       } catch (error) {
         console.error('Auth initialization error:', error)
-        setAuthError(true)
-      } finally {
-        setAuthLoading(false)
+        if (mounted) {
+          setAuthError(true)
+          setAuthLoading(false)
+        }
       }
     }
 
     initializeAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    // Set up auth state listener
+    authSubscription = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event)
+        console.log('Auth state changed:', event, session?.user)
         
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          setUser(session?.user ?? null)
+        if (!mounted) return
+        
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          const currentUser = session?.user ?? null
+          setUser(currentUser)
           setAuthError(false)
-          if (session?.user) {
+          
+          if (currentUser) {
             try {
               const profile = await getCurrentUserProfile()
+              console.log('Profile after auth change:', profile)
               setUserProfile(profile)
             } catch (error) {
               console.warn('Profile fetch failed after auth change:', error)
+              setUserProfile(null)
             }
+          } else {
+            setUserProfile(null)
           }
         } else if (event === 'SIGNED_OUT') {
           setUser(null)
           setUserProfile(null)
-        } else if (event === 'USER_UPDATED') {
-          setUser(session?.user ?? null)
+          setAuthError(false)
+        }
+        
+        if (mounted && authLoading) {
+          setAuthLoading(false)
         }
       }
     )
 
+    // Safety timeout to prevent infinite loading
+    const loadingTimeout = setTimeout(() => {
+      if (mounted && authLoading) {
+        console.warn('Auth loading timeout - forcing state to false')
+        setAuthLoading(false)
+      }
+    }, 10000) // 10 second timeout
+
     return () => {
-      subscription.unsubscribe()
+      mounted = false
+      if (authSubscription) {
+        authSubscription.unsubscribe()
+      }
+      clearTimeout(loadingTimeout)
     }
-  }, [])
+  }, [authLoading])
 
   const handleLogout = async () => {
     try {
@@ -120,6 +159,7 @@ export default function Header() {
 
   const canAccessAdmin = userProfile && (userProfile.role === 'admin' || userProfile.role === 'moderator') && userProfile.approved
 
+  // Show loading state only for a reasonable time
   if (authLoading) {
     return (
       <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
@@ -135,7 +175,10 @@ export default function Header() {
                 <p className="text-sm flashing-text">Smart Reporting System</p>
               </div>
             </div>
-            <div className="text-sm text-gray-400">Loading...</div>
+            <div className="flex items-center space-x-2 text-sm text-gray-400">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-gold"></div>
+              <span>Loading...</span>
+            </div>
           </div>
         </div>
       </header>
@@ -257,7 +300,7 @@ export default function Header() {
                 <div className="flex items-center space-x-4 border-l border-gray-600 pl-4 ml-2">
                   <div className="text-right">
                     <span className="text-sm text-gray-400 max-w-xs truncate block">
-                      {userProfile?.name || user.email || user.user_metadata?.name}
+                      {userProfile?.name || user.email || user.user_metadata?.name || 'User'}
                     </span>
                     {userProfile && !userProfile.approved && (
                       <span className="text-xs text-yellow-400 block">Pending Approval</span>
@@ -385,7 +428,7 @@ export default function Header() {
                 {/* Mobile User Info */}
                 <div className="pt-3 border-t border-gray-600">
                   <p className="text-sm text-gray-400 mb-1 truncate">
-                    Signed in as: {userProfile?.name || user.email || user.user_metadata?.name}
+                    Signed in as: {userProfile?.name || user.email || user.user_metadata?.name || 'User'}
                   </p>
                   {userProfile && !userProfile.approved && (
                     <p className="text-xs text-yellow-400 mb-2">Pending Approval</p>
