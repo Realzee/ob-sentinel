@@ -1,3 +1,4 @@
+
 // components/AdminUsersPage.tsx
 'use client'
 
@@ -53,7 +54,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue
 }
 
-// Loading skeleton component
+// Loading skeleton components (same as before)
 function UserTableSkeleton() {
   return (
     <div className="card p-6">
@@ -135,6 +136,8 @@ export default function AdminUsersPage() {
   const [showAddUserModal, setShowAddUserModal] = useState(false)
   const [addingUser, setAddingUser] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  const [accessChecked, setAccessChecked] = useState(false)
+  const [hasAdminAccess, setHasAdminAccess] = useState(false)
 
   const [newUserForm, setNewUserForm] = useState<NewUserForm>({
     email: '',
@@ -213,6 +216,53 @@ export default function AdminUsersPage() {
     })
   }, [users, debouncedSearchTerm, filterRole, filterApproved, filterStatus, onlineUsers])
 
+  // Quick admin access check - only check role, don't update last login immediately
+  const checkAdminAccess = useCallback(async () => {
+    try {
+      console.time('adminAccessCheck')
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        setAccessChecked(true)
+        setHasAdminAccess(false)
+        return
+      }
+
+      setCurrentUser(user)
+
+      // Quick role check without updating last login
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (profileError || !profile) {
+        setAccessChecked(true)
+        setHasAdminAccess(false)
+        return
+      }
+
+      const isAdminOrModerator = profile.role === 'admin' || profile.role === 'moderator'
+      setHasAdminAccess(isAdminOrModerator)
+      setAccessChecked(true)
+
+      if (isAdminOrModerator) {
+        // Now load the actual data
+        await fetchUsers()
+        await updateUserLastLogin(user.id)
+        startPresenceUpdates()
+      }
+      
+    } catch (error) {
+      console.error('Error checking admin access:', error)
+      setAccessChecked(true)
+      setHasAdminAccess(false)
+    } finally {
+      console.timeEnd('adminAccessCheck')
+    }
+  }, [])
+
   // Optimized fetch users
   const fetchUsers = useCallback(async (showLoading: boolean = true) => {
     try {
@@ -267,22 +317,12 @@ export default function AdminUsersPage() {
     }
   }, [])
 
-  const checkAuth = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setCurrentUser(user)
-    
-    if (user) {
-      updateUserPresence(user.id)
-      await updateUserLastLogin(user.id)
-    }
-  }, [updateUserLastLogin])
-
   const startPresenceUpdates = useCallback(async () => {
+    if (!currentUser) return
+
     // Update presence every 2 minutes instead of 1
     const presenceInterval = setInterval(async () => {
-      if (currentUser) {
-        await updateUserPresence(currentUser.id)
-      }
+      await updateUserPresence(currentUser.id)
     }, 120000)
 
     // Fetch online users every 2 minutes instead of 1
@@ -343,7 +383,7 @@ export default function AdminUsersPage() {
       })
       
       // Refresh users list
-      await fetchUsers()
+      await fetchUsers(false)
       
     } catch (error: any) {
       console.error('Error adding user:', error)
@@ -523,45 +563,14 @@ export default function AdminUsersPage() {
     await fetchUsers(false)
   }, [fetchUsers])
 
-  // Initial data loading
+  // Initial admin access check - much faster
   useEffect(() => {
-    checkAuth()
-    fetchUsers()
-  }, [checkAuth, fetchUsers])
+    checkAdminAccess()
+  }, [checkAdminAccess])
 
-  // Presence updates (less frequent)
+  // Real-time subscriptions for immediate updates (only when admin)
   useEffect(() => {
-    if (!currentUser) return
-
-    // startPresenceUpdates is async and returns a cleanup function (Promise<() => void>)
-    // we call it and capture the cleanup when the promise resolves, but return a
-    // synchronous cleanup function for React.
-    let cleanupFn: (() => void) | undefined
-    let cancelled = false
-
-    startPresenceUpdates()
-      .then(fn => {
-        if (!cancelled && typeof fn === 'function') {
-          cleanupFn = fn
-        }
-      })
-      .catch(err => {
-        console.error('Error starting presence updates:', err)
-      })
-
-    return () => {
-      cancelled = true
-      try {
-        if (cleanupFn) cleanupFn()
-      } catch (err) {
-        console.error('Error during presence cleanup:', err)
-      }
-    }
-  }, [currentUser, startPresenceUpdates])
-
-  // Real-time subscriptions for immediate updates
-  useEffect(() => {
-    if (!currentUser) return
+    if (!hasAdminAccess || !currentUser) return
 
     console.log('🔔 Setting up real-time subscriptions...')
 
@@ -576,7 +585,6 @@ export default function AdminUsersPage() {
         (payload) => {
           console.log('Profile change detected:', payload.eventType)
           
-          // Only refresh if it's not our own action (to avoid double updates)
           if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
             fetchUsers(false)
           } else if (payload.eventType === 'UPDATE') {
@@ -592,7 +600,7 @@ export default function AdminUsersPage() {
     return () => {
       channel.unsubscribe()
     }
-  }, [currentUser, fetchUsers])
+  }, [hasAdminAccess, currentUser, fetchUsers])
 
   // Auto-clear messages
   useEffect(() => {
@@ -605,19 +613,55 @@ export default function AdminUsersPage() {
     }
   }, [error, success])
 
-  if (loading && users.length === 0) {
+  // Show loading while checking access
+  if (!accessChecked) {
     return (
       <div className="min-h-screen bg-dark-gray p-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
-            <p className="text-gray-400">Loading users...</p>
+            <p className="text-gray-400">Checking admin access...</p>
           </div>
         </div>
       </div>
     )
   }
 
+  // Show unauthorized if no admin access
+  if (!hasAdminAccess) {
+    return (
+      <div className="min-h-screen bg-dark-gray p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center py-12">
+            <div className="bg-red-900 border border-red-700 text-red-300 px-6 py-4 rounded-lg max-w-md mx-auto">
+              <Shield className="w-12 h-12 mx-auto mb-4 text-red-400" />
+              <h2 className="text-xl font-bold mb-2">Access Denied</h2>
+              <p className="text-gray-300">
+                You don't have permission to access the admin panel. 
+                Please contact an administrator if you believe this is an error.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show loading for initial data load
+  if (loading && users.length === 0) {
+    return (
+      <div className="min-h-screen bg-dark-gray p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading user data...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Main admin panel content
   return (
     <div className="min-h-screen bg-dark-gray p-4">
       <div className="max-w-7xl mx-auto">
