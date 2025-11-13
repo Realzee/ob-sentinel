@@ -637,3 +637,36 @@ export const getUserStats = async (): Promise<{
 
 // Export types for use in other files
 export type { Database } from '@/types/supabase'
+
+let profilesCache: { data: any[] | null, timestamp: number } = { data: null, timestamp: 0 }
+const CACHE_TTL = 30000 // 30 seconds
+
+export const getCachedProfiles = async (): Promise<any[]> => {
+  const now = Date.now()
+  
+  // Return cached data if it's fresh
+  if (profilesCache.data && (now - profilesCache.timestamp) < CACHE_TTL) {
+    return profilesCache.data
+  }
+  
+  // Fetch fresh data
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('created_at', { ascending: false })
+  
+  if (error) throw error
+  
+  // Update cache
+  profilesCache = {
+    data: data || [],
+    timestamp: now
+  }
+  
+  return data || []
+}
+
+// Clear cache when needed
+export const clearProfilesCache = () => {
+  profilesCache = { data: null, timestamp: 0 }
+}
