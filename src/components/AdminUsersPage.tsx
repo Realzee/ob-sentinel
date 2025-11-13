@@ -148,6 +148,7 @@ export default function AdminUsersPage() {
   // Add new user function
   // Replace the handleAddUser function in AdminUsersPage.tsx
 // Alternative handleAddUser function for client-side only
+// Replace the handleAddUser function in AdminUsersPage.tsx
 const handleAddUser = async () => {
   if (!newUserForm.email) {
     setError('Email is required')
@@ -158,68 +159,18 @@ const handleAddUser = async () => {
   setError('')
 
   try {
-    // Use signUp method instead of admin.createUser
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: newUserForm.email,
-      password: generateTempPassword(),
-      options: {
-        data: {
-          name: newUserForm.name
-        }
-      }
+    const response = await fetch('/api/admin/create-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(newUserForm)
     })
 
-    if (authError) {
-      // If user already exists, we can still create/update their profile
-      if (authError.message.includes('already registered')) {
-        console.log('User already exists, creating profile...')
-        
-        // Get the user by email
-        const { data: existingUsers } = await supabase.auth.admin.listUsers()
-        const user = existingUsers?.users.find(u => u.email === newUserForm.email)
-        
-        if (!user) {
-          throw new Error('User exists but could not be found')
-        }
-        
-        // Create or update profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            id: user.id,
-            email: newUserForm.email,
-            name: newUserForm.name,
-            phone: newUserForm.phone,
-            location: newUserForm.location,
-            role: newUserForm.role,
-            approved: newUserForm.approved,
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'id',
-            ignoreDuplicates: false
-          })
+    const data = await response.json()
 
-        if (profileError) throw profileError
-      } else {
-        throw authError
-      }
-    } else if (authData.user) {
-      // Create profile for new user
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: authData.user.id,
-          email: newUserForm.email,
-          name: newUserForm.name,
-          phone: newUserForm.phone,
-          location: newUserForm.location,
-          role: newUserForm.role,
-          approved: newUserForm.approved,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-
-      if (profileError) throw profileError
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to create user')
     }
 
     setSuccess('User added successfully!')
