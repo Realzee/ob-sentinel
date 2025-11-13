@@ -11,30 +11,42 @@ export default function Header() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  useEffect(() => {
+  // components/Header.tsx - Updated useEffect
+useEffect(() => {
   const getUser = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     setUser(user)
     if (user) {
       const profile = await getSafeUserProfile(user.id)
       setUserProfile(profile)
+      // Update last_login when user logs in
+      await updateUserLastLogin(user.id)
     }
   }
   getUser()
 
   const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-    setUser(session?.user ?? null)
-    if (session?.user) {
-      const profile = await getSafeUserProfile(session.user.id)
+    const currentUser = session?.user ?? null
+    setUser(currentUser)
+    
+    if (currentUser) {
+      const profile = await getSafeUserProfile(currentUser.id)
       setUserProfile(profile)
+      
+      // Update last_login on sign in
+      if (event === 'SIGNED_IN') {
+        await updateUserLastLogin(currentUser.id)
+      }
     } else {
       setUserProfile(null)
     }
+    
+    // Force refresh of any parent components
+    window.dispatchEvent(new Event('authStateChange'));
   })
 
   return () => subscription.unsubscribe()
 }, [])
-
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -224,4 +236,8 @@ export default function Header() {
       `}</style>
     </header>
   )
+}
+
+function updateUserLastLogin(id: string) {
+    throw new Error('Function not implemented.')
 }

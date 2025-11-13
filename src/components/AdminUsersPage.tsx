@@ -50,13 +50,15 @@ export default function AdminUsersPage() {
   }, [])
 
   const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setCurrentUser(user)
-    
-    if (user) {
-      updateUserPresence(user.id)
-    }
+  const { data: { user } } = await supabase.auth.getUser()
+  setCurrentUser(user)
+  
+  if (user) {
+    updateUserPresence(user.id)
+    // Update last login time
+    await updateUserLastLogin(user.id)
   }
+}
 
   const fetchUsers = async () => {
     try {
@@ -105,25 +107,26 @@ export default function AdminUsersPage() {
   }
 
   const handleSave = async (userId: string) => {
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          ...editForm,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId)
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        ...editForm,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
 
-      if (error) throw error
+    if (error) throw error
 
-      setUsers(users.map(user => user.id === userId ? { ...user, ...editForm } : user))
-      setEditingUserId(null)
-      setSuccess('User updated successfully')
-      setTimeout(() => setSuccess(''), 3000)
-    } catch (error: any) {
-      setError(error.message)
-    }
+    // Refresh users list to get updated data
+    await fetchUsers()
+    setEditingUserId(null)
+    setSuccess('User updated successfully')
+    setTimeout(() => setSuccess(''), 3000)
+  } catch (error: any) {
+    setError(error.message)
   }
+}
 
   const handleCancel = () => {
     setEditingUserId(null)
@@ -152,64 +155,71 @@ export default function AdminUsersPage() {
   }
 
   const handleBulkAction = async () => {
-    if (!bulkAction || selectedUsers.length === 0) {
-      setError('Please select users and an action')
-      return
-    }
-
-    try {
-      let updates = {}
-      
-      switch (bulkAction) {
-        case 'approve':
-          updates = { approved: true }
-          break
-        case 'reject':
-          updates = { approved: false }
-          break
-        case 'make_moderator':
-          updates = { role: 'moderator' }
-          break
-        case 'make_user':
-          updates = { role: 'user' }
-          break
-        case 'delete':
-          if (!confirm(`Are you sure you want to delete ${selectedUsers.length} users?`)) return
-          const { error: deleteError } = await supabase
-            .from('profiles')
-            .delete()
-            .in('id', selectedUsers)
-          if (deleteError) throw deleteError
-          setUsers(users.filter(user => !selectedUsers.includes(user.id)))
-          setSelectedUsers([])
-          setSuccess(`${selectedUsers.length} users deleted successfully`)
-          setTimeout(() => setSuccess(''), 3000)
-          return
-        default:
-          return
-      }
-
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .in('id', selectedUsers)
-
-      if (error) throw error
-
-      setUsers(users.map(user => 
-        selectedUsers.includes(user.id) ? { ...user, ...updates } : user
-      ))
-      setSelectedUsers([])
-      setSuccess(`Bulk action completed for ${selectedUsers.length} users`)
-      setTimeout(() => setSuccess(''), 3000)
-    } catch (error: any) {
-      setError(error.message)
-    }
+  if (!bulkAction || selectedUsers.length === 0) {
+    setError('Please select users and an action')
+    return
   }
 
+  try {
+    let updates = {}
+    
+    switch (bulkAction) {
+      case 'approve':
+        updates = { approved: true }
+        break
+      case 'reject':
+        updates = { approved: false }
+        break
+      case 'make_moderator':
+        updates = { role: 'moderator' }
+        break
+      case 'make_user':
+        updates = { role: 'user' }
+        break
+      case 'delete':
+        if (!confirm(`Are you sure you want to delete ${selectedUsers.length} users?`)) return
+        
+        // Delete from auth users first, then profiles
+        for (const userId of selectedUsers) {
+          const { error: authError } = await supabase.auth.admin.deleteUser(userId)
+          if (authError) console.error('Auth delete error:', authError)
+        }
+        
+        const { error: deleteError } = await supabase
+          .from('profiles')
+          .delete()
+          .in('id', selectedUsers)
+          
+        if (deleteError) throw deleteError
+        
+        setUsers(users.filter(user => !selectedUsers.includes(user.id)))
+        setSelectedUsers([])
+        setSuccess(`${selectedUsers.length} users deleted successfully`)
+        setTimeout(() => setSuccess(''), 3000)
+        return
+      default:
+        return
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .in('id', selectedUsers)
+
+    if (error) throw error
+
+    // Refresh the users list
+    await fetchUsers()
+    setSelectedUsers([])
+    setSuccess(`Bulk action completed for ${selectedUsers.length} users`)
+    setTimeout(() => setSuccess(''), 3000)
+  } catch (error: any) {
+    setError(error.message)
+  }
+}
   const toggleUserSelection = (userId: string) => {
     setSelectedUsers(prev => 
       prev.includes(userId) 
@@ -827,4 +837,8 @@ export default function AdminUsersPage() {
       </div>
     </div>
   )
+}
+
+function updateUserLastLogin(id: string) {
+  throw new Error('Function not implemented.')
 }

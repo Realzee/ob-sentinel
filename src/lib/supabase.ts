@@ -214,6 +214,24 @@ export const getOnlineUsers = async (): Promise<OnlineUser[]> => {
   }
 };
 
+export const updateUserLastLogin = async (userId: string) => {
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ 
+        last_login: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+
+    if (error) throw error
+    return { success: true }
+  } catch (error) {
+    console.error('Error updating last login:', error)
+    return { error }
+  }
+}
+
 /**
  * Get user profile by ID
  */

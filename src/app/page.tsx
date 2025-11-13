@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { ensureUserProfile, getSafeUserProfile, supabase } from '@/lib/supabase'
+import { ensureUserExists, ensureUserProfile, getSafeUserProfile, supabase } from '@/lib/supabase'
 import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map, Calendar, Eye, CheckCircle, AlertCircle as AlertCircleIcon } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import AddCrimeForm from '@/components/AddCrimeForm'
@@ -215,7 +215,8 @@ export default function Dashboard() {
   };
 
   // SIMPLIFIED AUTHENTICATION
-  useEffect(() => {
+  // Replace the entire useEffect for authentication with this:
+useEffect(() => {
   console.log('🔄 Dashboard: Starting authentication check...');
   
   const initializeAuth = async () => {
@@ -242,10 +243,10 @@ export default function Dashboard() {
         
         setUserProfile(profile);
         
+        // Update last login
         if (profile) {
+          await updateUserLastLogin(session.user.id);
           await fetchAlerts();
-        } else {
-          setLoading(false);
         }
       } else {
         console.log('❌ Dashboard: No user session');
@@ -264,7 +265,7 @@ export default function Dashboard() {
 
   initializeAuth();
 
-  // Auth state listener with error handling
+  // Listen for auth state changes
   const { data: { subscription } } = supabase.auth.onAuthStateChange(
     async (event, session) => {
       console.log('🔄 Dashboard: Auth state changed:', event);
@@ -279,6 +280,11 @@ export default function Dashboard() {
             name: currentUser.user_metadata?.name
           });
           setUserProfile(profile);
+          
+          // Update last login on sign in
+          if (event === 'SIGNED_IN' && profile) {
+            await updateUserLastLogin(currentUser.id);
+          }
           
           if (profile) {
             await fetchAlerts();
@@ -1263,4 +1269,8 @@ export default function Dashboard() {
       )}
     </div>
   );
+}
+
+function updateUserLastLogin(id: string) {
+  throw new Error('Function not implemented.')
 }
