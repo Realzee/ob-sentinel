@@ -235,7 +235,7 @@ useEffect(() => {
         console.log('✅ Dashboard: User found:', session.user.email);
         setUser(session.user);
         
-        // Use the new safe profile function
+        // Ensure user profile exists
         const profile = await ensureUserProfile(session.user.id, {
           email: session.user.email!,
           name: session.user.user_metadata?.name
@@ -243,9 +243,7 @@ useEffect(() => {
         
         setUserProfile(profile);
         
-        // Update last login
         if (profile) {
-          await updateUserLastLogin(session.user.id);
           await fetchAlerts();
         }
       } else {
@@ -265,7 +263,7 @@ useEffect(() => {
 
   initializeAuth();
 
-  // Listen for auth state changes
+  // Auth state listener with error handling
   const { data: { subscription } } = supabase.auth.onAuthStateChange(
     async (event, session) => {
       console.log('🔄 Dashboard: Auth state changed:', event);
@@ -280,11 +278,6 @@ useEffect(() => {
             name: currentUser.user_metadata?.name
           });
           setUserProfile(profile);
-          
-          // Update last login on sign in
-          if (event === 'SIGNED_IN' && profile) {
-            await updateUserLastLogin(currentUser.id);
-          }
           
           if (profile) {
             await fetchAlerts();

@@ -224,7 +224,12 @@ export const updateUserLastLogin = async (userId: string) => {
       })
       .eq('id', userId)
 
-    if (error) throw error
+    if (error) {
+      console.error('Error updating last login:', error)
+      return { error }
+    }
+    
+    console.log('✅ Last login updated for user:', userId)
     return { success: true }
   } catch (error) {
     console.error('Error updating last login:', error)
@@ -509,27 +514,22 @@ export const subscribeToPresence = (
 // Add this function to check and fix user profiles
 export const ensureUserProfile = async (userId: string, userData: { email: string; name?: string }) => {
   try {
-    // First, check if profile exists without triggering recursion
+    // First, try to get existing profile
     const { data: existingProfile, error: fetchError } = await supabase
       .from('profiles')
-      .select('id')
+      .select('*')
       .eq('id', userId)
-      .maybeSingle();
+      .single()
 
-    if (fetchError) {
-      console.error('Error fetching profile:', fetchError);
-      return null;
-    }
-
-    if (!existingProfile) {
-      // Create profile if it doesn't exist
+    if (fetchError && fetchError.code === 'PGRST116') { // No rows returned
+      // Create new profile
       const { data: newProfile, error: createError } = await supabase
         .from('profiles')
         .insert([
           {
             id: userId,
             email: userData.email,
-            name: userData.name || userData.email.split('@')[0],
+            name: userData.name || null,
             approved: false,
             role: 'user',
             created_at: new Date().toISOString(),
@@ -537,42 +537,47 @@ export const ensureUserProfile = async (userId: string, userData: { email: strin
           }
         ])
         .select()
-        .single();
+        .single()
 
       if (createError) {
-        console.error('Error creating profile:', createError);
-        return null;
+        console.error('Error creating profile:', createError)
+        return null
       }
-      return newProfile;
+
+      return newProfile
     }
 
-    return existingProfile;
+    if (fetchError) {
+      console.error('Error fetching profile:', fetchError)
+      return null
+    }
+
+    return existingProfile
   } catch (error) {
-    console.error('Error in ensureUserProfile:', error);
-    return null;
+    console.error('Error in ensureUserProfile:', error)
+    return null
   }
-};
+}
 
 export const getSafeUserProfile = async (userId: string) => {
   try {
-    // First try to get profile without triggering RLS issues
-    const { data: profile, error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id, email, name, approved, role, last_login, created_at, updated_at, phone, location')
       .eq('id', userId)
-      .maybeSingle();
+      .single()
 
     if (error) {
-      console.error('Profile fetch error:', error);
-      return null;
+      console.error('Error fetching user profile:', error)
+      return null
     }
 
-    return profile;
+    return data
   } catch (error) {
-    console.error('Error in getSafeUserProfile:', error);
-    return null;
+    console.error('Error in getSafeUserProfile:', error)
+    return null
   }
-};
+}
 
 /**
  * Get user statistics
