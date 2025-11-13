@@ -146,121 +146,104 @@ export default function AdminUsersPage() {
   }
 
   // Add new user function
-  const handleAddUser = async () => {
-    if (!newUserForm.email) {
-      setError('Email is required')
-      return
-    }
+  // Replace the handleAddUser function in AdminUsersPage.tsx
+// Alternative handleAddUser function for client-side only
+const handleAddUser = async () => {
+  if (!newUserForm.email) {
+    setError('Email is required')
+    return
+  }
 
-    setAddingUser(true)
-    setError('')
+  setAddingUser(true)
+  setError('')
 
-    try {
-      // Create auth user
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: newUserForm.email,
-        password: generateTempPassword(), // Fixed: removed 'this.'
-        email_confirm: true,
-        user_metadata: {
+  try {
+    // Use signUp method instead of admin.createUser
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: newUserForm.email,
+      password: generateTempPassword(),
+      options: {
+        data: {
           name: newUserForm.name
         }
-      })
+      }
+    })
 
-      if (authError) {
-        // If user already exists, we can still create their profile
-        if (authError.message.includes('already registered')) {
-          console.log('User already exists, creating profile...')
-          // We'll handle this case by getting the existing user
-          const { data: existingUser } = await supabase.auth.admin.listUsers()
-          const user = existingUser?.users.find(u => u.email === newUserForm.email)
-          
-          if (!user) {
-            throw new Error('User exists but could not be found')
-          }
-          
-          // Create profile for existing user
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              id: user.id,
-              email: newUserForm.email,
-              name: newUserForm.name,
-              phone: newUserForm.phone,
-              location: newUserForm.location,
-              role: newUserForm.role,
-              approved: newUserForm.approved,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            })
-
-          if (profileError) {
-            // Profile might already exist, try updating instead
-            const { error: updateError } = await supabase
-              .from('profiles')
-              .update({
-                name: newUserForm.name,
-                phone: newUserForm.phone,
-                location: newUserForm.location,
-                role: newUserForm.role,
-                approved: newUserForm.approved,
-                updated_at: new Date().toISOString()
-              })
-              .eq('email', newUserForm.email)
-
-            if (updateError) throw updateError
-          }
-        } else {
-          throw authError
+    if (authError) {
+      // If user already exists, we can still create/update their profile
+      if (authError.message.includes('already registered')) {
+        console.log('User already exists, creating profile...')
+        
+        // Get the user by email
+        const { data: existingUsers } = await supabase.auth.admin.listUsers()
+        const user = existingUsers?.users.find(u => u.email === newUserForm.email)
+        
+        if (!user) {
+          throw new Error('User exists but could not be found')
         }
-      } else if (authData.user) {
-        // Create profile for new user
+        
+        // Create or update profile
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert({
-            id: authData.user.id,
+          .upsert({
+            id: user.id,
             email: newUserForm.email,
             name: newUserForm.name,
             phone: newUserForm.phone,
             location: newUserForm.location,
             role: newUserForm.role,
             approved: newUserForm.approved,
-            created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'id',
+            ignoreDuplicates: false
           })
 
         if (profileError) throw profileError
-
-        // Send invite email if requested
-        if (newUserForm.sendInvite) {
-          const { error: inviteError } = await supabase.auth.admin.inviteUserByEmail(newUserForm.email)
-          if (inviteError) {
-            console.warn('Could not send invite email:', inviteError.message)
-          }
-        }
+      } else {
+        throw authError
       }
+    } else if (authData.user) {
+      // Create profile for new user
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: authData.user.id,
+          email: newUserForm.email,
+          name: newUserForm.name,
+          phone: newUserForm.phone,
+          location: newUserForm.location,
+          role: newUserForm.role,
+          approved: newUserForm.approved,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
 
-      setSuccess('User added successfully!')
-      setShowAddUserModal(false)
-      setNewUserForm({
-        email: '',
-        name: '',
-        phone: '',
-        location: '',
-        role: 'user',
-        approved: true,
-        sendInvite: true
-      })
-      
-      // Refresh users list
-      await fetchUsers()
-      
-    } catch (error: any) {
-      console.error('Error adding user:', error)
-      setError(error.message || 'Failed to add user')
-    } finally {
-      setAddingUser(false)
+      if (profileError) throw profileError
     }
+
+    setSuccess('User added successfully!')
+    setShowAddUserModal(false)
+    setNewUserForm({
+      email: '',
+      name: '',
+      phone: '',
+      location: '',
+      role: 'user',
+      approved: true,
+      sendInvite: true
+    })
+    
+    // Refresh users list
+    await fetchUsers()
+    
+  } catch (error: any) {
+    console.error('Error adding user:', error)
+    setError(error.message || 'Failed to add user')
+  } finally {
+    setAddingUser(false)
   }
+}
 
   const handleEdit = (user: UserProfile) => {
     setEditingUserId(user.id)
