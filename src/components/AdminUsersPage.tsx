@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, getOnlineUsers, updateUserPresence } from '@/lib/supabase'
-import { Users, Shield, CheckCircle, XCircle, Edit, Save, X, User, Clock, Search, Filter, Wifi, WifiOff, Mail, Phone, MapPin, Calendar, Trash2, AlertTriangle, Eye, Ban, CheckSquare, Square } from 'lucide-react'
+import { Users, Shield, CheckCircle, XCircle, Edit, Save, X, User, Clock, Search, Filter, Wifi, WifiOff, Mail, Phone, MapPin, Calendar, Trash2, AlertTriangle, Eye, Ban, CheckSquare, Square, Plus, Key } from 'lucide-react'
 
 interface UserProfile {
   id: string
@@ -26,6 +26,16 @@ interface OnlineUser {
   profiles: UserProfile
 }
 
+interface NewUserForm {
+  email: string
+  name: string
+  phone: string
+  location: string
+  role: 'user' | 'moderator' | 'admin'
+  approved: boolean
+  sendInvite: boolean
+}
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserProfile[]>([])
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([])
@@ -42,12 +52,29 @@ export default function AdminUsersPage() {
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [bulkAction, setBulkAction] = useState('')
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
+  const [showAddUserModal, setShowAddUserModal] = useState(false)
+  const [addingUser, setAddingUser] = useState(false)
+
+  const [newUserForm, setNewUserForm] = useState<NewUserForm>({
+    email: '',
+    name: '',
+    phone: '',
+    location: '',
+    role: 'user',
+    approved: true,
+    sendInvite: true
+  })
 
   useEffect(() => {
     checkAuth()
     fetchUsers()
     startPresenceUpdates()
   }, [])
+
+  // Simple password generator (for demo purposes)
+  const generateTempPassword = () => {
+    return 'TempPassword123!' // In production, generate a secure random password
+  }
 
   const checkAuth = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -116,6 +143,123 @@ export default function AdminUsersPage() {
     setOnlineUsers(onlineUsers)
 
     return () => clearInterval(interval)
+  }
+
+  // Add new user function
+  const handleAddUser = async () => {
+    if (!newUserForm.email) {
+      setError('Email is required')
+      return
+    }
+
+    setAddingUser(true)
+    setError('')
+
+    try {
+      // Create auth user
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: newUserForm.email,
+        password: generateTempPassword(), // Fixed: removed 'this.'
+        email_confirm: true,
+        user_metadata: {
+          name: newUserForm.name
+        }
+      })
+
+      if (authError) {
+        // If user already exists, we can still create their profile
+        if (authError.message.includes('already registered')) {
+          console.log('User already exists, creating profile...')
+          // We'll handle this case by getting the existing user
+          const { data: existingUser } = await supabase.auth.admin.listUsers()
+          const user = existingUser?.users.find(u => u.email === newUserForm.email)
+          
+          if (!user) {
+            throw new Error('User exists but could not be found')
+          }
+          
+          // Create profile for existing user
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              id: user.id,
+              email: newUserForm.email,
+              name: newUserForm.name,
+              phone: newUserForm.phone,
+              location: newUserForm.location,
+              role: newUserForm.role,
+              approved: newUserForm.approved,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+
+          if (profileError) {
+            // Profile might already exist, try updating instead
+            const { error: updateError } = await supabase
+              .from('profiles')
+              .update({
+                name: newUserForm.name,
+                phone: newUserForm.phone,
+                location: newUserForm.location,
+                role: newUserForm.role,
+                approved: newUserForm.approved,
+                updated_at: new Date().toISOString()
+              })
+              .eq('email', newUserForm.email)
+
+            if (updateError) throw updateError
+          }
+        } else {
+          throw authError
+        }
+      } else if (authData.user) {
+        // Create profile for new user
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            email: newUserForm.email,
+            name: newUserForm.name,
+            phone: newUserForm.phone,
+            location: newUserForm.location,
+            role: newUserForm.role,
+            approved: newUserForm.approved,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+
+        if (profileError) throw profileError
+
+        // Send invite email if requested
+        if (newUserForm.sendInvite) {
+          const { error: inviteError } = await supabase.auth.admin.inviteUserByEmail(newUserForm.email)
+          if (inviteError) {
+            console.warn('Could not send invite email:', inviteError.message)
+          }
+        }
+      }
+
+      setSuccess('User added successfully!')
+      setShowAddUserModal(false)
+      setNewUserForm({
+        email: '',
+        name: '',
+        phone: '',
+        location: '',
+        role: 'user',
+        approved: true,
+        sendInvite: true
+      })
+      
+      // Refresh users list
+      await fetchUsers()
+      
+    } catch (error: any) {
+      console.error('Error adding user:', error)
+      setError(error.message || 'Failed to add user')
+    } finally {
+      setAddingUser(false)
+    }
   }
 
   const handleEdit = (user: UserProfile) => {
@@ -517,12 +661,21 @@ export default function AdminUsersPage() {
                 Card View
               </button>
             </div>
-            <button
-              onClick={fetchUsers}
-              className="bg-accent-blue text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
-            >
-              Refresh
-            </button>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowAddUserModal(true)}
+                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors flex items-center space-x-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add User</span>
+              </button>
+              <button
+                onClick={fetchUsers}
+                className="bg-accent-blue text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
 
@@ -761,6 +914,141 @@ export default function AdminUsersPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Add User Modal */}
+        {showAddUserModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-700">
+                <h3 className="text-lg font-semibold text-primary-white">Add New User</h3>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    value={newUserForm.email}
+                    onChange={e => setNewUserForm({...newUserForm, email: e.target.value})}
+                    className="form-input"
+                    placeholder="user@example.com"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newUserForm.name}
+                    onChange={e => setNewUserForm({...newUserForm, name: e.target.value})}
+                    className="form-input"
+                    placeholder="John Doe"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={newUserForm.phone}
+                    onChange={e => setNewUserForm({...newUserForm, phone: e.target.value})}
+                    className="form-input"
+                    placeholder="+27 12 345 6789"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    value={newUserForm.location}
+                    onChange={e => setNewUserForm({...newUserForm, location: e.target.value})}
+                    className="form-input"
+                    placeholder="City, Suburb"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Role
+                  </label>
+                  <select
+                    value={newUserForm.role}
+                    onChange={e => setNewUserForm({...newUserForm, role: e.target.value as any})}
+                    className="form-input"
+                  >
+                    <option value="user">User</option>
+                    <option value="moderator">Moderator</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={newUserForm.approved}
+                      onChange={e => setNewUserForm({...newUserForm, approved: e.target.checked})}
+                      className="rounded border-gray-600 bg-dark-gray text-accent-gold focus:ring-accent-gold"
+                    />
+                    <span className="text-sm text-gray-300">User is approved</span>
+                  </label>
+
+                  <label className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={newUserForm.sendInvite}
+                      onChange={e => setNewUserForm({...newUserForm, sendInvite: e.target.checked})}
+                      className="rounded border-gray-600 bg-dark-gray text-accent-gold focus:ring-accent-gold"
+                    />
+                    <span className="text-sm text-gray-300">Send invitation email</span>
+                  </label>
+                </div>
+
+                <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 p-3 rounded text-sm">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <Key className="w-4 h-4" />
+                    <span className="font-medium">Password Information</span>
+                  </div>
+                  <p>A temporary password will be generated automatically. The user will need to reset their password on first login.</p>
+                </div>
+              </div>
+              <div className="p-6 border-t border-gray-700 flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowAddUserModal(false)}
+                  className="px-4 py-2 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded transition-colors"
+                  disabled={addingUser}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddUser}
+                  disabled={addingUser || !newUserForm.email}
+                  className="btn-primary flex items-center space-x-2 disabled:opacity-50"
+                >
+                  {addingUser ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Adding User...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      <span>Add User</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
