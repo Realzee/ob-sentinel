@@ -646,6 +646,7 @@ export default function Dashboard() {
     });
   };
 
+  // FIXED: Enhanced map functions with better error handling
   const showMapModal = useCallback((item: any, type: 'vehicle' | 'crime') => {
     console.log('🗺️ Showing map for:', type, item.id);
     
@@ -678,7 +679,7 @@ export default function Dashboard() {
     });
   }, []);
 
-  // FIXED: View Report Details function
+  // FIXED: View Report Details function - properly set the modal state
   const showViewReportModal = useCallback((item: any, type: 'vehicle' | 'crime') => {
     console.log('📄 Viewing report details:', type, item.id);
     setViewReportModal({ 
@@ -721,7 +722,141 @@ export default function Dashboard() {
     }
   }, [userLocation]);
 
+  // FIXED: Map Modal Component
+  const MapModal = () => {
+    if (!mapModal) return null;
 
+    const { item, type } = mapModal;
+    const isVehicle = type === 'vehicle';
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+        <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-primary-white">
+                {isVehicle ? 'Vehicle Location' : 'Crime Location'}
+              </h3>
+              <button
+                onClick={() => setMapModal(null)}
+                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="bg-gray-800 rounded-lg p-6 mb-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="text-lg font-semibold text-primary-white mb-4">Location Details</h4>
+                  <div className="space-y-3">
+                    <div className="bg-gray-900 rounded p-3">
+                      <p className="text-sm text-gray-400 mb-1">Coordinates</p>
+                      <p className="text-primary-white font-mono">
+                        {item.latitude?.toFixed(6)}, {item.longitude?.toFixed(6)}
+                      </p>
+                    </div>
+                    
+                    {isVehicle ? (
+                      <>
+                        <div className="bg-gray-900 rounded p-3">
+                          <p className="text-sm text-gray-400 mb-1">Vehicle</p>
+                          <p className="text-primary-white">
+                            {item.number_plate} - {item.make} {item.model}
+                          </p>
+                        </div>
+                        <div className="bg-gray-900 rounded p-3">
+                          <p className="text-sm text-gray-400 mb-1">Incident</p>
+                          <p className="text-primary-white">{item.reason}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="bg-gray-900 rounded p-3">
+                          <p className="text-sm text-gray-400 mb-1">Crime Type</p>
+                          <p className="text-primary-white">{item.crime_type}</p>
+                        </div>
+                        <div className="bg-gray-900 rounded p-3">
+                          <p className="text-sm text-gray-400 mb-1">Location</p>
+                          <p className="text-primary-white">{item.location}</p>
+                        </div>
+                      </>
+                    )}
+                    
+                    <div className="bg-gray-900 rounded p-3">
+                      <p className="text-sm text-gray-400 mb-1">Suburb</p>
+                      <p className="text-primary-white">{item.suburb}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 className="text-lg font-semibold text-primary-white mb-4">Map Actions</h4>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => openOSM(item.latitude, item.longitude)}
+                      className="w-full btn-primary flex items-center justify-center space-x-2 py-3"
+                    >
+                      <Map className="w-5 h-5" />
+                      <span>View on OpenStreetMap</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => getDirections(item.latitude, item.longitude)}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                      disabled={!userLocation}
+                    >
+                      <Navigation className="w-5 h-5" />
+                      <span>
+                        {userLocation ? 'Get Directions' : 'Enable Location for Directions'}
+                      </span>
+                    </button>
+                    
+                    {!userLocation && (
+                      <p className="text-sm text-yellow-400 text-center">
+                        📍 Enable location services to get directions from your current location
+                      </p>
+                    )}
+                    
+                    <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 p-3 rounded text-sm">
+                      <p className="font-medium mb-1">Location Accuracy Notice</p>
+                      <p>Location accuracy depends on the precision of the coordinates provided by the reporter.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Embedded Map Preview */}
+            <div className="bg-gray-800 rounded-lg p-6">
+              <h4 className="text-lg font-semibold text-primary-white mb-4">Map Preview</h4>
+              <div className="aspect-video bg-gray-700 rounded-lg flex items-center justify-center relative">
+                <div className="text-center text-gray-400">
+                  <Map className="w-12 h-12 mx-auto mb-2" />
+                  <p>Interactive map preview</p>
+                  <p className="text-sm mt-2">
+                    <button
+                      onClick={() => openOSM(item.latitude, item.longitude)}
+                      className="text-accent-gold hover:text-yellow-400 underline"
+                    >
+                      Click here to view on OpenStreetMap
+                    </button>
+                  </p>
+                </div>
+                
+                {/* Map coordinates overlay */}
+                <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 text-white p-2 rounded text-sm">
+                  📍 {item.latitude?.toFixed(4)}, {item.longitude?.toFixed(4)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // FIXED: View Report Modal Component
   const ViewReportModal = () => {
     if (!viewReportModal) return null;
 
@@ -899,142 +1034,6 @@ export default function Dashboard() {
       </div>
     );
   };
-
-  // FIXED: Enhanced Map Modal with better UI
-  const MapModal = () => {
-    if (!mapModal) return null;
-
-    const { item, type } = mapModal;
-    const isVehicle = type === 'vehicle';
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-        <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-primary-white">
-                {isVehicle ? 'Vehicle Location' : 'Crime Location'}
-              </h3>
-              <button
-                onClick={() => setMapModal(null)}
-                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="bg-gray-800 rounded-lg p-6 mb-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="text-lg font-semibold text-primary-white mb-4">Location Details</h4>
-                  <div className="space-y-3">
-                    <div className="bg-gray-900 rounded p-3">
-                      <p className="text-sm text-gray-400 mb-1">Coordinates</p>
-                      <p className="text-primary-white font-mono">
-                        {item.latitude?.toFixed(6)}, {item.longitude?.toFixed(6)}
-                      </p>
-                    </div>
-                    
-                    {isVehicle ? (
-                      <>
-                        <div className="bg-gray-900 rounded p-3">
-                          <p className="text-sm text-gray-400 mb-1">Vehicle</p>
-                          <p className="text-primary-white">
-                            {item.number_plate} - {item.make} {item.model}
-                          </p>
-                        </div>
-                        <div className="bg-gray-900 rounded p-3">
-                          <p className="text-sm text-gray-400 mb-1">Incident</p>
-                          <p className="text-primary-white">{item.reason}</p>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="bg-gray-900 rounded p-3">
-                          <p className="text-sm text-gray-400 mb-1">Crime Type</p>
-                          <p className="text-primary-white">{item.crime_type}</p>
-                        </div>
-                        <div className="bg-gray-900 rounded p-3">
-                          <p className="text-sm text-gray-400 mb-1">Location</p>
-                          <p className="text-primary-white">{item.location}</p>
-                        </div>
-                      </>
-                    )}
-                    
-                    <div className="bg-gray-900 rounded p-3">
-                      <p className="text-sm text-gray-400 mb-1">Suburb</p>
-                      <p className="text-primary-white">{item.suburb}</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div>
-                  <h4 className="text-lg font-semibold text-primary-white mb-4">Map Actions</h4>
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => openOSM(item.latitude, item.longitude)}
-                      className="w-full btn-primary flex items-center justify-center space-x-2 py-3"
-                    >
-                      <Map className="w-5 h-5" />
-                      <span>View on OpenStreetMap</span>
-                    </button>
-                    
-                    <button
-                      onClick={() => getDirections(item.latitude, item.longitude)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
-                      disabled={!userLocation}
-                    >
-                      <Navigation className="w-5 h-5" />
-                      <span>
-                        {userLocation ? 'Get Directions' : 'Enable Location for Directions'}
-                      </span>
-                    </button>
-                    
-                    {!userLocation && (
-                      <p className="text-sm text-yellow-400 text-center">
-                        📍 Enable location services to get directions from your current location
-                      </p>
-                    )}
-                    
-                    <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 p-3 rounded text-sm">
-                      <p className="font-medium mb-1">Location Accuracy Notice</p>
-                      <p>Location accuracy depends on the precision of the coordinates provided by the reporter.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {/* Embedded Map Preview */}
-            <div className="bg-gray-800 rounded-lg p-6">
-              <h4 className="text-lg font-semibold text-primary-white mb-4">Map Preview</h4>
-              <div className="aspect-video bg-gray-700 rounded-lg flex items-center justify-center relative">
-                <div className="text-center text-gray-400">
-                  <Map className="w-12 h-12 mx-auto mb-2" />
-                  <p>Interactive map preview</p>
-                  <p className="text-sm mt-2">
-                    <button
-                      onClick={() => openOSM(item.latitude, item.longitude)}
-                      className="text-accent-gold hover:text-yellow-400 underline"
-                    >
-                      Click here to view on OpenStreetMap
-                    </button>
-                  </p>
-                </div>
-                
-                {/* Map coordinates overlay */}
-                <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 text-white p-2 rounded text-sm">
-                  📍 {item.latitude?.toFixed(4)}, {item.longitude?.toFixed(4)}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-
 
   // Utility functions
   const getUserDisplayName = (item: any) => {
@@ -1400,61 +1399,61 @@ export default function Dashboard() {
                       </span>
                       
                       {alert.has_images && alert.image_urls && alert.image_urls.length > 0 && (
-          <button
-            onClick={() => handleImagePreview(alert.image_urls!, 0)}
-            className="p-2 text-accent-gold hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-            title="View Images"
-          >
-            <ImageIcon className="w-4 h-4" />
-          </button>
-        )}
-        
-        {alert.latitude && alert.longitude && (
-          <button
-            onClick={() => showMapModal(alert, 'vehicle')}
-            className="p-2 text-accent-blue hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-            title="View Location on Map"
-          >
-            <MapPin className="w-4 h-4" />
-          </button>
-        )}
-        
-        <button
-          onClick={() => showViewReportModal(alert, 'vehicle')}
-          className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-          title="View Full Details"
-        >
-          <Eye className="w-4 h-4" />
-        </button>
-        
-        {user && alert.user_id === user.id && (
-          <>
-            <button
-              onClick={() => handleEditAlert(alert)}
-              className="p-2 text-accent-gold hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-              title="Edit Report"
-            >
-              <Edit className="w-4 h-4" />
-            </button>
-            
-            <button
-              onClick={() => setBoloAlert(alert)}
-              className="p-2 text-purple-400 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-              title="Generate BOLO Card"
-            >
-              <FileText className="w-4 h-4" />
-            </button>
-            
-            <button
-              onClick={() => handleDeleteAlert(alert.id, 'vehicle')}
-              className="p-2 text-red-400 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-              title="Delete Report"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </>
-        )}
-      </div>
+                        <button
+                          onClick={() => handleImagePreview(alert.image_urls!, 0)}
+                          className="p-2 text-accent-gold hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                          title="View Images"
+                        >
+                          <ImageIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                      
+                      {alert.latitude && alert.longitude && (
+                        <button
+                          onClick={() => showMapModal(alert, 'vehicle')}
+                          className="p-2 text-accent-blue hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                          title="View Location on Map"
+                        >
+                          <MapPin className="w-4 h-4" />
+                        </button>
+                      )}
+                      
+                      <button
+                        onClick={() => showViewReportModal(alert, 'vehicle')}
+                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                        title="View Full Details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      
+                      {user && alert.user_id === user.id && (
+                        <>
+                          <button
+                            onClick={() => handleEditAlert(alert)}
+                            className="p-2 text-accent-gold hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                            title="Edit Report"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          
+                          <button
+                            onClick={() => setBoloAlert(alert)}
+                            className="p-2 text-purple-400 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                            title="Generate BOLO Card"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
+                          
+                          <button
+                            onClick={() => handleDeleteAlert(alert.id, 'vehicle')}
+                            className="p-2 text-red-400 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                            title="Delete Report"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                   
                   {alert.comments && (
@@ -1515,9 +1514,9 @@ export default function Dashboard() {
                         {report.status}
                       </span>
                       
-                      {report.has_images && (
+                      {report.has_images && report.image_urls && report.image_urls.length > 0 && (
                         <button
-                          onClick={() => report.image_urls && handleImagePreview(report.image_urls, 0)}
+                          onClick={() => handleImagePreview(report.image_urls!, 0)}
                           className="p-2 text-red-400 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
                           title="View Images"
                         >
@@ -1734,160 +1733,10 @@ export default function Dashboard() {
       )}
 
       {/* Map Modal */}
-      {mapModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-primary-white">
-                  {mapModal.type === 'vehicle' ? 'Vehicle Location' : 'Crime Location'}
-                </h3>
-                <button
-                  onClick={() => setMapModal(null)}
-                  className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-              
-              <div className="bg-gray-800 rounded-lg p-6 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="text-lg font-semibold text-primary-white mb-4">Location Details</h4>
-                    <div className="space-y-3">
-                      <p className="text-gray-300">
-                        <strong>Coordinates:</strong><br />
-                        {mapModal.item.latitude?.toFixed(6)}, {mapModal.item.longitude?.toFixed(6)}
-                      </p>
-                      {mapModal.type === 'vehicle' ? (
-                        <>
-                          <p className="text-gray-300">
-                            <strong>Vehicle:</strong><br />
-                            {mapModal.item.number_plate} - {mapModal.item.make} {mapModal.item.model}
-                          </p>
-                          <p className="text-gray-300">
-                            <strong>Incident:</strong><br />
-                            {mapModal.item.reason}
-                          </p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-gray-300">
-                            <strong>Crime Type:</strong><br />
-                            {mapModal.item.crime_type}
-                          </p>
-                          <p className="text-gray-300">
-                            <strong>Location:</strong><br />
-                            {mapModal.item.location}
-                          </p>
-                        </>
-                      )}
-                      <p className="text-gray-300">
-                        <strong>Suburb:</strong><br />
-                        {mapModal.item.suburb}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-gray-900 rounded-lg p-4">
-                    <h4 className="text-lg font-semibold text-primary-white mb-4">Map Actions</h4>
-                    <div className="space-y-3">
-                      <button
-                        onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
-                        className="w-full btn-primary flex items-center justify-center space-x-2"
-                      >
-                        <Map className="w-5 h-5" />
-                        <span>View on OpenStreetMap</span>
-                      </button>
-                      
-                      <button
-                        onClick={() => getDirections(mapModal.item.latitude, mapModal.item.longitude)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
-                      >
-                        <Navigation className="w-5 h-5" />
-                        <span>Get Directions</span>
-                      </button>
-                      
-                      <p className="text-sm text-gray-400 text-center">
-                        📍 Location accuracy depends on the reporter's data
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Embedded Map Preview */}
-              <div className="bg-gray-800 rounded-lg p-4">
-                <h4 className="text-lg font-semibold text-primary-white mb-4">Map Preview</h4>
-                <div className="aspect-video bg-gray-700 rounded-lg flex items-center justify-center">
-                  <div className="text-center text-gray-400">
-                    <Map className="w-12 h-12 mx-auto mb-2" />
-                    <p>Interactive map would be embedded here</p>
-                    <p className="text-sm mt-2">
-                      <button
-                        onClick={() => openOSM(mapModal.item.latitude, mapModal.item.longitude)}
-                        className="text-accent-gold hover:text-yellow-400 underline"
-                      >
-                        Click here to view on OpenStreetMap
-                      </button>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {mapModal && <MapModal />}
 
       {/* View Report Modal */}
-      {viewReportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-primary-white">
-                  {viewReportModal.type === 'vehicle' ? 'Vehicle Report Details' : 'Crime Report Details'}
-                </h3>
-                <button
-                  onClick={() => setViewReportModal(null)}
-                  className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-              
-              <div className="space-y-6">
-                {/* Report content would go here */}
-                <div className="bg-gray-800 rounded-lg p-6">
-                  <p className="text-gray-300">
-                    Full report details for {viewReportModal.item.ob_number} would be displayed here.
-                  </p>
-                </div>
-                
-                <div className="flex justify-end space-x-3">
-                  <button
-                    onClick={() => setViewReportModal(null)}
-                    className="px-4 py-2 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                  >
-                    Close
-                  </button>
-                  {viewReportModal.type === 'vehicle' && viewReportModal.item.latitude && viewReportModal.item.longitude && (
-                    <button
-                      onClick={() => {
-                        showMapModal(viewReportModal.item, viewReportModal.type);
-                        setViewReportModal(null);
-                      }}
-                      className="btn-primary"
-                    >
-                      View on Map
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {viewReportModal && <ViewReportModal />}
     </div>
   );
 }
