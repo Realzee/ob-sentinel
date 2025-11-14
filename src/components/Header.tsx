@@ -13,31 +13,48 @@ export default function Header() {
 
   // components/Header.tsx - Updated useEffect
 useEffect(() => {
-  const getUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setUser(user)
-    if (user) {
-      const profile = await getSafeUserProfile(user.id)
-      setUserProfile(profile)
+  let mounted = true
+
+  const initializeAuth = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!mounted) return
+      
+      setUser(user)
+      if (user) {
+        const profile = await getSafeUserProfile(user.id)
+        if (mounted) {
+          setUserProfile(profile)
+        }
+      }
+    } catch (error) {
+      console.error('Auth initialization error:', error)
     }
   }
-  getUser()
+
+  initializeAuth()
 
   const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    if (!mounted) return
+    
     const currentUser = session?.user ?? null
     setUser(currentUser)
     
     if (currentUser) {
       const profile = await getSafeUserProfile(currentUser.id)
-      setUserProfile(profile)
+      if (mounted) {
+        setUserProfile(profile)
+      }
     } else {
       setUserProfile(null)
     }
   })
 
-  return () => subscription.unsubscribe()
+  return () => {
+    mounted = false
+    subscription.unsubscribe()
+  }
 }, [])
-
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

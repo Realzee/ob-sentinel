@@ -195,16 +195,18 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
     })
   }
 
-  const uploadImages = async (alertId: string): Promise<string[]> => {
+  // OPTIMIZED: Image upload with better error handling
+const uploadImages = async (alertId: string): Promise<string[]> => {
   if (imageFiles.length === 0) return []
 
   setUploadingImages(true)
   const imageUrls: string[] = []
 
   try {
-    for (const imageFile of imageFiles) {
-      const fileExt = imageFile.file.name.split('.').pop()
-      const fileName = `${alertId}/${Math.random().toString(36).substring(2)}.${fileExt}`
+    // Upload in parallel with Promise.all for better performance
+    const uploadPromises = imageFiles.map(async (imageFile) => {
+      const fileExt = imageFile.file.name.split('.').pop() || 'jpg'
+      const fileName = `${alertId}/${Math.random().toString(36).substring(2, 15)}.${fileExt}`
 
       const { error: uploadError } = await supabase.storage
         .from('report-images')
@@ -215,13 +217,19 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         throw new Error(`Failed to upload image: ${uploadError.message}`)
       }
 
-      // Use getPublicUrl to get the publicly accessible URL
       const { data: { publicUrl } } = supabase.storage
         .from('report-images')
         .getPublicUrl(fileName)
 
-      imageUrls.push(publicUrl)
-    }
+      return publicUrl
+    })
+
+    // Wait for all uploads to complete
+    imageUrls.push(...(await Promise.all(uploadPromises)))
+    
+  } catch (error) {
+    console.error('Error uploading images:', error)
+    throw error
   } finally {
     setUploadingImages(false)
   }
@@ -229,167 +237,118 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
   return imageUrls
 }
 
-  const onSubmit = async (data: AlertForm) => {
-    if (!hasValidSupabaseConfig) {
-      setError('System not configured. Please check environment variables.')
+// OPTIMIZED: Form submission with better validation
+const onSubmit = async (data: AlertForm) => {
+  if (!hasValidSupabaseConfig) {
+    setError('System not configured. Please check environment variables.')
+    return
+  }
+
+  // Client-side validation
+  if (!data.number_plate || !data.make || !data.model || !data.color || !data.suburb) {
+    setError('Please fill in all required fields.')
+    return
+  }
+
+  setLoading(true)
+  setError('')
+  setSuccess('')
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      setError('You must be logged in to file reports')
       return
     }
 
-    setLoading(true)
-    setError('')
-    setSuccess('')
-
-    try {
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) {
-        setError('You must be logged in to file reports')
-        return
-      }
-
-      // Check if user is approved
-      const profile = await getSafeUserProfile(user.id);
-
-if (!profile) {
-  setError('Unable to verify your account. Please try logging in again.')
-  setLoading(false)
-  return
-}
-
-if (!profile.approved) {
-  setError('Your account is not approved yet. Please contact an administrator to get approved before filing reports.')
-  setLoading(false)
-  return
-}
-
-      // Ensure user exists in database
-      const dbUser = await ensureUserExists(user.id, {
-        email: user.email!,
-        name: user.user_metadata?.name
-      })
-
-      if (!dbUser) {
-        setError('Unable to verify your account. Please try logging in again.')
-        return
-      }
-
-      // ✅ FIX: Convert empty strings to null for numeric fields
-      const formData = {
-        ...data,
-        latitude: data.latitude && !isNaN(Number(data.latitude)) ? Number(data.latitude) : null,
-        longitude: data.longitude && !isNaN(Number(data.longitude)) ? Number(data.longitude) : null,
-        number_plate: data.number_plate.toUpperCase().replace(/\s/g, ''),
-        case_number: data.case_number || null,
-        station_reported_at: data.station_reported_at || null,
-        comments: data.comments || null,
-        incident_date: data.incident_date || null
-      }
-
-      // Insert new alert with OB number and location
-      const { data: alertData, error: insertError } = await supabase
-        .from('alerts_vehicles')
-        .insert([
-          {
-            user_id: user.id,
-            number_plate: formData.number_plate,
-            color: formData.color,
-            make: formData.make,
-            model: formData.model,
-            reason: formData.reason,
-            case_number: formData.case_number,
-            station_reported_at: formData.station_reported_at,
-            ob_number: obNumber, // Include the generated OB number
-            suburb: formData.suburb,
-            comments: formData.comments,
-            has_images: imageFiles.length > 0,
-            latitude: formData.latitude,
-            longitude: formData.longitude,
-            incident_date: formData.incident_date,
-            status: 'ACTIVE' // Default status for new reports
-          }
-        ])
-        .select()
-        .single()
-
-      if (insertError) {
-        console.error('Insert error:', insertError)
-        throw insertError
-      }
-
-      // Upload images if any
-      let imageUrls: string[] = []
-      if (imageFiles.length > 0) {
-        imageUrls = await uploadImages(alertData.id)
-        
-        // Update alert with image URLs
-        if (imageUrls.length > 0) {
-          const { error: updateError } = await supabase
-            .from('alerts_vehicles')
-            .update({ image_urls: imageUrls })
-            .eq('id', alertData.id)
-
-          if (updateError) {
-            console.error('Image URL update error:', updateError)
-            // Continue anyway - the alert was created successfully
-          }
-        }
-      }
-
-      setSuccess(`Report filed successfully! OB Number: ${obNumber} ${imageUrls.length > 0 ? `${imageUrls.length} image(s) uploaded.` : ''} ${data.latitude && data.longitude ? 'Location pin dropped.' : ''}`)
-      
-      // Enhanced logging with details
-      await supabase
-        .from('user_logs')
-        .insert([
-          {
-            user_id: user.id,
-            action: 'create_alert',
-            ip_address: '',
-            user_agent: navigator.userAgent,
-            details: {
-              alert_id: alertData.id,
-              number_plate: formData.number_plate,
-              reason: formData.reason,
-              suburb: formData.suburb,
-              ob_number: obNumber,
-              has_images: imageFiles.length > 0,
-              image_count: imageFiles.length,
-              has_location: !!(data.latitude && data.longitude),
-              vehicle_make: formData.make,
-              vehicle_model: formData.model,
-              vehicle_color: formData.color,
-              user_role: profile.role,
-              user_name: profile.name
-            }
-          }
-        ])
-
-      // Clean up
-      imageFiles.forEach(file => URL.revokeObjectURL(file.preview))
-      setImageFiles([])
-      setLocation({})
-      reset()
-      
-      // Generate new OB number for next report
-      setObNumber(generateOBNumber())
-      
-      // Mock WhatsApp notification
-      console.log('📱 RAPID ALERT MOCK:')
-      console.log(`New report: ${data.number_plate} - ${data.reason} in ${data.suburb} - OB: ${obNumber}`)
-      
-      // Callback to refresh alerts
-      if (onAlertAdded) {
-        onAlertAdded()
-      }
-
-    } catch (error: any) {
-      console.error('Form submission error:', error)
-      setError(error.message || 'Failed to file report. Please try again.')
-    } finally {
+    // Check if user is approved
+    const profile = await getSafeUserProfile(user.id);
+    if (!profile) {
+      setError('Unable to verify your account. Please try logging in again.')
       setLoading(false)
+      return
     }
+
+    if (!profile.approved) {
+      setError('Your account is not approved yet. Please contact an administrator to get approved before filing reports.')
+      setLoading(false)
+      return
+    }
+
+    // Process form data
+    const formData = {
+      ...data,
+      latitude: data.latitude && !isNaN(Number(data.latitude)) ? Number(data.latitude) : null,
+      longitude: data.longitude && !isNaN(Number(data.longitude)) ? Number(data.longitude) : null,
+      number_plate: data.number_plate.toUpperCase().replace(/\s/g, ''),
+      case_number: data.case_number || null,
+      station_reported_at: data.station_reported_at || null,
+      comments: data.comments || null,
+      incident_date: data.incident_date || null
+    }
+
+    // Insert new alert
+    const { data: alertData, error: insertError } = await supabase
+      .from('alerts_vehicles')
+      .insert([
+        {
+          user_id: user.id,
+          number_plate: formData.number_plate,
+          color: formData.color,
+          make: formData.make,
+          model: formData.model,
+          reason: formData.reason,
+          case_number: formData.case_number,
+          station_reported_at: formData.station_reported_at,
+          ob_number: obNumber,
+          suburb: formData.suburb,
+          comments: formData.comments,
+          has_images: imageFiles.length > 0,
+          latitude: formData.latitude,
+          longitude: formData.longitude,
+          incident_date: formData.incident_date,
+          status: 'ACTIVE'
+        }
+      ])
+      .select()
+      .single()
+
+    if (insertError) throw insertError
+
+    // Upload images if any
+    let imageUrls: string[] = []
+    if (imageFiles.length > 0) {
+      imageUrls = await uploadImages(alertData.id)
+      
+      if (imageUrls.length > 0) {
+        await supabase
+          .from('alerts_vehicles')
+          .update({ image_urls: imageUrls })
+          .eq('id', alertData.id)
+      }
+    }
+
+    setSuccess(`Report filed successfully! OB Number: ${obNumber}`)
+    
+    // Clean up and reset
+    imageFiles.forEach(file => URL.revokeObjectURL(file.preview))
+    setImageFiles([])
+    setLocation({})
+    reset()
+    setObNumber(generateOBNumber())
+    
+    if (onAlertAdded) {
+      onAlertAdded()
+    }
+
+  } catch (error: any) {
+    console.error('Form submission error:', error)
+    setError(error.message || 'Failed to file report. Please try again.')
+  } finally {
+    setLoading(false)
   }
+}
 
   return (
     <div className="card p-6 mb-8">
