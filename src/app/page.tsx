@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { ensureUserProfile, getSafeUserProfile, supabase } from '@/lib/supabase'
 import { cacheManager, debounce, performanceMonitor } from '@/lib/cache'
 import { ProgressiveLoader } from '@/components/ProgressiveLoader'
@@ -167,6 +168,7 @@ function GuidelineCard(props: { icon: React.ReactNode; title: string; descriptio
 }
 
 export default function Dashboard() {
+  const router = useRouter()
   const [alerts, setAlerts] = useState<AlertVehicle[]>([])
   const [crimeReports, setCrimeReports] = useState<CrimeReport[]>([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -196,8 +198,9 @@ export default function Dashboard() {
     setNewReportAlerts(prev => prev.filter(alert => alert.id !== alertId));
   };
 
-  // Handle alert view report
+  // Handle alert view report - FIXED
   const handleAlertViewReport = (alert: NewReportAlert) => {
+    console.log('🔍 Viewing report from alert:', alert.type, alert.report.id);
     setViewReportModal({
       show: true,
       item: alert.report,
@@ -222,7 +225,7 @@ export default function Dashboard() {
     console.log('🔔 New report alert:', type, report.ob_number);
   };
 
-  // OPTIMIZED AUTHENTICATION
+  // OPTIMIZED AUTHENTICATION WITH REDIRECT
   useEffect(() => {
     let mounted = true;
 
@@ -234,11 +237,14 @@ export default function Dashboard() {
         if (!mounted) return;
         
         if (!session?.user) {
+          console.log('🚫 No user session, redirecting to login');
           setAuthChecked(true);
           setLoading(false);
+          router.push('/login');
           return;
         }
 
+        console.log('✅ User authenticated:', session.user.email);
         setUser(session.user);
         
         // Parallelize critical data loading
@@ -267,6 +273,7 @@ export default function Dashboard() {
         if (mounted) {
           setAuthChecked(true);
           setLoading(false);
+          router.push('/login');
         }
       }
     };
@@ -276,7 +283,8 @@ export default function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [router]);
+
 
   // Get user location
   useEffect(() => {
@@ -638,42 +646,395 @@ export default function Dashboard() {
     });
   };
 
-  // Map functions - IMPROVED with error handling
-  const openOSM = (lat: number, lon: number) => {
+  const showMapModal = useCallback((item: any, type: 'vehicle' | 'crime') => {
+    console.log('🗺️ Showing map for:', type, item.id);
+    
+    if (!item.latitude || !item.longitude) {
+      console.warn('No location data for item:', item.id);
+      alert('No location data available for this report. The reporter did not provide exact coordinates.');
+      return;
+    }
+
+    // Validate coordinates
+    const lat = parseFloat(item.latitude);
+    const lon = parseFloat(item.longitude);
+    
+    if (isNaN(lat) || isNaN(lon)) {
+      console.error('Invalid coordinates:', item.latitude, item.longitude);
+      alert('Invalid location data for this report.');
+      return;
+    }
+
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      console.error('Coordinates out of range:', lat, lon);
+      alert('Location coordinates are out of valid range.');
+      return;
+    }
+
+    setMapModal({ 
+      show: true, 
+      item: { ...item, latitude: lat, longitude: lon }, 
+      type 
+    });
+  }, []);
+
+  // FIXED: View Report Details function
+  const showViewReportModal = useCallback((item: any, type: 'vehicle' | 'crime') => {
+    console.log('📄 Viewing report details:', type, item.id);
+    setViewReportModal({ 
+      show: true, 
+      item, 
+      type 
+    });
+  }, []);
+
+  // FIXED: Enhanced map functions with better error handling
+  const openOSM = useCallback((lat: number, lon: number) => {
     try {
       const osmUrl = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}`;
-      window.open(osmUrl, '_blank', 'noopener,noreferrer');
+      console.log('🌐 Opening OSM:', osmUrl);
+      const newWindow = window.open(osmUrl, '_blank', 'noopener,noreferrer');
+      if (!newWindow) {
+        alert('Popup blocked! Please allow popups for this site to view the map.');
+      }
     } catch (error) {
       console.error('Error opening OSM:', error);
-      alert('Unable to open map. Please check your browser settings.');
+      alert('Unable to open map. Please check your browser settings and ensure popups are allowed.');
     }
-  };
+  }, []);
 
-  const getDirections = (lat: number, lon: number) => {
+  const getDirections = useCallback((lat: number, lon: number) => {
     try {
       if (userLocation) {
         const directionsUrl = `https://www.openstreetmap.org/directions?engine=osrm_car&route=${userLocation.latitude},${userLocation.longitude};${lat},${lon}`;
-        window.open(directionsUrl, '_blank', 'noopener,noreferrer');
+        console.log('🧭 Getting directions:', directionsUrl);
+        const newWindow = window.open(directionsUrl, '_blank', 'noopener,noreferrer');
+        if (!newWindow) {
+          alert('Popup blocked! Please allow popups for this site to get directions.');
+        }
       } else {
-        alert('Unable to get your current location. Please enable location services and refresh the page.');
+        alert('Unable to get your current location. Please enable location services and refresh the page, or use the "View on Map" option instead.');
       }
     } catch (error) {
       console.error('Error getting directions:', error);
       alert('Unable to get directions. Please try again.');
     }
+  }, [userLocation]);
+
+
+  const ViewReportModal = () => {
+    if (!viewReportModal) return null;
+
+    const { item, type } = viewReportModal;
+    const isVehicle = type === 'vehicle';
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+        <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-primary-white">
+                {isVehicle ? 'Vehicle Report Details' : 'Crime Report Details'}
+              </h3>
+              <button
+                onClick={() => setViewReportModal(null)}
+                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-6">
+              {/* Header Section */}
+              <div className="bg-gray-800 rounded-lg p-6">
+                <div className="flex items-center space-x-4 mb-4">
+                  <div className={`p-3 rounded-lg ${isVehicle ? 'bg-accent-gold' : 'bg-red-600'}`}>
+                    {isVehicle ? 
+                      <Car className="w-6 h-6 text-black" /> : 
+                      <Shield className="w-6 h-6 text-white" />
+                    }
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-semibold text-primary-white">
+                      {isVehicle ? item.number_plate : item.crime_type}
+                    </h4>
+                    <p className="text-gray-400">
+                      OB Number: <strong>{item.ob_number}</strong>
+                    </p>
+                    <p className="text-gray-400">
+                      Status: <span className={`${item.status === 'ACTIVE' ? 'text-green-400' : 'text-blue-400'}`}>
+                        {item.status}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-300"><strong>Location:</strong> {item.location || item.suburb}</p>
+                    <p className="text-gray-300"><strong>Suburb:</strong> {item.suburb}</p>
+                    {isVehicle ? (
+                      <>
+                        <p className="text-gray-300"><strong>Vehicle:</strong> {item.make} {item.model}</p>
+                        <p className="text-gray-300"><strong>Color:</strong> {item.color}</p>
+                      </>
+                    ) : (
+                      <p className="text-gray-300"><strong>Incident Type:</strong> {item.crime_type}</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-gray-300">
+                      <strong>Reported:</strong> {formatDate(item.created_at)} at {formatTime(item.created_at)}
+                    </p>
+                    <p className="text-gray-300">
+                      <strong>By:</strong> {getUserDisplayName(item)}
+                    </p>
+                    {item.case_number && (
+                      <p className="text-gray-300"><strong>SAPS Case:</strong> {item.case_number}</p>
+                    )}
+                    {item.station_reported_at && (
+                      <p className="text-gray-300"><strong>Station:</strong> {item.station_reported_at}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Description Section */}
+              <div className="bg-gray-800 rounded-lg p-6">
+                <h5 className="text-lg font-semibold text-primary-white mb-3">Description</h5>
+                <p className="text-gray-300 whitespace-pre-wrap">
+                  {isVehicle ? item.comments || 'No additional details provided.' : item.description}
+                </p>
+              </div>
+
+              {/* Additional Details */}
+              {!isVehicle && (
+                <div className="bg-gray-800 rounded-lg p-6">
+                  <h5 className="text-lg font-semibold text-primary-white mb-3">Additional Information</h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    {item.suspects_description && (
+                      <div>
+                        <strong className="text-gray-300">Suspects Description:</strong>
+                        <p className="text-gray-400 mt-1">{item.suspects_description}</p>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      {item.weapons_involved && (
+                        <p className="text-red-400 flex items-center space-x-2">
+                          <AlertTriangle className="w-4 h-4" />
+                          <span>Weapons Involved</span>
+                        </p>
+                      )}
+                      {item.injuries && (
+                        <p className="text-yellow-400 flex items-center space-x-2">
+                          <AlertTriangle className="w-4 h-4" />
+                          <span>Injuries Sustained</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Images Section */}
+              {item.has_images && item.image_urls && item.image_urls.length > 0 && (
+                <div className="bg-gray-800 rounded-lg p-6">
+                  <h5 className="text-lg font-semibold text-primary-white mb-3">
+                    Evidence Images ({item.image_urls.length})
+                  </h5>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {item.image_urls.map((url: string, index: number) => (
+                      <div key={index} className="relative group">
+                        <LazyImage
+                          src={url}
+                          alt={`Evidence ${index + 1}`}
+                          className="w-full h-32 object-cover rounded border border-gray-600 cursor-pointer"
+                          onClick={() => handleImagePreview(item.image_urls, index)}
+                        />
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                          <Eye className="w-6 h-6 text-white" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3">
+                <button
+                  onClick={() => setViewReportModal(null)}
+                  className="px-4 py-2 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded transition-colors"
+                >
+                  Close
+                </button>
+                {item.latitude && item.longitude && (
+                  <button
+                    onClick={() => {
+                      showMapModal(item, type);
+                      setViewReportModal(null);
+                    }}
+                    className="btn-primary flex items-center justify-center space-x-2"
+                  >
+                    <MapPin className="w-4 h-4" />
+                    <span>View on Map</span>
+                  </button>
+                )}
+                {isVehicle && user && item.user_id === user.id && (
+                  <button
+                    onClick={() => {
+                      setBoloAlert(item);
+                      setViewReportModal(null);
+                    }}
+                    className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Generate BOLO</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  const showMapModal = (item: any, type: 'vehicle' | 'crime') => {
-    if (!item.latitude || !item.longitude) {
-      alert('No location data available for this report.');
-      return;
-    }
-    setMapModal({ show: true, item, type });
+  // FIXED: Enhanced Map Modal with better UI
+  const MapModal = () => {
+    if (!mapModal) return null;
+
+    const { item, type } = mapModal;
+    const isVehicle = type === 'vehicle';
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+        <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-primary-white">
+                {isVehicle ? 'Vehicle Location' : 'Crime Location'}
+              </h3>
+              <button
+                onClick={() => setMapModal(null)}
+                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="bg-gray-800 rounded-lg p-6 mb-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="text-lg font-semibold text-primary-white mb-4">Location Details</h4>
+                  <div className="space-y-3">
+                    <div className="bg-gray-900 rounded p-3">
+                      <p className="text-sm text-gray-400 mb-1">Coordinates</p>
+                      <p className="text-primary-white font-mono">
+                        {item.latitude?.toFixed(6)}, {item.longitude?.toFixed(6)}
+                      </p>
+                    </div>
+                    
+                    {isVehicle ? (
+                      <>
+                        <div className="bg-gray-900 rounded p-3">
+                          <p className="text-sm text-gray-400 mb-1">Vehicle</p>
+                          <p className="text-primary-white">
+                            {item.number_plate} - {item.make} {item.model}
+                          </p>
+                        </div>
+                        <div className="bg-gray-900 rounded p-3">
+                          <p className="text-sm text-gray-400 mb-1">Incident</p>
+                          <p className="text-primary-white">{item.reason}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="bg-gray-900 rounded p-3">
+                          <p className="text-sm text-gray-400 mb-1">Crime Type</p>
+                          <p className="text-primary-white">{item.crime_type}</p>
+                        </div>
+                        <div className="bg-gray-900 rounded p-3">
+                          <p className="text-sm text-gray-400 mb-1">Location</p>
+                          <p className="text-primary-white">{item.location}</p>
+                        </div>
+                      </>
+                    )}
+                    
+                    <div className="bg-gray-900 rounded p-3">
+                      <p className="text-sm text-gray-400 mb-1">Suburb</p>
+                      <p className="text-primary-white">{item.suburb}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 className="text-lg font-semibold text-primary-white mb-4">Map Actions</h4>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => openOSM(item.latitude, item.longitude)}
+                      className="w-full btn-primary flex items-center justify-center space-x-2 py-3"
+                    >
+                      <Map className="w-5 h-5" />
+                      <span>View on OpenStreetMap</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => getDirections(item.latitude, item.longitude)}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                      disabled={!userLocation}
+                    >
+                      <Navigation className="w-5 h-5" />
+                      <span>
+                        {userLocation ? 'Get Directions' : 'Enable Location for Directions'}
+                      </span>
+                    </button>
+                    
+                    {!userLocation && (
+                      <p className="text-sm text-yellow-400 text-center">
+                        📍 Enable location services to get directions from your current location
+                      </p>
+                    )}
+                    
+                    <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 p-3 rounded text-sm">
+                      <p className="font-medium mb-1">Location Accuracy Notice</p>
+                      <p>Location accuracy depends on the precision of the coordinates provided by the reporter.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Embedded Map Preview */}
+            <div className="bg-gray-800 rounded-lg p-6">
+              <h4 className="text-lg font-semibold text-primary-white mb-4">Map Preview</h4>
+              <div className="aspect-video bg-gray-700 rounded-lg flex items-center justify-center relative">
+                <div className="text-center text-gray-400">
+                  <Map className="w-12 h-12 mx-auto mb-2" />
+                  <p>Interactive map preview</p>
+                  <p className="text-sm mt-2">
+                    <button
+                      onClick={() => openOSM(item.latitude, item.longitude)}
+                      className="text-accent-gold hover:text-yellow-400 underline"
+                    >
+                      Click here to view on OpenStreetMap
+                    </button>
+                  </p>
+                </div>
+                
+                {/* Map coordinates overlay */}
+                <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 text-white p-2 rounded text-sm">
+                  📍 {item.latitude?.toFixed(4)}, {item.longitude?.toFixed(4)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  const showViewReportModal = (item: any, type: 'vehicle' | 'crime') => {
-    setViewReportModal({ show: true, item, type });
-  };
+
 
   // Utility functions
   const getUserDisplayName = (item: any) => {
@@ -1038,62 +1399,62 @@ export default function Dashboard() {
                         {alert.status}
                       </span>
                       
-                      {alert.has_images && (
-                        <button
-                          onClick={() => alert.image_urls && handleImagePreview(alert.image_urls, 0)}
-                          className="p-2 text-accent-gold hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-                          title="View Images"
-                        >
-                          <ImageIcon className="w-4 h-4" />
-                        </button>
-                      )}
-                      
-                      {alert.latitude && alert.longitude && (
-                        <button
-                          onClick={() => showMapModal(alert, 'vehicle')}
-                          className="p-2 text-accent-blue hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-                          title="View Location"
-                        >
-                          <MapPin className="w-4 h-4" />
-                        </button>
-                      )}
-                      
-                      <button
-                        onClick={() => showViewReportModal(alert, 'vehicle')}
-                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-                        title="View Details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      
-                      {user && alert.user_id === user.id && (
-                        <>
-                          <button
-                            onClick={() => handleEditAlert(alert)}
-                            className="p-2 text-accent-gold hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-                            title="Edit Report"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          
-                          <button
-                            onClick={() => setBoloAlert(alert)}
-                            className="p-2 text-purple-400 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-                            title="Generate BOLO Card"
-                          >
-                            <FileText className="w-4 h-4" />
-                          </button>
-                          
-                          <button
-                            onClick={() => handleDeleteAlert(alert.id, 'vehicle')}
-                            className="p-2 text-red-400 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-                            title="Delete Report"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                    </div>
+                      {alert.has_images && alert.image_urls && alert.image_urls.length > 0 && (
+          <button
+            onClick={() => handleImagePreview(alert.image_urls!, 0)}
+            className="p-2 text-accent-gold hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+            title="View Images"
+          >
+            <ImageIcon className="w-4 h-4" />
+          </button>
+        )}
+        
+        {alert.latitude && alert.longitude && (
+          <button
+            onClick={() => showMapModal(alert, 'vehicle')}
+            className="p-2 text-accent-blue hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+            title="View Location on Map"
+          >
+            <MapPin className="w-4 h-4" />
+          </button>
+        )}
+        
+        <button
+          onClick={() => showViewReportModal(alert, 'vehicle')}
+          className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+          title="View Full Details"
+        >
+          <Eye className="w-4 h-4" />
+        </button>
+        
+        {user && alert.user_id === user.id && (
+          <>
+            <button
+              onClick={() => handleEditAlert(alert)}
+              className="p-2 text-accent-gold hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+              title="Edit Report"
+            >
+              <Edit className="w-4 h-4" />
+            </button>
+            
+            <button
+              onClick={() => setBoloAlert(alert)}
+              className="p-2 text-purple-400 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+              title="Generate BOLO Card"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+            
+            <button
+              onClick={() => handleDeleteAlert(alert.id, 'vehicle')}
+              className="p-2 text-red-400 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+              title="Delete Report"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </>
+        )}
+      </div>
                   </div>
                   
                   {alert.comments && (
