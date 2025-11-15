@@ -1,289 +1,125 @@
-// app/login/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { supabase } from '@/lib/supabase'
-import { Eye, EyeOff, User, Lock, AlertCircle, CheckCircle } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
+interface LoginForm {
+  email: string
+  password: string
+}
+
+export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const router = useRouter()
+  
+  const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>()
 
-  // FIXED: Proper auth state check on component mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (session?.user) {
-          console.log('✅ User already logged in, redirecting to dashboard')
-          router.push('/dashboard')
-          return
-        }
-      } catch (error) {
-        console.error('Auth check error:', error)
-      } finally {
-        setIsCheckingAuth(false)
-      }
-    }
-
-    checkAuth()
-
-    // FIXED: Proper auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event)
-        
-        if (event === 'SIGNED_IN' && session) {
-          console.log('✅ User signed in via listener, redirecting')
-          router.push('/dashboard')
-        }
-        
-        if (event === 'SIGNED_OUT') {
-          console.log('✅ User signed out')
-          // Stay on login page
-        }
-      }
-    )
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [router])
-
-  // FIXED: Improved login handler
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const onSubmit = async (data: LoginForm) => {
     setLoading(true)
     setError('')
-    setSuccess('')
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
       })
 
-      if (error) {
-        throw error
-      }
+      if (authError) throw authError
 
-      if (data.user) {
-        console.log('✅ Login successful')
-        setSuccess('Login successful! Redirecting...')
-
-        // FIXED: Use router.push instead of relying only on listener
-        setTimeout(() => {
-          router.push('/dashboard')
-          router.refresh() // Force refresh to update auth state
-        }, 1000)
+      if (authData.user) {
+        // Force a complete page refresh to ensure all components re-render
+        window.location.href = '/'
       }
     } catch (error: any) {
-      console.error('Login error:', error)
-      setError(error.message || 'Failed to sign in. Please check your credentials.')
+      setError(error.message)
+    } finally {
       setLoading(false)
     }
-  }
-
-  // FIXED: Improved demo login
-  const handleDemoLogin = async (demoType: 'user' | 'admin') => {
-    setLoading(true)
-    setError('')
-    setSuccess('')
-
-    const demoCredentials = {
-      user: { email: 'demo@rapid911.com', password: 'demo123' },
-      admin: { email: 'admin@rapid911.com', password: 'admin123' }
-    }
-
-    const credentials = demoCredentials[demoType]
-
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword(credentials)
-
-      if (error) {
-        throw error
-      }
-
-      if (data.user) {
-        console.log(`✅ ${demoType} demo login successful`)
-        setSuccess(`${demoType === 'admin' ? 'Admin' : 'User'} demo login successful! Redirecting...`)
-
-        setTimeout(() => {
-          router.push('/dashboard')
-          router.refresh()
-        }, 1000)
-      }
-    } catch (error: any) {
-      console.error('Demo login error:', error)
-      setError(error.message || 'Demo login failed. Please try again.')
-      setLoading(false)
-    }
-  }
-
-  // Show loading while checking initial auth state
-  if (isCheckingAuth) {
-    return (
-      <div className="min-h-screen bg-dark-gray flex flex-col justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mb-4"></div>
-        <p className="text-gray-400">Checking authentication...</p>
-      </div>
-    )
   }
 
   return (
-    <div className="min-h-screen bg-dark-gray flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <img
-            src="/rapid911-ireport-logo2.png"
-            alt="Rapid911 Logo"
-            className="w-30 h-auto"
+    <div className="max-w-md mx-auto card p-8">
+      <h1 className="text-3xl font-bold text-center text-accent-gold mb-2">
+        Rapid911 iReport
+      </h1>
+      <p className="text-center text-gray-400 mb-8">Smart Reporting System</p>
+
+      <h2 className="text-2xl font-bold text-center text-primary-white mb-8">
+        Sign In
+      </h2>
+
+      {error && (
+        <div className="bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded mb-4">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
+            Email Address
+          </label>
+          <input
+            type="email"
+            id="email"
+            {...register('email', { 
+              required: 'Email is required',
+              pattern: {
+                value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                message: 'Invalid email address'
+              }
+            })}
+            className="form-input"
+            placeholder="your.email@example.com"
           />
+          {errors.email && (
+            <p className="text-accent-red text-sm mt-1">{errors.email.message}</p>
+          )}
         </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-primary-white">
-          Sign in to your account
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-400">
-          Community Safety Reporting System
+
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
+            Password
+          </label>
+          <input
+            type="password"
+            id="password"
+            {...register('password', { 
+              required: 'Password is required'
+            })}
+            className="form-input"
+            placeholder="Enter your password"
+          />
+          {errors.password && (
+            <p className="text-accent-red text-sm mt-1">{errors.password.message}</p>
+          )}
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full btn-primary disabled:opacity-50"
+        >
+          {loading ? 'Signing In...' : 'Sign In'}
+        </button>
+      </form>
+
+      <p className="text-center text-gray-400 mt-6">
+        Don't have an account?{' '}
+        <Link href="/register" className="text-accent-gold hover:underline">
+          Register here
+        </Link>
+      </p>
+
+      <div className="mt-6 p-4 bg-medium-gray rounded-lg border border-gray-600">
+        <p className="text-sm text-gray-300 text-center">
+          <strong>Demo Access:</strong><br/>
+          Register a new account to test the system
         </p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="card py-8 px-4 sm:px-10">
-          {error && (
-            <div className="mb-4 bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded flex items-center space-x-2">
-              <AlertCircle className="w-5 h-5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {success && (
-            <div className="mb-4 bg-green-900 border border-green-700 text-green-300 px-4 py-3 rounded flex items-center space-x-2">
-              <CheckCircle className="w-5 h-5" />
-              <span>{success}</span>
-            </div>
-          )}
-
-          <form className="space-y-6" onSubmit={handleLogin}>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-300">
-                Email address
-              </label>
-              <div className="mt-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="form-input pl-10"
-                  placeholder="Enter your email"
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-300">
-                Password
-              </label>
-              <div className="mt-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="form-input pl-10 pr-10"
-                  placeholder="Enter your password"
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={loading}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5 text-gray-400" />
-                  ) : (
-                    <Eye className="h-5 w-5 text-gray-400" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full btn-primary flex justify-center items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                ) : null}
-                <span>{loading ? 'Signing in...' : 'Sign in'}</span>
-              </button>
-            </div>
-          </form>
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-600" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-dark-gray text-gray-400">Demo Accounts</span>
-              </div>
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('user')}
-                disabled={loading}
-                className="btn-primary flex justify-center items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <User className="w-4 h-4" />
-                <span>User Demo</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('admin')}
-                disabled={loading}
-                className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex justify-center items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Lock className="w-4 h-4" />
-                <span>Admin Demo</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-6">
-            <div className="bg-blue-900 border border-blue-700 text-blue-300 p-3 rounded text-sm">
-              <p className="font-medium mb-1">⚠️ Important Security Notice</p>
-              <p>This is a demonstration system. Use the demo accounts above to explore features.</p>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   )

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase, hasValidSupabaseConfig, ensureUserExists, getSafeUserProfile } from '@/lib/supabase'
+import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
 import { AlertTriangle, Upload, X, Image as ImageIcon, Hash, MessageCircle, Building, Calendar, Clock, User, Shield, AlertCircle, MapPin, Navigation, Compass } from 'lucide-react'
 
 interface CrimeFormData {
@@ -231,19 +231,17 @@ export default function AddCrimeForm({ onCrimeReportAdded }: { onCrimeReportAdde
       }
 
       // Check if user is approved
-      const profile = await getSafeUserProfile(user.id);
-
-if (!profile) {
-  setError('Unable to verify your account. Please try logging in again.')
-  setLoading(false)
-  return
-}
-
-if (!profile.approved) {
-  setError('Your account is not approved yet. Please contact an administrator to get approved before filing reports.')
-  setLoading(false)
-  return
-}
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('approved, role, name')
+        .eq('id', user.id)
+        .single()
+      
+      if (!profile?.approved) {
+        setError('Your account is not approved yet. Please contact an administrator to get approved before filing crime reports.')
+        setLoading(false)
+        return
+      }
 
       const dbUser = await ensureUserExists(user.id, {
         email: user.email!,

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
-import { supabase, hasValidSupabaseConfig, getSafeUserProfile } from '@/lib/supabase'
+import { supabase, hasValidSupabaseConfig, ensureUserExists } from '@/lib/supabase'
 import { AlertTriangle, Upload, X, Image as ImageIcon, Hash, MessageCircle, Building, MapPin, Navigation, Compass, Calendar } from 'lucide-react'
 
 interface AlertForm {
@@ -90,15 +90,15 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
   const [success, setSuccess] = useState('')
   const [uploadingImages, setUploadingImages] = useState(false)
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([])
-  const [obNumber, setObNumber] = useState<string>(generateOBNumber())
+  const [obNumber, setObNumber] = useState<string>(generateOBNumber()) // Generate OB number on component mount
   const [location, setLocation] = useState<{latitude?: number, longitude?: number, address?: string}>({})
   const [gettingLocation, setGettingLocation] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   const { register, handleSubmit, reset, formState: { errors }, setValue } = useForm<AlertForm>()
 
-  // OPTIMIZED: Get current location with better error handling
-  const getCurrentLocation = useCallback(() => {
+  // Get current location
+  const getCurrentLocation = () => {
     setGettingLocation(true)
     setError('')
     
@@ -106,12 +106,6 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
       setError('Geolocation is not supported by your browser')
       setGettingLocation(false)
       return
-    }
-
-    const options = {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 60000
     }
 
     navigator.geolocation.getCurrentPosition(
@@ -122,31 +116,33 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         setValue('longitude', longitude)
         setGettingLocation(false)
         
-        // OPTIMIZED: Reverse geocode in background
-        setTimeout(() => {
-          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
-            .then(response => response.json())
-            .then(data => {
-              if (data.display_name) {
-                setLocation(prev => ({ ...prev, address: data.display_name }))
-              }
-            })
-            .catch(() => {
-              // Silent fail - address is optional
-            })
-        }, 0)
+        // Reverse geocode to get address
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.display_name) {
+              setLocation(prev => ({ ...prev, address: data.display_name }))
+            }
+          })
+          .catch(() => {
+            // Silent fail - address is optional
+          })
       },
       (error) => {
         console.error('Geolocation error:', error)
         setError('Unable to retrieve your location. Please enable location services or enter coordinates manually.')
         setGettingLocation(false)
       },
-      options
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
+      }
     )
-  }, [setValue])
+  }
 
   // Manual coordinate input
-  const handleManualCoordinates = useCallback(() => {
+  const handleManualCoordinates = () => {
     const lat = parseFloat(prompt('Enter latitude (e.g., -26.107566):') || '')
     const lon = parseFloat(prompt('Enter longitude (e.g., 28.056702):') || '')
     
@@ -157,9 +153,9 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
     } else if (lat !== 0 || lon !== 0) {
       setError('Invalid coordinates entered')
     }
-  }, [setValue])
+  }
 
-  const handleImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (!files) return
 
@@ -188,69 +184,54 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-  }, [])
+  }
 
-  const removeImage = useCallback((index: number) => {
+  const removeImage = (index: number) => {
     setImageFiles(prev => {
       const newFiles = [...prev]
       URL.revokeObjectURL(newFiles[index].preview)
       newFiles.splice(index, 1)
       return newFiles
     })
-  }, [])
-
-  // OPTIMIZED: Image upload with better error handling
-  const uploadImages = async (alertId: string): Promise<string[]> => {
-    if (imageFiles.length === 0) return []
-
-    setUploadingImages(true)
-    const imageUrls: string[] = []
-
-    try {
-      // Upload in parallel with Promise.all for better performance
-      const uploadPromises = imageFiles.map(async (imageFile) => {
-        const fileExt = imageFile.file.name.split('.').pop() || 'jpg'
-        const fileName = `${alertId}/${Math.random().toString(36).substring(2, 15)}.${fileExt}`
-
-        const { error: uploadError } = await supabase.storage
-          .from('report-images')
-          .upload(fileName, imageFile.file)
-
-        if (uploadError) {
-          console.error('Image upload error:', uploadError)
-          throw new Error(`Failed to upload image: ${uploadError.message}`)
-        }
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('report-images')
-          .getPublicUrl(fileName)
-
-        return publicUrl
-      })
-
-      // Wait for all uploads to complete
-      imageUrls.push(...(await Promise.all(uploadPromises)))
-      
-    } catch (error) {
-      console.error('Error uploading images:', error)
-      throw error
-    } finally {
-      setUploadingImages(false)
-    }
-
-    return imageUrls
   }
 
-  // OPTIMIZED: Form submission with better validation
+  const uploadImages = async (alertId: string): Promise<string[]> => {
+  if (imageFiles.length === 0) return []
+
+  setUploadingImages(true)
+  const imageUrls: string[] = []
+
+  try {
+    for (const imageFile of imageFiles) {
+      const fileExt = imageFile.file.name.split('.').pop()
+      const fileName = `${alertId}/${Math.random().toString(36).substring(2)}.${fileExt}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('report-images')
+        .upload(fileName, imageFile.file)
+
+      if (uploadError) {
+        console.error('Image upload error:', uploadError)
+        throw new Error(`Failed to upload image: ${uploadError.message}`)
+      }
+
+      // Use getPublicUrl to get the publicly accessible URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('report-images')
+        .getPublicUrl(fileName)
+
+      imageUrls.push(publicUrl)
+    }
+  } finally {
+    setUploadingImages(false)
+  }
+
+  return imageUrls
+}
+
   const onSubmit = async (data: AlertForm) => {
     if (!hasValidSupabaseConfig) {
       setError('System not configured. Please check environment variables.')
-      return
-    }
-
-    // Client-side validation
-    if (!data.number_plate || !data.make || !data.model || !data.color || !data.suburb) {
-      setError('Please fill in all required fields.')
       return
     }
 
@@ -259,6 +240,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
     setSuccess('')
 
     try {
+      // Get current user
       const { data: { user } } = await supabase.auth.getUser()
       
       if (!user) {
@@ -267,20 +249,30 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
       }
 
       // Check if user is approved
-      const profile = await getSafeUserProfile(user.id);
-      if (!profile) {
-        setError('Unable to verify your account. Please try logging in again.')
-        setLoading(false)
-        return
-      }
-
-      if (!profile.approved) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('approved, role, name')
+        .eq('id', user.id)
+        .single()
+      
+      if (!profile?.approved) {
         setError('Your account is not approved yet. Please contact an administrator to get approved before filing reports.')
         setLoading(false)
         return
       }
 
-      // Process form data
+      // Ensure user exists in database
+      const dbUser = await ensureUserExists(user.id, {
+        email: user.email!,
+        name: user.user_metadata?.name
+      })
+
+      if (!dbUser) {
+        setError('Unable to verify your account. Please try logging in again.')
+        return
+      }
+
+      // ✅ FIX: Convert empty strings to null for numeric fields
       const formData = {
         ...data,
         latitude: data.latitude && !isNaN(Number(data.latitude)) ? Number(data.latitude) : null,
@@ -292,7 +284,7 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
         incident_date: data.incident_date || null
       }
 
-      // Insert new alert
+      // Insert new alert with OB number and location
       const { data: alertData, error: insertError } = await supabase
         .from('alerts_vehicles')
         .insert([
@@ -305,43 +297,86 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             reason: formData.reason,
             case_number: formData.case_number,
             station_reported_at: formData.station_reported_at,
-            ob_number: obNumber,
+            ob_number: obNumber, // Include the generated OB number
             suburb: formData.suburb,
             comments: formData.comments,
             has_images: imageFiles.length > 0,
             latitude: formData.latitude,
             longitude: formData.longitude,
             incident_date: formData.incident_date,
-            status: 'ACTIVE'
+            status: 'ACTIVE' // Default status for new reports
           }
         ])
         .select()
         .single()
 
-      if (insertError) throw insertError
+      if (insertError) {
+        console.error('Insert error:', insertError)
+        throw insertError
+      }
 
       // Upload images if any
       let imageUrls: string[] = []
       if (imageFiles.length > 0) {
         imageUrls = await uploadImages(alertData.id)
         
+        // Update alert with image URLs
         if (imageUrls.length > 0) {
-          await supabase
+          const { error: updateError } = await supabase
             .from('alerts_vehicles')
             .update({ image_urls: imageUrls })
             .eq('id', alertData.id)
+
+          if (updateError) {
+            console.error('Image URL update error:', updateError)
+            // Continue anyway - the alert was created successfully
+          }
         }
       }
 
-      setSuccess(`Report filed successfully! OB Number: ${obNumber}`)
+      setSuccess(`Report filed successfully! OB Number: ${obNumber} ${imageUrls.length > 0 ? `${imageUrls.length} image(s) uploaded.` : ''} ${data.latitude && data.longitude ? 'Location pin dropped.' : ''}`)
       
-      // Clean up and reset
+      // Enhanced logging with details
+      await supabase
+        .from('user_logs')
+        .insert([
+          {
+            user_id: user.id,
+            action: 'create_alert',
+            ip_address: '',
+            user_agent: navigator.userAgent,
+            details: {
+              alert_id: alertData.id,
+              number_plate: formData.number_plate,
+              reason: formData.reason,
+              suburb: formData.suburb,
+              ob_number: obNumber,
+              has_images: imageFiles.length > 0,
+              image_count: imageFiles.length,
+              has_location: !!(data.latitude && data.longitude),
+              vehicle_make: formData.make,
+              vehicle_model: formData.model,
+              vehicle_color: formData.color,
+              user_role: profile.role,
+              user_name: profile.name
+            }
+          }
+        ])
+
+      // Clean up
       imageFiles.forEach(file => URL.revokeObjectURL(file.preview))
       setImageFiles([])
       setLocation({})
       reset()
+      
+      // Generate new OB number for next report
       setObNumber(generateOBNumber())
       
+      // Mock WhatsApp notification
+      console.log('📱 RAPID ALERT MOCK:')
+      console.log(`New report: ${data.number_plate} - ${data.reason} in ${data.suburb} - OB: ${obNumber}`)
+      
+      // Callback to refresh alerts
       if (onAlertAdded) {
         onAlertAdded()
       }
@@ -478,6 +513,50 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
           </div>
         </div>
 
+        {/* Incident Date */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label htmlFor="incident_date" className="block text-sm font-medium text-gray-300 mb-2">
+              <div className="flex items-center space-x-2">
+                <Calendar className="w-4 h-4 text-accent-gold" />
+                <span>Incident Date (Optional)</span>
+              </div>
+            </label>
+            <input
+              type="date"
+              id="incident_date"
+              {...register('incident_date')}
+              className="form-input"
+            />
+            <p className="text-sm text-gray-400 mt-1">
+              When did the incident occur? (Leave blank for today's date)
+            </p>
+          </div>
+        </div>
+
+        {/* Reason */}
+        <div>
+          <label htmlFor="reason" className="block text-sm font-medium text-gray-300 mb-2">
+            Incident Type / Reason *
+          </label>
+          <select
+            id="reason"
+            {...register('reason', { required: 'Reason is required' })}
+            className="form-input"
+          >
+            <option value="">Select incident type</option>
+            <option value="Stolen vehicle">Stolen Vehicle</option>
+            <option value="Hijacked vehicle">Hijacked Vehicle</option>
+            <option value="Suspicious activity">Suspicious Activity</option>
+            <option value="Break-in attempt">Break-in Attempt</option>
+            <option value="Armed robbery">Armed Robbery</option>
+            <option value="Other">Other</option>
+          </select>
+          {errors.reason && (
+            <p className="text-accent-red text-sm mt-1">{errors.reason.message}</p>
+          )}
+        </div>
+
         {/* Location Section */}
         <div className="bg-dark-gray border border-gray-700 rounded-lg p-4">
           <div className="flex items-center space-x-3 mb-4">
@@ -567,6 +646,163 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
           </div>
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* SAPS Case Number */}
+          <div>
+            <label htmlFor="case_number" className="block text-sm font-medium text-gray-300 mb-2">
+              SAPS Case Number (Optional)
+            </label>
+            <input
+              type="text"
+              id="case_number"
+              {...register('case_number')}
+              className="form-input"
+              placeholder="CAS 123/09/2023"
+            />
+            <p className="text-sm text-gray-400 mt-1">
+              If you have an official SAPS case number
+            </p>
+          </div>
+
+          {/* Station Reported At */}
+          <div>
+            <label htmlFor="station_reported_at" className="block text-sm font-medium text-gray-300 mb-2">
+              <div className="flex items-center space-x-2">
+                <Building className="w-4 h-4 text-accent-blue" />
+                <span>Station Reported At (Optional)</span>
+              </div>
+            </label>
+            <input
+              type="text"
+              id="station_reported_at"
+              {...register('station_reported_at')}
+              className="form-input"
+              placeholder="Sandton SAPS, Randburg SAPS, etc."
+              list="station-suggestions"
+            />
+            <datalist id="station-suggestions">
+              {sapsStations.map(station => (
+                <option key={station} value={station} />
+              ))}
+            </datalist>
+            <p className="text-sm text-gray-400 mt-1">
+              Which SAPS station was this reported at?
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Suburb */}
+          <div>
+            <label htmlFor="suburb" className="block text-sm font-medium text-gray-300 mb-2">
+              Suburb / Area *
+            </label>
+            <input
+              type="text"
+              id="suburb"
+              {...register('suburb', { required: 'Suburb is required' })}
+              className="form-input"
+              placeholder="Enter suburb or area"
+              list="suburb-suggestions"
+            />
+            <datalist id="suburb-suggestions">
+              {saSuburbs.map(suburb => (
+                <option key={suburb} value={suburb} />
+              ))}
+            </datalist>
+            {errors.suburb && (
+              <p className="text-accent-red text-sm mt-1">{errors.suburb.message}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Comments Section */}
+        <div>
+          <label htmlFor="comments" className="block text-sm font-medium text-gray-300 mb-2">
+            <div className="flex items-center space-x-2">
+              <MessageCircle className="w-4 h-4 text-accent-gold" />
+              <span>Additional Comments & Details</span>
+            </div>
+          </label>
+          <textarea
+            id="comments"
+            {...register('comments')}
+            rows={4}
+            className="form-input resize-none"
+            placeholder="Provide additional details about the incident, such as:
+• Time of incident
+• Direction of travel
+• Number of suspects
+• Weapons observed
+• Distinctive vehicle features
+• Any other relevant information..."
+          />
+          <p className="text-sm text-gray-400 mt-1">
+            Include any additional information that could help identify the vehicle or situation
+          </p>
+        </div>
+
+        {/* Image Upload Section */}
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Upload Images (Optional)
+          </label>
+          <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+              id="image-upload"
+            />
+            <label
+              htmlFor="image-upload"
+              className="cursor-pointer inline-flex items-center space-x-2 text-accent-gold hover:text-accent-gold/80 transition-colors"
+            >
+              <Upload className="w-5 h-5" />
+              <span>Select images (Max 10, 5MB each)</span>
+            </label>
+            <p className="text-sm text-gray-400 mt-2">
+              Upload CCTV footage screenshots, photos of the vehicle, or other evidence
+            </p>
+          </div>
+
+          {/* Image Previews */}
+          {imageFiles.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center space-x-2 mb-3">
+                <ImageIcon className="w-4 h-4 text-accent-gold" />
+                <span className="text-sm font-medium text-gray-300">
+                  {imageFiles.length} image{imageFiles.length > 1 ? 's' : ''} selected
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {imageFiles.map((imageFile, index) => (
+                  <div key={index} className="relative group">
+                    <img
+                      src={imageFile.preview}
+                      alt={`Preview ${index + 1}`}
+                      className="w-full h-24 object-cover rounded border border-gray-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(index)}
+                      className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                    <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                      {index + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Submit Button */}
         <button
           type="submit"
@@ -587,6 +823,19 @@ export default function AddAlertForm({ onAlertAdded }: { onAlertAdded?: () => vo
             </>
           )}
         </button>
+
+        <div className="text-center text-sm text-gray-500">
+          <p>⚠️ This report will be visible to all community members</p>
+          <p>📱 Instant alerts will be sent to the community network</p>
+          <p>🔢 OB Number: <strong>{obNumber}</strong> will be assigned to this report</p>
+          <p>🟢 Status: <strong>ACTIVE</strong> (You can update to RECOVERED later)</p>
+          {location.latitude && location.longitude && (
+            <p>📍 Location pin will be added to this report</p>
+          )}
+          {imageFiles.length > 0 && (
+            <p>🖼️ {imageFiles.length} image{imageFiles.length > 1 ? 's' : ''} will be attached to this report</p>
+          )}
+        </div>
       </form>
     </div>
   )

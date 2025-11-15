@@ -1,56 +1,149 @@
-// components/Header.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { getSafeUserProfile, supabase } from '@/lib/supabase'
-import { User, LogOut, Shield, Menu, X } from 'lucide-react'
+import { supabase, hasValidSupabaseConfig } from '@/lib/supabase'
+import { ChevronDown, Users, Shield, FileText, Car } from 'lucide-react'
+
+interface UserProfile {
+  id: string
+  email: string
+  name: string | null
+  approved: boolean
+  role: 'user' | 'moderator' | 'admin'
+  last_login: string | null
+  created_at: string
+  updated_at: string
+}
 
 export default function Header() {
   const [user, setUser] = useState<any>(null)
-  const [userProfile, setUserProfile] = useState<any>(null)
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const router = useRouter()
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [authError, setAuthError] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [reportsDropdownOpen, setReportsDropdownOpen] = useState(false)
+  const [adminDropdownOpen, setAdminDropdownOpen] = useState(false)
 
-  // OPTIMIZED: Authentication with minimal checks
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.dropdown-container')) {
+        setReportsDropdownOpen(false)
+        setAdminDropdownOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  // Simple profile fetch
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error) {
+        console.error('Error fetching profile:', error)
+        return null
+      }
+
+      return profile
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error)
+      return null
+    }
+  }
+
   useEffect(() => {
     let mounted = true
 
     const initializeAuth = async () => {
+      if (!hasValidSupabaseConfig) {
+        console.warn('Supabase not configured')
+        if (mounted) {
+          setAuthError(true)
+          setAuthLoading(false)
+        }
+        return
+      }
+
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!mounted) return
+        // Get initial session
+        const { data: { session }, error } = await supabase.auth.getSession()
         
-        setUser(user)
-        if (user) {
-          const profile = await getSafeUserProfile(user.id)
+        if (error) {
+          console.error('Error getting session:', error)
           if (mounted) {
-            setUserProfile(profile)
+            setAuthError(true)
+            setAuthLoading(false)
           }
+          return
+        }
+
+        console.log('Header - Initial session:', session)
+        
+        if (mounted) {
+          setUser(session?.user ?? null)
+          
+          if (session?.user) {
+            // Fetch profile
+            const profile = await fetchUserProfile(session.user.id)
+            if (mounted) {
+              setUserProfile(profile)
+            }
+          }
+          setAuthLoading(false)
         }
       } catch (error) {
         console.error('Auth initialization error:', error)
+        if (mounted) {
+          setAuthError(true)
+          setAuthLoading(false)
+        }
       }
     }
 
     initializeAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return
-      
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-      
-      if (currentUser) {
-        const profile = await getSafeUserProfile(currentUser.id)
-        if (mounted) {
-          setUserProfile(profile)
+    // Auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Header - Auth state changed:', event, session?.user?.email)
+        
+        if (!mounted) return
+        
+        const currentUser = session?.user ?? null
+        
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          setUser(currentUser)
+          setAuthError(false)
+          
+          if (currentUser) {
+            const profile = await fetchUserProfile(currentUser.id)
+            if (mounted) {
+              setUserProfile(profile)
+            }
+          } else {
+            setUserProfile(null)
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null)
+          setUserProfile(null)
+          setAuthError(false)
         }
-      } else {
-        setUserProfile(null)
+        
+        // Always stop loading on auth state change
+        if (mounted) {
+          setAuthLoading(false)
+        }
       }
-    })
+    )
 
     return () => {
       mounted = false
@@ -58,207 +151,349 @@ export default function Header() {
     }
   }, [])
 
-  // FIXED: Logout with redirect to login page
-  const handleSignOut = async () => {
-  try {
-    console.log('🚪 Logging out...');
-    
-    // Clear any local storage or state first
-    setUser(null)
-    setUserProfile(null)
-    setShowDropdown(false)
-    setMobileMenuOpen(false)
-    
-    // Then sign out from Supabase
-    const { error } = await supabase.auth.signOut()
-    if (error) {
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('Logout error:', error)
+      } else {
+        setUser(null)
+        setUserProfile(null)
+        setAuthError(false)
+        window.location.href = '/'
+      }
+    } catch (error) {
       console.error('Logout error:', error)
-      return
     }
-    
-    console.log('✅ Logged out successfully');
-    
-    // Force redirect to login and refresh
-    window.location.href = '/login'
-    
-  } catch (error) {
-    console.error('Logout error:', error)
-    // Fallback redirect
-    window.location.href = '/login'
   }
-}
+
+  const toggleMenu = () => {
+    setMenuOpen(!menuOpen)
+  }
+
+  const canAccessAdmin = userProfile && (userProfile.role === 'admin' || userProfile.role === 'moderator') && userProfile.approved
+
+  if (authLoading) {
+    return (
+      <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-left space-x-4">
+              <div className="flex flex-col items-left justify-left">
+                <img 
+                  src="/rapid911-ireport-logo1.png"
+                  alt="Rapid911 Logo" 
+                  className="w-30 h-auto"
+                />
+                <p className="text-sm flashing-text">Smart Reporting System</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 text-sm text-gray-400">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-gold"></div>
+              <span>Loading...</span>
+            </div>
+          </div>
+        </div>
+      </header>
+    )
+  }
 
   return (
-    <header className="bg-dark-gray border-b border-gray-700">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center py-4">
-          {/* Logo */}
+    <header className="bg-dark-gray border-b border-gray-700 shadow-xl">
+      <div className="max-w-6xl mx-auto px-4 py-4">
+        <div className="flex items-center justify-between">
+          {/* Logo and Brand */}
           <div className="flex items-center space-x-4">
-            <div className="flex flex-col">
+            <div className="flex flex-col items-left justify-center">
               <img 
                 src="/rapid911-ireport-logo1.png"
                 alt="Rapid911 Logo" 
                 className="w-30 h-auto"
-                loading="eager"
               />
-              <p className="text-sm flashing-text text-blue-900 mt-1">
-                Smart Reporting System
-              </p>
+              <p className="text-sm flashing-text">Smart Reporting System</p>
             </div>
           </div>
 
-          {/* Mobile menu button */}
-          <div className="md:hidden">
-            <button
-  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-  className="text-gray-400 hover:text-white p-2 md:hidden"
-  title="Toggle navigation menu"
-  aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
-  aria-expanded={mobileMenuOpen}
-  aria-controls="mobile-menu"
->
-  {mobileMenuOpen ? <X className="w-6 h-6" aria-hidden="true" /> : <Menu className="w-6 h-6" aria-hidden="true" />}
-</button>
-          </div>
+          {/* Authentication Status */}
+          {authError && (
+            <div className="bg-red-900 text-red-300 px-3 py-1 rounded text-sm hidden md:block">
+              ⚠️ Authentication issue
+            </div>
+          )}
 
-          {/* Desktop User Menu */}
-          <div className="hidden md:flex items-center space-x-4">
+          {/* Desktop Navigation */}
+          <nav className="hidden md:flex items-center space-x-4">
             {user ? (
-              <div className="relative">
-                <button
-                  onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-700 transition-colors"
+              <>
+                <a 
+                  href="/" 
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium flex items-center space-x-1"
                 >
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-primary-white">
-                      {user.email}
-                    </p>
-                    <div className="flex items-center space-x-2">
-                      {userProfile?.name && (
-                        <p className="text-xs text-accent-gold">
-                          {userProfile.name}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-400 capitalize">
-                        {userProfile?.role}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="w-10 h-10 bg-accent-gold rounded-full flex items-center justify-center text-black font-bold">
-                    {userProfile?.name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase()}
-                  </div>
-                </button>
+                  <FileText className="w-4 h-4" />
+                  <span>Dashboard</span>
+                </a>
 
-                {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-48 bg-dark-gray border border-gray-700 rounded-lg shadow-lg z-50">
-                    <div className="p-2">
-                      <div className="px-3 py-2 text-sm text-gray-400 border-b border-gray-700">
-                        <div className="font-medium text-primary-white">{user.email}</div>
-                        <div className="flex justify-between items-center mt-1">
-                          <span className="text-accent-gold">{userProfile?.name}</span>
-                          <span className="text-gray-400 capitalize">{userProfile?.role}</span>
-                        </div>
-                      </div>
-                      
-                      {/* Show Admin Panel for Admin and Moderator roles */}
-                      {(userProfile?.role === 'admin' || userProfile?.role === 'moderator') && (
-                        <a
-                          href="/admin/users"
-                          className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                          onClick={() => setShowDropdown(false)}
-                        >
-                          <Shield className="w-4 h-4" />
-                          <span>Admin Panel</span>
-                        </a>
-                      )}
-                      
-                      <a
-                        href="/profile"
-                        className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                        onClick={() => setShowDropdown(false)}
+                {/* Reports Dropdown */}
+                <div className="relative dropdown-container">
+                  <button
+                    onClick={() => setReportsDropdownOpen(!reportsDropdownOpen)}
+                    className="text-gray-300 hover:text-accent-gold transition-colors font-medium flex items-center space-x-1"
+                  >
+                    <Car className="w-4 h-4" />
+                    <span>Reports</span>
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                  
+                  {reportsDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-48 bg-dark-gray border border-gray-700 rounded-lg shadow-lg z-50">
+                      <a 
+                        href="/alerts" 
+                        className="flex items-center space-x-2 px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-accent-gold transition-colors border-b border-gray-700"
+                        onClick={() => setReportsDropdownOpen(false)}
                       >
-                        <User className="w-4 h-4" />
-                        <span>My Profile</span>
+                        <Car className="w-4 h-4" />
+                        <span>View All Reports</span>
                       </a>
-                      
-                      <button
-                        onClick={handleSignOut}
-                        className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-gray-700 rounded transition-colors"
+                      <a 
+                        href="/bolo-generator" 
+                        className="flex items-center space-x-2 px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-accent-gold transition-colors"
+                        onClick={() => setReportsDropdownOpen(false)}
                       >
-                        <LogOut className="w-4 h-4" />
-                        <span>Sign Out</span>
-                      </button>
+                        <FileText className="w-4 h-4" />
+                        <span>BOLO Generator</span>
+                      </a>
                     </div>
+                  )}
+                </div>
+
+                {/* Admin Dropdown - Only show for approved admins/moderators */}
+                {canAccessAdmin && (
+                  <div className="relative dropdown-container">
+                    <button
+                      onClick={() => setAdminDropdownOpen(!adminDropdownOpen)}
+                      className="text-gray-300 hover:text-accent-gold transition-colors font-medium flex items-center space-x-1"
+                    >
+                      <Shield className="w-4 h-4" />
+                      <span>Admin</span>
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                    
+                    {adminDropdownOpen && (
+                      <div className="absolute top-full left-0 mt-2 w-56 bg-dark-gray border border-gray-700 rounded-lg shadow-lg z-50">
+                        <a 
+                          href="/admin/users" 
+                          className="flex items-center space-x-2 px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-accent-gold transition-colors border-b border-gray-700"
+                          onClick={() => setAdminDropdownOpen(false)}
+                        >
+                          <Users className="w-4 h-4" />
+                          <span>User Management</span>
+                        </a>
+                        <a 
+                          href="/admin/logs" 
+                          className="flex items-center space-x-2 px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-accent-gold transition-colors"
+                          onClick={() => setAdminDropdownOpen(false)}
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span>System Logs</span>
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* User Settings */}
+                <a 
+                  href="/change-password" 
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
+                >
+                  Settings
+                </a>
+                
+                {/* User Info & Logout */}
+                <div className="flex items-center space-x-4 border-l border-gray-600 pl-4 ml-2">
+                  <div className="text-right">
+                    <span className="text-sm text-gray-400 max-w-xs truncate block">
+                      {userProfile?.name || user.email || user.user_metadata?.name || 'User'}
+                    </span>
+                    {userProfile && !userProfile.approved && (
+                      <span className="text-xs text-yellow-400 block">Pending Approval</span>
+                    )}
+                    {userProfile && (
+                      <span className="text-xs text-gray-500 capitalize block">
+                        {userProfile.role === 'admin' ? 'Administrator' : userProfile.role}
+                      </span>
+                    )}
+                  </div>
+                  <button 
+                    onClick={handleLogout}
+                    className="btn-primary text-sm"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <a 
+                  href="/" 
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
+                >
+                  Home
+                </a>
+                <a 
+                  href="/login" 
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium"
+                >
+                  Login
+                </a>
+                <a 
+                  href="/register" 
+                  className="btn-primary"
+                >
+                  Get Started
+                </a>
+              </>
+            )}
+          </nav>
+
+          {/* Mobile Menu Button */}
+          <button 
+            className="md:hidden p-2 rounded-lg hover:bg-medium-gray transition-colors"
+            onClick={toggleMenu}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {menuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
+        </div>
+
+        {/* Mobile Navigation Menu */}
+        {menuOpen && (
+          <div className="md:hidden mt-4 pb-2 border-t border-gray-600 pt-4">
+            {user ? (
+              <div className="space-y-3">
+                <a 
+                  href="/" 
+                  className="flex items-center space-x-2 text-gray-300 hover:text-accent-gold transition-colors font-medium py-2"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Dashboard</span>
+                </a>
+
+                {/* Mobile Reports Section */}
+                <div className="border-t border-gray-700 pt-3">
+                  <p className="text-sm text-gray-400 mb-2 font-medium">REPORTS</p>
+                  <a 
+                    href="/alerts" 
+                    className="flex items-center space-x-2 text-gray-300 hover:text-accent-gold transition-colors py-2 pl-4"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <Car className="w-4 h-4" />
+                    <span>View All Reports</span>
+                  </a>
+                  <a 
+                    href="/bolo-generator" 
+                    className="flex items-center space-x-2 text-gray-300 hover:text-accent-gold transition-colors py-2 pl-4"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>BOLO Generator</span>
+                  </a>
+                </div>
+
+                {/* Mobile Admin Section */}
+                {canAccessAdmin && (
+                  <div className="border-t border-gray-700 pt-3">
+                    <p className="text-sm text-gray-400 mb-2 font-medium">ADMIN</p>
+                    <a 
+                      href="/admin/users" 
+                      className="flex items-center space-x-2 text-gray-300 hover:text-accent-gold transition-colors py-2 pl-4"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      <Users className="w-4 h-4" />
+                      <span>User Management</span>
+                    </a>
+                    <a 
+                      href="/admin/logs" 
+                      className="flex items-center space-x-2 text-gray-300 hover:text-accent-gold transition-colors py-2 pl-4"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      <FileText className="w-4 h-4" />
+                      <span>System Logs</span>
+                    </a>
+                  </div>
+                )}
+
+                {/* Mobile User Settings */}
+                <div className="border-t border-gray-700 pt-3">
+                  <a 
+                    href="/change-password" 
+                    className="text-gray-300 hover:text-accent-gold transition-colors font-medium py-2 block"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    Settings
+                  </a>
+                </div>
+
+                {/* Mobile User Info */}
+                <div className="pt-3 border-t border-gray-600">
+                  <p className="text-sm text-gray-400 mb-1 truncate">
+                    Signed in as: {userProfile?.name || user.email || user.user_metadata?.name || 'User'}
+                  </p>
+                  {userProfile && !userProfile.approved && (
+                    <p className="text-xs text-yellow-400 mb-2">Pending Approval</p>
+                  )}
+                  {userProfile && (
+                    <p className="text-xs text-gray-500 capitalize mb-3">
+                      {userProfile.role === 'admin' ? 'Administrator' : userProfile.role}
+                    </p>
+                  )}
+                  <button 
+                    onClick={() => {
+                      handleLogout()
+                      setMenuOpen(false)
+                    }}
+                    className="w-full btn-primary"
+                  >
+                    Logout
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="flex space-x-3">
-                <a
-                  href="/login"
-                  className="btn-primary flex items-center space-x-2"
+              <div className="space-y-3">
+                <a 
+                  href="/" 
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium py-2 block"
+                  onClick={() => setMenuOpen(false)}
                 >
-                  <User className="w-4 h-4" />
-                  <span>Sign In</span>
+                  Home
+                </a>
+                <a 
+                  href="/login" 
+                  className="text-gray-300 hover:text-accent-gold transition-colors font-medium py-2 block"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Login
+                </a>
+                <a 
+                  href="/register" 
+                  className="btn-primary text-center block"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Get Started
                 </a>
               </div>
             )}
-          </div>
-        </div>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-700 pt-4 pb-4">
-            {user ? (
-              <div className="space-y-3">
-                <div className="text-center text-gray-400 pb-2 border-b border-gray-700">
-                  <div className="font-medium text-primary-white">{user.email}</div>
-                  <div className="flex justify-center items-center space-x-4 mt-1">
-                    {userProfile?.name && (
-                      <span className="text-accent-gold text-sm">{userProfile.name}</span>
-                    )}
-                    <span className="text-gray-400 text-sm capitalize">{userProfile?.role}</span>
-                  </div>
-                </div>
-                
-                {(userProfile?.role === 'admin' || userProfile?.role === 'moderator') && (
-                  <a
-                    href="/admin/users"
-                    className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <Shield className="w-4 h-4" />
-                    <span>Admin Panel</span>
-                  </a>
-                )}
-                
-                <a
-                  href="/profile"
-                  className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <User className="w-4 h-4" />
-                  <span>My Profile</span>
-                </a>
-                
-                <button
-                  onClick={handleSignOut}
-                  className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-gray-700 rounded transition-colors"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <a
-                  href="/login"
-                  className="btn-primary flex items-center justify-center space-x-2 w-full"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <User className="w-4 h-4" />
-                  <span>Sign In</span>
-                </a>
+            {/* Auth Error Mobile */}
+            {authError && (
+              <div className="bg-red-900 text-red-300 px-3 py-2 rounded text-sm mt-3">
+                ⚠️ Authentication issue
               </div>
             )}
           </div>
