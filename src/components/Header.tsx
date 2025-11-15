@@ -13,7 +13,7 @@ export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const router = useRouter()
 
-  // Optimized authentication with router
+  // OPTIMIZED: Authentication with minimal checks
   useEffect(() => {
     let mounted = true
 
@@ -78,7 +78,7 @@ export default function Header() {
       
       // Redirect to login page
       router.push('/login')
-      router.refresh() // Refresh the router to ensure clean state
+      router.refresh()
       
     } catch (error) {
       console.error('Logout error:', error)
@@ -96,6 +96,7 @@ export default function Header() {
                 src="/rapid911-ireport-logo1.png"
                 alt="Rapid911 Logo" 
                 className="w-30 h-auto"
+                loading="eager"
               />
               <p className="text-sm flashing-text text-blue-900 mt-1">
                 Smart Reporting System
@@ -256,16 +257,6 @@ export default function Header() {
           </div>
         )}
       </div>
-
-      <style jsx>{`
-        @keyframes flash {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-        .flashing-text {
-          animation: flash 2s infinite;
-        }
-      `}</style>
     </header>
   )
 }
