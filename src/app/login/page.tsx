@@ -16,22 +16,49 @@ export default function LoginPage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const router = useRouter()
 
-  // Check if user is already logged in
-  // Add this useEffect to listen for auth state changes
-useEffect(() => {
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange((event, session) => {
-    console.log('Auth state changed:', event, session)
-    if (event === 'SIGNED_IN' && session) {
-      console.log('User signed in, redirecting to dashboard')
-      router.push('/dashboard')
+  // FIXED: Proper auth state check on component mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (session?.user) {
+          console.log('✅ User already logged in, redirecting to dashboard')
+          router.push('/dashboard')
+          return
+        }
+      } catch (error) {
+        console.error('Auth check error:', error)
+      } finally {
+        setIsCheckingAuth(false)
+      }
     }
-  })
 
-  return () => subscription.unsubscribe()
-}, [router])
+    checkAuth()
 
+    // FIXED: Proper auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event)
+        
+        if (event === 'SIGNED_IN' && session) {
+          console.log('✅ User signed in via listener, redirecting')
+          router.push('/dashboard')
+        }
+        
+        if (event === 'SIGNED_OUT') {
+          console.log('✅ User signed out')
+          // Stay on login page
+        }
+      }
+    )
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [router])
+
+  // FIXED: Improved login handler
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -49,29 +76,23 @@ useEffect(() => {
       }
 
       if (data.user) {
-        console.log('✅ Login successful, user data:', data.user)
+        console.log('✅ Login successful')
         setSuccess('Login successful! Redirecting...')
 
-        // Wait a moment for the session to be properly set
-        await new Promise(resolve => setTimeout(resolve, 500))
-
-        // Force a session check and redirect
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-          console.log('✅ Session confirmed, redirecting to dashboard')
+        // FIXED: Use router.push instead of relying only on listener
+        setTimeout(() => {
           router.push('/dashboard')
-        } else {
-          throw new Error('Session not established after login')
-        }
+          router.refresh() // Force refresh to update auth state
+        }, 1000)
       }
     } catch (error: any) {
       console.error('Login error:', error)
       setError(error.message || 'Failed to sign in. Please check your credentials.')
-    } finally {
       setLoading(false)
     }
   }
 
+  // FIXED: Improved demo login
   const handleDemoLogin = async (demoType: 'user' | 'admin') => {
     setLoading(true)
     setError('')
@@ -85,8 +106,6 @@ useEffect(() => {
     const credentials = demoCredentials[demoType]
 
     try {
-      setEmail(credentials.email)
-
       const { data, error } = await supabase.auth.signInWithPassword(credentials)
 
       if (error) {
@@ -94,25 +113,17 @@ useEffect(() => {
       }
 
       if (data.user) {
-        console.log(`✅ ${demoType} demo login successful, user data:`, data.user)
+        console.log(`✅ ${demoType} demo login successful`)
         setSuccess(`${demoType === 'admin' ? 'Admin' : 'User'} demo login successful! Redirecting...`)
 
-        // Wait a moment for the session to be properly set
-        await new Promise(resolve => setTimeout(resolve, 500))
-
-        // Force a session check and redirect
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-          console.log('✅ Session confirmed, redirecting to dashboard')
+        setTimeout(() => {
           router.push('/dashboard')
-        } else {
-          throw new Error('Session not established after login')
-        }
+          router.refresh()
+        }, 1000)
       }
     } catch (error: any) {
       console.error('Demo login error:', error)
       setError(error.message || 'Demo login failed. Please try again.')
-    } finally {
       setLoading(false)
     }
   }
@@ -148,14 +159,14 @@ useEffect(() => {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="card py-8 px-4 sm:px-10">
           {error && (
-            <div className="mb-4 bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded flex items-center space-x-2 animate-in slide-in-from-top">
+            <div className="mb-4 bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded flex items-center space-x-2">
               <AlertCircle className="w-5 h-5" />
               <span>{error}</span>
             </div>
           )}
 
           {success && (
-            <div className="mb-4 bg-green-900 border border-green-700 text-green-300 px-4 py-3 rounded flex items-center space-x-2 animate-in slide-in-from-top">
+            <div className="mb-4 bg-green-900 border border-green-700 text-green-300 px-4 py-3 rounded flex items-center space-x-2">
               <CheckCircle className="w-5 h-5" />
               <span>{success}</span>
             </div>

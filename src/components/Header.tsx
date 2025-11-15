@@ -60,30 +60,33 @@ export default function Header() {
 
   // FIXED: Logout with redirect to login page
   const handleSignOut = async () => {
-    try {
-      console.log('🚪 Logging out...');
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        console.error('Logout error:', error)
-        return
-      }
-      
-      // Clear local state
-      setUser(null)
-      setUserProfile(null)
-      setShowDropdown(false)
-      setMobileMenuOpen(false)
-      
-      console.log('✅ Logged out, redirecting to login...');
-      
-      // Redirect to login page
-      router.push('/login')
-      router.refresh()
-      
-    } catch (error) {
+  try {
+    console.log('🚪 Logging out...');
+    
+    // Clear any local storage or state first
+    setUser(null)
+    setUserProfile(null)
+    setShowDropdown(false)
+    setMobileMenuOpen(false)
+    
+    // Then sign out from Supabase
+    const { error } = await supabase.auth.signOut()
+    if (error) {
       console.error('Logout error:', error)
+      return
     }
+    
+    console.log('✅ Logged out successfully');
+    
+    // Force redirect to login and refresh
+    window.location.href = '/login'
+    
+  } catch (error) {
+    console.error('Logout error:', error)
+    // Fallback redirect
+    window.location.href = '/login'
   }
+}
 
   return (
     <header className="bg-dark-gray border-b border-gray-700">

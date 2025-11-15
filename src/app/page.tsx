@@ -226,27 +226,64 @@ export default function Dashboard() {
 
   // FIXED: View Report Modal Component
   const ViewReportModal = () => {
-    if (!selectedItem || modalType !== 'view') return null
+  if (!selectedItem || modalType !== 'view') return null
 
-    const item = selectedItem
-    const isVehicle = selectedItemType === 'vehicle'
+  const item = selectedItem
+  const isVehicle = selectedItemType === 'vehicle'
 
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-        <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-primary-white">
-                {isVehicle ? 'Vehicle Report Details' : 'Crime Report Details'}
-              </h3>
-              <button
-                onClick={closeModal}
-                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
+  // FIXED: Fetch complete item data when viewing details
+  const [detailedItem, setDetailedItem] = useState<any>(item)
+  const [loadingDetails, setLoadingDetails] = useState(false)
+
+  useEffect(() => {
+    const fetchDetailedData = async () => {
+      setLoadingDetails(true)
+      try {
+        const tableName = isVehicle ? 'alerts_vehicles' : 'crime_reports'
+        const { data, error } = await supabase
+          .from(tableName)
+          .select('*')
+          .eq('id', item.id)
+          .single()
+
+        if (!error && data) {
+          setDetailedItem(data)
+        }
+      } catch (error) {
+        console.error('Error fetching detailed data:', error)
+      } finally {
+        setLoadingDetails(false)
+      }
+    }
+
+    // Only fetch if we don't have complete data
+    if (!item.description || !item.reason || !item.comments) {
+      fetchDetailedData()
+    }
+  }, [item.id, isVehicle])
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-primary-white">
+              {isVehicle ? 'Vehicle Report Details' : 'Crime Report Details'}
+            </h3>
+            <button
+              onClick={closeModal}
+              className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          {loadingDetails ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-gold mx-auto"></div>
+              <p className="text-gray-400 mt-2">Loading details...</p>
             </div>
-            
+          ) : (
             <div className="space-y-6">
               {/* Header Section */}
               <div className="bg-gray-800 rounded-lg p-6">
@@ -259,14 +296,14 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h4 className="text-lg font-semibold text-primary-white">
-                      {isVehicle ? item.number_plate : item.crime_type}
+                      {isVehicle ? detailedItem.number_plate : detailedItem.crime_type}
                     </h4>
                     <p className="text-gray-400">
-                      OB Number: <strong>{item.ob_number}</strong>
+                      OB Number: <strong>{detailedItem.ob_number}</strong>
                     </p>
                     <p className="text-gray-400">
-                      Status: <span className={`${item.status === 'ACTIVE' ? 'text-green-400' : 'text-blue-400'}`}>
-                        {item.status}
+                      Status: <span className={`${detailedItem.status === 'ACTIVE' ? 'text-green-400' : 'text-blue-400'}`}>
+                        {detailedItem.status}
                       </span>
                     </p>
                   </div>
@@ -274,29 +311,67 @@ export default function Dashboard() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div>
-                    <p className="text-gray-300"><strong>Location:</strong> {item.location || item.suburb}</p>
-                    <p className="text-gray-300"><strong>Suburb:</strong> {item.suburb}</p>
+                    <p className="text-gray-300"><strong>Location:</strong> {detailedItem.location || detailedItem.suburb}</p>
+                    <p className="text-gray-300"><strong>Suburb:</strong> {detailedItem.suburb}</p>
                     {isVehicle ? (
                       <>
-                        <p className="text-gray-300"><strong>Vehicle:</strong> {item.make} {item.model}</p>
-                        <p className="text-gray-300"><strong>Color:</strong> {item.color}</p>
+                        <p className="text-gray-300"><strong>Vehicle:</strong> {detailedItem.make} {detailedItem.model}</p>
+                        <p className="text-gray-300"><strong>Color:</strong> {detailedItem.color}</p>
+                        <p className="text-gray-300"><strong>Reason:</strong> {detailedItem.reason}</p>
                       </>
                     ) : (
-                      <p className="text-gray-300"><strong>Incident Type:</strong> {item.crime_type}</p>
+                      <>
+                        <p className="text-gray-300"><strong>Incident Type:</strong> {detailedItem.crime_type}</p>
+                        <p className="text-gray-300"><strong>Description:</strong> {detailedItem.description}</p>
+                      </>
                     )}
                   </div>
                   <div>
                     <p className="text-gray-300">
-                      <strong>Reported:</strong> {formatDate(item.created_at)} at {formatTime(item.created_at)}
+                      <strong>Reported:</strong> {formatDate(detailedItem.created_at)} at {formatTime(detailedItem.created_at)}
                     </p>
-                    {item.case_number && (
-                      <p className="text-gray-300"><strong>SAPS Case:</strong> {item.case_number}</p>
+                    {detailedItem.incident_date && (
+                      <p className="text-gray-300">
+                        <strong>Incident Date:</strong> {formatDate(detailedItem.incident_date)}
+                      </p>
                     )}
-                    {item.station_reported_at && (
-                      <p className="text-gray-300"><strong>Station:</strong> {item.station_reported_at}</p>
+                    {detailedItem.case_number && (
+                      <p className="text-gray-300"><strong>SAPS Case:</strong> {detailedItem.case_number}</p>
+                    )}
+                    {detailedItem.station_reported_at && (
+                      <p className="text-gray-300"><strong>Station:</strong> {detailedItem.station_reported_at}</p>
                     )}
                   </div>
                 </div>
+
+                {/* Additional Details */}
+                {(detailedItem.comments || detailedItem.suspects_description) && (
+                  <div className="mt-4 pt-4 border-t border-gray-700">
+                    <h5 className="text-sm font-semibold text-gray-300 mb-2">Additional Information:</h5>
+                    <p className="text-gray-300 text-sm">
+                      {detailedItem.comments || detailedItem.suspects_description}
+                    </p>
+                  </div>
+                )}
+
+                {/* Images if available */}
+                {detailedItem.has_images && detailedItem.image_urls && detailedItem.image_urls.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-700">
+                    <h5 className="text-sm font-semibold text-gray-300 mb-2">Attached Images:</h5>
+                    <div className="grid grid-cols-2 gap-2">
+                      {detailedItem.image_urls.map((url: string, index: number) => (
+                        <img
+                          key={index}
+                          src={url}
+                          alt={`Evidence ${index + 1}`}
+                          className="w-full h-24 object-cover rounded border border-gray-600"
+                          onClick={() => window.open(url, '_blank')}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
@@ -307,9 +382,9 @@ export default function Dashboard() {
                 >
                   Close
                 </button>
-                {item.latitude && item.longitude && (
+                {detailedItem.latitude && detailedItem.longitude && (
                   <button
-                    onClick={() => handleViewMap(item, selectedItemType)}
+                    onClick={() => handleViewMap(detailedItem, selectedItemType)}
                     className="btn-primary flex items-center justify-center space-x-2"
                   >
                     <MapPin className="w-4 h-4" />
@@ -318,125 +393,145 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
-    )
-  }
+    </div>
+  )
+}
 
   // FIXED: Map Modal Component - GUARANTEED TO WORK
   const MapModal = () => {
-    if (!selectedItem || modalType !== 'map') return null
+  if (!selectedItem || modalType !== 'map') return null
 
-    const item = selectedItem
-    const isVehicle = selectedItemType === 'vehicle'
+  const item = selectedItem
+  const isVehicle = selectedItemType === 'vehicle'
 
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-        <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-auto">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-primary-white">
-                {isVehicle ? 'Vehicle Location' : 'Crime Location'}
-              </h3>
-              <button
-                onClick={closeModal}
-                className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <div className="bg-gray-800 rounded-lg p-6 mb-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="text-lg font-semibold text-primary-white mb-4">Location Details</h4>
-                  <div className="space-y-3">
-                    <div className="bg-gray-900 rounded p-3">
-                      <p className="text-sm text-gray-400 mb-1">Coordinates</p>
-                      <p className="text-primary-white font-mono">
-                        {item.latitude?.toFixed(6)}, {item.longitude?.toFixed(6)}
-                      </p>
-                    </div>
-                    
-                    {isVehicle ? (
-                      <>
-                        <div className="bg-gray-900 rounded p-3">
-                          <p className="text-sm text-gray-400 mb-1">Vehicle</p>
-                          <p className="text-primary-white">
-                            {item.number_plate} - {item.make} {item.model}
-                          </p>
-                        </div>
-                        <div className="bg-gray-900 rounded p-3">
-                          <p className="text-sm text-gray-400 mb-1">Incident</p>
-                          <p className="text-primary-white">{item.reason}</p>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="bg-gray-900 rounded p-3">
-                          <p className="text-sm text-gray-400 mb-1">Crime Type</p>
-                          <p className="text-primary-white">{item.crime_type}</p>
-                        </div>
-                        <div className="bg-gray-900 rounded p-3">
-                          <p className="text-sm text-gray-400 mb-1">Location</p>
-                          <p className="text-primary-white">{item.location}</p>
-                        </div>
-                      </>
-                    )}
-                    
-                    <div className="bg-gray-900 rounded p-3">
-                      <p className="text-sm text-gray-400 mb-1">Suburb</p>
-                      <p className="text-primary-white">{item.suburb}</p>
-                    </div>
+  // FIXED: Generate proper OpenStreetMap URL
+  const mapUrl = `https://www.openstreetmap.org/?mlat=${item.latitude}&mlon=${item.longitude}#map=16/${item.latitude}/${item.longitude}`
+  const embeddedMapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${item.longitude! - 0.01}%2C${item.latitude! - 0.01}%2C${item.longitude! + 0.01}%2C${item.latitude! + 0.01}&layer=mapnik&marker=${item.latitude}%2C${item.longitude}`
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-6xl max-h-[90vh] overflow-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-primary-white">
+              {isVehicle ? 'Vehicle Location' : 'Crime Location'}
+            </h3>
+            <button
+              onClick={closeModal}
+              className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Location Details */}
+            <div className="lg:col-span-1 space-y-4">
+              <div className="bg-gray-800 rounded-lg p-4">
+                <h4 className="text-lg font-semibold text-primary-white mb-4">Location Details</h4>
+                <div className="space-y-3">
+                  <div className="bg-gray-900 rounded p-3">
+                    <p className="text-sm text-gray-400 mb-1">Coordinates</p>
+                    <p className="text-primary-white font-mono text-sm">
+                      {item.latitude?.toFixed(6)}, {item.longitude?.toFixed(6)}
+                    </p>
+                  </div>
+                  
+                  {isVehicle ? (
+                    <>
+                      <div className="bg-gray-900 rounded p-3">
+                        <p className="text-sm text-gray-400 mb-1">Vehicle</p>
+                        <p className="text-primary-white">
+                          {item.number_plate} - {item.make} {item.model}
+                        </p>
+                      </div>
+                      <div className="bg-gray-900 rounded p-3">
+                        <p className="text-sm text-gray-400 mb-1">Incident</p>
+                        <p className="text-primary-white">{item.reason}</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="bg-gray-900 rounded p-3">
+                        <p className="text-sm text-gray-400 mb-1">Crime Type</p>
+                        <p className="text-primary-white">{item.crime_type}</p>
+                      </div>
+                      <div className="bg-gray-900 rounded p-3">
+                        <p className="text-sm text-gray-400 mb-1">Location</p>
+                        <p className="text-primary-white">{item.location}</p>
+                      </div>
+                    </>
+                  )}
+                  
+                  <div className="bg-gray-900 rounded p-3">
+                    <p className="text-sm text-gray-400 mb-1">Suburb</p>
+                    <p className="text-primary-white">{item.suburb}</p>
                   </div>
                 </div>
-                
-                <div>
-                  <h4 className="text-lg font-semibold text-primary-white mb-4">Map Actions</h4>
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => window.open(`https://www.openstreetmap.org/?mlat=${item.latitude}&mlon=${item.longitude}#map=16/${item.latitude}/${item.longitude}`, '_blank')}
-                      className="w-full btn-primary flex items-center justify-center space-x-2 py-3"
-                    >
-                      <span>View on OpenStreetMap</span>
-                    </button>
-                    
-                    <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 p-3 rounded text-sm">
-                      <p className="font-medium mb-1">📍 Location Information</p>
-                      <p>Location accuracy depends on the precision of the coordinates provided by the reporter.</p>
-                    </div>
+              </div>
+
+              {/* Map Actions */}
+              <div className="bg-gray-800 rounded-lg p-4">
+                <h4 className="text-lg font-semibold text-primary-white mb-4">Map Actions</h4>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => window.open(mapUrl, '_blank')}
+                    className="w-full btn-primary flex items-center justify-center space-x-2 py-3"
+                  >
+                    <MapPin className="w-4 h-4" />
+                    <span>Open in OpenStreetMap</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => window.open(`https://maps.google.com/?q=${item.latitude},${item.longitude}`, '_blank')}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <span>Open in Google Maps</span>
+                  </button>
+                  
+                  <div className="bg-yellow-900 border border-yellow-700 text-yellow-300 p-3 rounded text-sm">
+                    <p className="font-medium mb-1">📍 Location Information</p>
+                    <p>Location accuracy depends on the precision of the coordinates provided by the reporter.</p>
                   </div>
                 </div>
               </div>
             </div>
             
-            {/* OPTIMIZED: Map Preview - SIMPLIFIED BUT GUARANTEED TO WORK */}
-            <div className="bg-gray-800 rounded-lg p-6">
-              <h4 className="text-lg font-semibold text-primary-white mb-4">Location Preview</h4>
-              <div className="aspect-video bg-gray-700 rounded-lg flex items-center justify-center relative">
-                <div className="text-center text-gray-400 p-4">
-                  <MapPin className="w-12 h-12 mx-auto mb-3 text-accent-gold" />
-                  <p className="text-lg font-semibold mb-2">Location Coordinates</p>
-                  <p className="font-mono text-sm bg-black bg-opacity-50 p-2 rounded">
-                    {item.latitude?.toFixed(6)}, {item.longitude?.toFixed(6)}
-                  </p>
-                  <p className="text-sm mt-3">
-                    <button
-                      onClick={() => window.open(`https://www.openstreetmap.org/?mlat=${item.latitude}&mlon=${item.longitude}#map=16/${item.latitude}/${item.longitude}`, '_blank')}
-                      className="text-accent-gold hover:text-yellow-400 underline font-medium"
-                    >
-                      Click to view on interactive map →
-                    </button>
-                  </p>
+            {/* Embedded Map */}
+            <div className="lg:col-span-2">
+              <div className="bg-gray-800 rounded-lg p-4 h-full">
+                <h4 className="text-lg font-semibold text-primary-white mb-4">Location Map</h4>
+                <div className="aspect-video bg-gray-700 rounded-lg overflow-hidden">
+                  <iframe
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    scrolling="no"
+                    marginHeight={0}
+                    marginWidth={0}
+                    src={embeddedMapUrl}
+                    style={{ border: '1px solid gray' }}
+                  />
+                </div>
+                <div className="mt-3 text-center">
+                  <button
+                    onClick={() => window.open(mapUrl, '_blank')}
+                    className="text-accent-gold hover:text-yellow-400 underline font-medium"
+                  >
+                    Open in larger view →
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    )
-  }
+    </div>
+  )
+}
 
   // OPTIMIZED: Stats calculations with useMemo
   const stats = useMemo(() => {
