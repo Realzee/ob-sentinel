@@ -13,15 +13,22 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const router = useRouter()
 
   // Check if user is already logged in
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        console.log('✅ User already logged in, redirecting to dashboard')
-        router.push('/dashboard')
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          console.log('✅ User already logged in, redirecting to dashboard')
+          router.push('/dashboard')
+        }
+      } catch (error) {
+        console.error('Error checking auth:', error)
+      } finally {
+        setIsCheckingAuth(false)
       }
     }
     checkAuth()
@@ -44,14 +51,20 @@ export default function LoginPage() {
       }
 
       if (data.user) {
-        console.log('✅ Login successful, redirecting to dashboard')
+        console.log('✅ Login successful, user data:', data.user)
         setSuccess('Login successful! Redirecting...')
-        
-        // Short delay to show success message
-        setTimeout(() => {
+
+        // Wait a moment for the session to be properly set
+        await new Promise(resolve => setTimeout(resolve, 500))
+
+        // Force a session check and redirect
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          console.log('✅ Session confirmed, redirecting to dashboard')
           router.push('/dashboard')
-          router.refresh() // Refresh to update auth state
-        }, 1000)
+        } else {
+          throw new Error('Session not established after login')
+        }
       }
     } catch (error: any) {
       console.error('Login error:', error)
@@ -75,7 +88,7 @@ export default function LoginPage() {
 
     try {
       setEmail(credentials.email)
-      
+
       const { data, error } = await supabase.auth.signInWithPassword(credentials)
 
       if (error) {
@@ -83,13 +96,20 @@ export default function LoginPage() {
       }
 
       if (data.user) {
-        console.log(`✅ ${demoType} demo login successful, redirecting to dashboard`)
+        console.log(`✅ ${demoType} demo login successful, user data:`, data.user)
         setSuccess(`${demoType === 'admin' ? 'Admin' : 'User'} demo login successful! Redirecting...`)
-        
-        setTimeout(() => {
+
+        // Wait a moment for the session to be properly set
+        await new Promise(resolve => setTimeout(resolve, 500))
+
+        // Force a session check and redirect
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          console.log('✅ Session confirmed, redirecting to dashboard')
           router.push('/dashboard')
-          router.refresh()
-        }, 1000)
+        } else {
+          throw new Error('Session not established after login')
+        }
       }
     } catch (error: any) {
       console.error('Demo login error:', error)
@@ -97,6 +117,16 @@ export default function LoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Show loading while checking initial auth state
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-dark-gray flex flex-col justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mb-4"></div>
+        <p className="text-gray-400">Checking authentication...</p>
+      </div>
+    )
   }
 
   return (
@@ -120,14 +150,14 @@ export default function LoginPage() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="card py-8 px-4 sm:px-10">
           {error && (
-            <div className="mb-4 bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded flex items-center space-x-2">
+            <div className="mb-4 bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded flex items-center space-x-2 animate-in slide-in-from-top">
               <AlertCircle className="w-5 h-5" />
               <span>{error}</span>
             </div>
           )}
 
           {success && (
-            <div className="mb-4 bg-green-900 border border-green-700 text-green-300 px-4 py-3 rounded flex items-center space-x-2">
+            <div className="mb-4 bg-green-900 border border-green-700 text-green-300 px-4 py-3 rounded flex items-center space-x-2 animate-in slide-in-from-top">
               <CheckCircle className="w-5 h-5" />
               <span>{success}</span>
             </div>
@@ -152,6 +182,7 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="form-input pl-10"
                   placeholder="Enter your email"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -174,11 +205,13 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="form-input pl-10 pr-10"
                   placeholder="Enter your password"
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
                   onClick={() => setShowPassword(!showPassword)}
+                  disabled={loading}
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5 text-gray-400" />
@@ -193,7 +226,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full btn-primary flex justify-center items-center space-x-2 disabled:opacity-50"
+                className="w-full btn-primary flex justify-center items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
@@ -218,7 +251,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => handleDemoLogin('user')}
                 disabled={loading}
-                className="btn-primary flex justify-center items-center space-x-2 disabled:opacity-50"
+                className="btn-primary flex justify-center items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <User className="w-4 h-4" />
                 <span>User Demo</span>
@@ -227,7 +260,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => handleDemoLogin('admin')}
                 disabled={loading}
-                className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex justify-center items-center space-x-2 disabled:opacity-50"
+                className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex justify-center items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Lock className="w-4 h-4" />
                 <span>Admin Demo</span>
