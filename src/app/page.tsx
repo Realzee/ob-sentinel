@@ -826,12 +826,13 @@ export default function Dashboard() {
                       )}
                       
                       <button
-                        onClick={() => handleViewDetails(alert, 'vehicle')}
-                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex-shrink-0"
-                        title="View Full Details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+  onClick={() => handleViewDetails(alert, 'vehicle')}
+  className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+  title="View full details"
+  aria-label={`View full details for vehicle ${alert.number_plate}`}
+>
+  <Eye className="w-4 h-4" />
+</button>
                     </div>
                   </div>
                 </div>

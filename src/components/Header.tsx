@@ -110,11 +110,15 @@ export default function Header() {
           {/* Mobile menu button */}
           <div className="md:hidden">
             <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="text-gray-400 hover:text-white p-2"
-            >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+  className="text-gray-400 hover:text-white p-2 md:hidden"
+  title="Toggle navigation menu"
+  aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+  aria-expanded={mobileMenuOpen}
+  aria-controls="mobile-menu"
+>
+  {mobileMenuOpen ? <X className="w-6 h-6" aria-hidden="true" /> : <Menu className="w-6 h-6" aria-hidden="true" />}
+</button>
           </div>
 
           {/* Desktop User Menu */}

@@ -3,6 +3,9 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import Header from '@/components/Header'
 import OnlinePresenceTracker from '@/components/OnlinePresenceTracker'
+import AccessibilityProvider from '@/components/AccessibilityProvider'
+
+
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -19,8 +22,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Header />
-        <main>{children}</main>
+        <AccessibilityProvider>
+          {children}
+        </AccessibilityProvider>
       </body>
     </html>
   )
