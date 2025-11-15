@@ -26,6 +26,7 @@ export interface AlertVehicle {
 }
 
 export interface CrimeReport {
+  status: string
   id: string
   user_id: string
   crime_type: string
