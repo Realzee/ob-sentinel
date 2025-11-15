@@ -17,22 +17,20 @@ export default function LoginPage() {
   const router = useRouter()
 
   // Check if user is already logged in
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-          console.log('✅ User already logged in, redirecting to dashboard')
-          router.push('/dashboard')
-        }
-      } catch (error) {
-        console.error('Error checking auth:', error)
-      } finally {
-        setIsCheckingAuth(false)
-      }
+  // Add this useEffect to listen for auth state changes
+useEffect(() => {
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((event, session) => {
+    console.log('Auth state changed:', event, session)
+    if (event === 'SIGNED_IN' && session) {
+      console.log('User signed in, redirecting to dashboard')
+      router.push('/dashboard')
     }
-    checkAuth()
-  }, [router])
+  })
+
+  return () => subscription.unsubscribe()
+}, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
