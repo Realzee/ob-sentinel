@@ -478,6 +478,7 @@ export default function Dashboard() {
     }
 
     initializeApp()
+    refreshAlerts()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
