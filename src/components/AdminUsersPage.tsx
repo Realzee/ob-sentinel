@@ -1,24 +1,28 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, ChangeEvent } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Search, Filter, User, Shield, CheckCircle, XCircle, Edit, Trash2, RefreshCw, Download, Upload } from 'lucide-react'
+import { Search, Filter, User, Shield, CheckCircle, XCircle, Edit, Trash2, RefreshCw, Download, AlertCircle } from 'lucide-react'
+
+const formatDate = (dateString: string | null): string => {
+  if (!dateString) return 'Never'
+  return new Date(dateString).toLocaleDateString()
+}
 
 interface UserProfile {
   id: string
   email: string
   name: string | null
+  phone: string | null
   role: 'admin' | 'moderator' | 'user'
   approved: boolean
   last_login: string | null
   created_at: string
-  phone?: string | null
-}
-
-interface BulkAction {
-  type: 'approve' | 'reject' | 'delete' | 'change_role'
-  userIds: string[]
-  role?: string
+  updated_at: string
+  is_active: boolean
+  verification_status: 'pending' | 'verified' | 'rejected'
+  metadata: any
 }
 
 export default function AdminUsersPage() {
@@ -32,13 +36,47 @@ export default function AdminUsersPage() {
   const [bulkRole, setBulkRole] = useState<string>('user')
   const [updatingUsers, setUpdatingUsers] = useState<Set<string>>(new Set())
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date())
+  const [currentUserRole, setCurrentUserRole] = useState<string>('')
+  const [accessDenied, setAccessDenied] = useState(false)
+  const router = useRouter()
+
+  // Check if current user has access to user management
+  const checkUserAccess = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setAccessDenied(true)
+        return false
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'moderator')) {
+        setAccessDenied(true)
+        return false
+      }
+
+      setCurrentUserRole(profile.role)
+      return true
+    } catch (error) {
+      console.error('Error checking user access:', error)
+      setAccessDenied(true)
+      return false
+    }
+  }, [])
 
   // OPTIMIZED: Fetch users with caching and error handling
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true)
-      console.time('fetch-users')
       
+      const hasAccess = await checkUserAccess()
+      if (!hasAccess) return
+
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -48,13 +86,12 @@ export default function AdminUsersPage() {
       
       setUsers(data || [])
       setLastRefreshed(new Date())
-      console.timeEnd('fetch-users')
     } catch (error) {
       console.error('Error fetching users:', error)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [checkUserAccess])
 
   // OPTIMIZED: Initial load and real-time subscription
   useEffect(() => {
@@ -72,7 +109,6 @@ export default function AdminUsersPage() {
         },
         (payload) => {
           console.log('Real-time update received:', payload)
-          // Refresh users data when any change occurs
           fetchUsers()
         }
       )
@@ -102,6 +138,12 @@ export default function AdminUsersPage() {
 
   // OPTIMIZED: Update user role with optimistic updates
   const updateUserRole = useCallback(async (userId: string, newRole: string) => {
+    // Only admins can change roles to admin
+    if (newRole === 'admin' && currentUserRole !== 'admin') {
+      alert('Only administrators can assign admin roles.')
+      return
+    }
+
     setUpdatingUsers(prev => new Set(prev).add(userId))
     
     try {
@@ -129,7 +171,7 @@ export default function AdminUsersPage() {
         return newSet
       })
     }
-  }, [fetchUsers])
+  }, [fetchUsers, currentUserRole])
 
   // OPTIMIZED: Toggle user approval with optimistic updates
   const toggleUserApproval = useCallback(async (userId: string, currentStatus: boolean) => {
@@ -162,133 +204,29 @@ export default function AdminUsersPage() {
     }
   }, [fetchUsers])
 
-  // OPTIMIZED: Bulk actions
-  const handleBulkAction = useCallback(async () => {
-    if (!bulkAction || selectedUsers.size === 0) return
-
-    const userIds = Array.from(selectedUsers)
-    setUpdatingUsers(prev => new Set([...Array.from(prev), ...userIds]))
-
-    try {
-      let updateData: any = {}
-      
-      switch (bulkAction) {
-        case 'approve':
-          updateData.approved = true
-          break
-        case 'reject':
-          updateData.approved = false
-          break
-        case 'change_role':
-          updateData.role = bulkRole
-          break
-        case 'delete':
-          // Handle delete separately
-          break
-      }
-
-      if (bulkAction !== 'delete') {
-        const { error } = await supabase
-          .from('profiles')
-          .update(updateData)
-          .in('id', userIds)
-
-        if (error) throw error
-      } else {
-        // Delete users
-        const { error } = await supabase
-          .from('profiles')
-          .delete()
-          .in('id', userIds)
-
-        if (error) throw error
-      }
-
-      // Refresh data
-      await fetchUsers()
-      setSelectedUsers(new Set())
-      setBulkAction('')
-      
-    } catch (error) {
-      console.error('Error performing bulk action:', error)
-      alert('Failed to perform bulk action')
-    } finally {
-      setUpdatingUsers(new Set())
-    }
-  }, [bulkAction, selectedUsers, bulkRole, fetchUsers])
-
-  // OPTIMIZED: Select/deselect all
-  const toggleSelectAll = useCallback(() => {
-    if (selectedUsers.size === filteredUsers.length) {
-      setSelectedUsers(new Set())
-    } else {
-      setSelectedUsers(new Set(filteredUsers.map(user => user.id)))
-    }
-  }, [filteredUsers, selectedUsers.size])
-
-  // OPTIMIZED: Toggle single user selection
-  const toggleUserSelection = useCallback((userId: string) => {
-    setSelectedUsers(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(userId)) {
-        newSet.delete(userId)
-      } else {
-        newSet.add(userId)
-      }
-      return newSet
-    })
-  }, [])
-
-  // OPTIMIZED: Export users to CSV
-  const exportToCSV = useCallback(() => {
-    const headers = ['Name', 'Email', 'Phone', 'Role', 'Status', 'Last Login', 'Created']
-    const csvData = filteredUsers.map(user => [
-      user.name || 'N/A',
-      user.email,
-      user.phone || 'N/A',
-      user.role,
-      user.approved ? 'Approved' : 'Pending',
-      user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never',
-      new Date(user.created_at).toLocaleDateString()
-    ])
-
-    const csvContent = [
-      headers.join(','),
-      ...csvData.map(row => row.map(field => `"${field}"`).join(','))
-    ].join('\n')
-
-    const blob = new Blob([csvContent], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `users-${new Date().toISOString().split('T')[0]}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
-  }, [filteredUsers])
-
-  // OPTIMIZED: Format date function
-  const formatDate = useCallback((dateString: string | null) => {
-    if (!dateString) return 'Never'
-    return new Date(dateString).toLocaleDateString('en-ZA', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }, [])
-
-  // OPTIMIZED: Stats with useMemo
-  const stats = useMemo(() => {
-    const total = users.length
-    const approved = users.filter(u => u.approved).length
-    const pending = total - approved
-    const admins = users.filter(u => u.role === 'admin').length
-    const moderators = users.filter(u => u.role === 'moderator').length
-    const regularUsers = users.filter(u => u.role === 'user').length
-
-    return { total, approved, pending, admins, moderators, regularUsers }
-  }, [users])
+  // Access denied view
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-dark-gray py-8">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="card p-8 text-center">
+            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-primary-white mb-4">Access Denied</h2>
+            <p className="text-gray-400 mb-6">
+              You don't have permission to access user management. 
+              This area is restricted to administrators and moderators.
+            </p>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="btn-primary"
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (loading && users.length === 0) {
     return (
@@ -303,6 +241,18 @@ export default function AdminUsersPage() {
     )
   }
 
+  function handleBulkAction(event: React.MouseEvent<HTMLButtonElement>): void {
+    throw new Error('Function not implemented.')
+  }
+
+  function toggleSelectAll(event: ChangeEvent<HTMLInputElement>): void {
+    throw new Error('Function not implemented.')
+  }
+
+  function toggleUserSelection(id: string): void {
+    throw new Error('Function not implemented.')
+  }
+
   return (
     <div className="min-h-screen bg-dark-gray py-8">
       <div className="max-w-7xl mx-auto px-4">
@@ -311,7 +261,14 @@ export default function AdminUsersPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <div>
               <h1 className="text-3xl font-bold text-primary-white mb-2">User Management</h1>
-              <p className="text-gray-400">Manage user accounts, roles, and approvals</p>
+              <p className="text-gray-400">
+                Manage user accounts, roles, and approvals
+                {currentUserRole && (
+                  <span className="ml-2 text-accent-gold">
+                    (Logged in as: {currentUserRole})
+                  </span>
+                )}
+              </p>
             </div>
             <div className="flex items-center space-x-3">
               <button
@@ -325,7 +282,32 @@ export default function AdminUsersPage() {
                 <span>Refresh</span>
               </button>
               <button
-                onClick={exportToCSV}
+                onClick={() => {
+                  // Export to CSV functionality
+                  const headers = ['Name', 'Email', 'Phone', 'Role', 'Status', 'Last Login', 'Created']
+                  const csvData = filteredUsers.map(user => [
+                    user.name || 'N/A',
+                    user.email,
+                    user.phone || 'N/A',
+                    user.role,
+                    user.approved ? 'Approved' : 'Pending',
+                    user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never',
+                    new Date(user.created_at).toLocaleDateString()
+                  ])
+
+                  const csvContent = [
+                    headers.join(','),
+                    ...csvData.map(row => row.map(field => `"${field}"`).join(','))
+                  ].join('\n')
+
+                  const blob = new Blob([csvContent], { type: 'text/csv' })
+                  const url = URL.createObjectURL(blob)
+                  const link = document.createElement('a')
+                  link.href = url
+                  link.download = `users-${new Date().toISOString().split('T')[0]}.csv`
+                  link.click()
+                  URL.revokeObjectURL(url)
+                }}
                 className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center space-x-2"
                 title="Export to CSV"
                 aria-label="Export users to CSV"
@@ -340,27 +322,27 @@ export default function AdminUsersPage() {
           <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
             <div className="card p-4 border-l-4 border-accent-gold">
               <p className="text-xs text-gray-400">Total Users</p>
-              <p className="text-2xl font-bold text-accent-gold">{stats.total}</p>
+              <p className="text-2xl font-bold text-accent-gold">{users.length}</p>
             </div>
             <div className="card p-4 border-l-4 border-green-600">
               <p className="text-xs text-gray-400">Approved</p>
-              <p className="text-2xl font-bold text-green-400">{stats.approved}</p>
+              <p className="text-2xl font-bold text-green-400">{users.filter(u => u.approved).length}</p>
             </div>
             <div className="card p-4 border-l-4 border-yellow-600">
               <p className="text-xs text-gray-400">Pending</p>
-              <p className="text-2xl font-bold text-yellow-400">{stats.pending}</p>
+              <p className="text-2xl font-bold text-yellow-400">{users.filter(u => !u.approved).length}</p>
             </div>
             <div className="card p-4 border-l-4 border-red-600">
               <p className="text-xs text-gray-400">Admins</p>
-              <p className="text-2xl font-bold text-red-400">{stats.admins}</p>
+              <p className="text-2xl font-bold text-red-400">{users.filter(u => u.role === 'admin').length}</p>
             </div>
             <div className="card p-4 border-l-4 border-blue-600">
               <p className="text-xs text-gray-400">Moderators</p>
-              <p className="text-2xl font-bold text-blue-400">{stats.moderators}</p>
+              <p className="text-2xl font-bold text-blue-400">{users.filter(u => u.role === 'moderator').length}</p>
             </div>
             <div className="card p-4 border-l-4 border-purple-600">
               <p className="text-xs text-gray-400">Users</p>
-              <p className="text-2xl font-bold text-purple-400">{stats.regularUsers}</p>
+              <p className="text-2xl font-bold text-purple-400">{users.filter(u => u.role === 'user').length}</p>
             </div>
           </div>
 

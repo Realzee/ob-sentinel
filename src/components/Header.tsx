@@ -5,28 +5,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { User, LogOut, Shield, Menu, X } from 'lucide-react'
-import { ensureUserProfile } from '@/lib/supabase/users'
-
-// Helper function to safely fetch user profile
-async function getSafeUserProfile(userId: string) {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    
-    if (error) {
-      console.error('Error fetching profile:', error)
-      return null
-    }
-    
-    return data
-  } catch (error) {
-    console.error('Error in getSafeUserProfile:', error)
-    return null
-  }
-}
 
 export default function Header() {
   const [user, setUser] = useState<any>(null)
@@ -37,115 +15,92 @@ export default function Header() {
 
   // OPTIMIZED: Authentication with minimal checks
   useEffect(() => {
-  let mounted = true
+    let mounted = true
 
-  const initializeAuth = async () => {
-    try {
-      console.log('🔄 Initializing header auth...')
-      const { data: { user } } = await supabase.auth.getUser()
-      
+    const initializeAuth = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!mounted) return
+        
+        console.log('🔄 Header - User found:', user?.email)
+        setUser(user)
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single()
+          if (mounted) {
+            console.log('🔄 Header - Profile loaded:', profile?.email, profile?.role)
+            setUserProfile(profile)
+          }
+        }
+      } catch (error) {
+        console.error('Header auth initialization error:', error)
+      }
+    }
+
+    initializeAuth()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return
       
-      console.log('✅ Header auth user:', user?.email)
-      setUser(user)
-      
-      if (user) {
-        console.log('🔄 Fetching user profile for header...')
-        const profile = await getSafeUserProfile(user.id)
+      if (session?.user) {
+        console.log('🔄 Header - Fetching profile for:', session.user.email)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
         if (mounted) {
-          if (profile) {
-            console.log('✅ Header profile loaded:', profile.email, profile.role)
-            setUserProfile(profile)
-          } else {
-            console.log('❌ No profile found for header, trying to create...')
-            // Try to create profile if it doesn't exist
-            try {
-              const newProfile = await ensureUserProfile(user.id, {
-                email: user.email!,
-                name: user.user_metadata?.name
-              })
-              if (mounted) {
-                setUserProfile(newProfile)
-              }
-            } catch (createError) {
-              console.error('❌ Failed to create profile in header:', createError)
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('❌ Header auth initialization error:', error)
-    }
-  }
-
-  initializeAuth()
-
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-    if (!mounted) return
-    
-    console.log('🔄 Auth state changed:', event)
-    const currentUser = session?.user ?? null
-    setUser(currentUser)
-    
-    if (currentUser) {
-      console.log('🔄 Auth change - fetching profile...')
-      const profile = await getSafeUserProfile(currentUser.id)
-      if (mounted) {
-        if (profile) {
+          console.log('🔄 Header - Profile set:', profile?.email, profile?.role)
           setUserProfile(profile)
-        } else {
-          // Try to create profile
-          try {
-            const newProfile = await ensureUserProfile(currentUser.id, {
-              email: currentUser.email!,
-              name: currentUser.user_metadata?.name
-            })
-            setUserProfile(newProfile)
-          } catch (error) {
-            console.error('❌ Failed to create profile on auth change:', error)
-          }
         }
+      } else {
+        setUserProfile(null)
       }
-    } else {
-      setUserProfile(null)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
     }
-  })
+  }, [])
 
-  return () => {
-    mounted = false
-    subscription.unsubscribe()
-  }
-}, [])
-
-  // FIXED: Logout with redirect to login page
+  // FIXED: Improved logout function
   const handleSignOut = async () => {
-  try {
-    console.log('🚪 Logging out...');
-    
-    // Clear any local storage or state first
-    setUser(null)
-    setUserProfile(null)
-    setShowDropdown(false)
-    setMobileMenuOpen(false)
-    
-    // Then sign out from Supabase
-    const { error } = await supabase.auth.signOut()
-    if (error) {
+    try {
+      console.log('🚪 Logging out...');
+      
+      // Clear any local storage or state first
+      setUser(null)
+      setUserProfile(null)
+      setShowDropdown(false)
+      setMobileMenuOpen(false)
+      
+      // Then sign out from Supabase
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('Logout error:', error)
+        return
+      }
+      
+      console.log('✅ Logged out successfully');
+      
+      // Force redirect to login and refresh
+      window.location.href = '/login'
+      
+    } catch (error) {
       console.error('Logout error:', error)
-      return
+      // Fallback redirect
+      window.location.href = '/login'
     }
-    
-    console.log('✅ Logged out successfully');
-    
-    // Force redirect to login and refresh
-    window.location.href = '/login'
-    
-  } catch (error) {
-    console.error('Logout error:', error)
-    // Fallback redirect
-    window.location.href = '/login'
   }
-}
+
+  // Format role for display
+  const formatRole = (role: string) => {
+    return role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()
+  }
 
   return (
     <header className="bg-dark-gray border-b border-gray-700">
@@ -169,15 +124,15 @@ export default function Header() {
           {/* Mobile menu button */}
           <div className="md:hidden">
             <button
-  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-  className="text-gray-400 hover:text-white p-2 md:hidden"
-  title="Toggle navigation menu"
-  aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
-  aria-expanded={mobileMenuOpen}
-  aria-controls="mobile-menu"
->
-  {mobileMenuOpen ? <X className="w-6 h-6" aria-hidden="true" /> : <Menu className="w-6 h-6" aria-hidden="true" />}
-</button>
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="text-gray-400 hover:text-white p-2"
+              title="Toggle navigation menu"
+              aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-menu"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" aria-hidden="true" /> : <Menu className="w-6 h-6" aria-hidden="true" />}
+            </button>
           </div>
 
           {/* Desktop User Menu */}
@@ -193,18 +148,18 @@ export default function Header() {
                   aria-haspopup="true"
                 >
                   <div className="text-right">
-                    <p className="text-sm font-medium text-primary-white">
-                      {user.email}
+                    <p className="text-sm font-medium text-primary-white text-left">
+                      {userProfile?.name || user.email}
                     </p>
                     <div className="flex items-center space-x-2">
-                      {userProfile?.name && (
-                        <p className="text-xs text-accent-gold">
-                          {userProfile.name}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-400 capitalize">
-                        {userProfile?.role}
+                      <p className="text-xs text-accent-gold">
+                        {userProfile?.name && user.email}
                       </p>
+                      {userProfile?.role && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-900 text-blue-300">
+                          {formatRole(userProfile.role)}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="w-10 h-10 bg-accent-gold rounded-full flex items-center justify-center text-black font-bold">
@@ -213,13 +168,25 @@ export default function Header() {
                 </button>
 
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-48 bg-dark-gray border border-gray-700 rounded-lg shadow-lg z-50">
+                  <div className="absolute right-0 mt-2 w-64 bg-dark-gray border border-gray-700 rounded-lg shadow-lg z-50">
                     <div className="p-2">
-                      <div className="px-3 py-2 text-sm text-gray-400 border-b border-gray-700">
-                        <div className="font-medium text-primary-white">{user.email}</div>
-                        <div className="flex justify-between items-center mt-1">
-                          <span className="text-accent-gold">{userProfile?.name}</span>
-                          <span className="text-gray-400 capitalize">{userProfile?.role}</span>
+                      {/* User Info Section */}
+                      <div className="px-3 py-2 text-sm border-b border-gray-700">
+                        <div className="font-medium text-primary-white truncate">
+                          {userProfile?.name || 'No Name'}
+                        </div>
+                        <div className="text-gray-400 text-xs truncate mt-1">
+                          {user.email}
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-accent-gold text-xs">
+                            {userProfile?.name ? user.email : ''}
+                          </span>
+                          {userProfile?.role && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-900 text-blue-300">
+                              {formatRole(userProfile.role)}
+                            </span>
+                          )}
                         </div>
                       </div>
                       
@@ -231,7 +198,7 @@ export default function Header() {
                           onClick={() => setShowDropdown(false)}
                         >
                           <Shield className="w-4 h-4" />
-                          <span>Admin Panel</span>
+                          <span>User Management</span>
                         </a>
                       )}
                       
@@ -271,19 +238,30 @@ export default function Header() {
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-700 pt-4 pb-4">
+          <div className="md:hidden border-t border-gray-700 pt-4 pb-4" id="mobile-menu">
             {user ? (
               <div className="space-y-3">
+                {/* User Info Section */}
                 <div className="text-center text-gray-400 pb-2 border-b border-gray-700">
-                  <div className="font-medium text-primary-white">{user.email}</div>
-                  <div className="flex justify-center items-center space-x-4 mt-1">
+                  <div className="font-medium text-primary-white text-lg">
+                    {userProfile?.name || 'No Name'}
+                  </div>
+                  <div className="text-gray-400 text-sm mt-1">
+                    {user.email}
+                  </div>
+                  <div className="flex justify-center items-center space-x-3 mt-2">
                     {userProfile?.name && (
                       <span className="text-accent-gold text-sm">{userProfile.name}</span>
                     )}
-                    <span className="text-gray-400 text-sm capitalize">{userProfile?.role}</span>
+                    {userProfile?.role && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-900 text-blue-300">
+                        {formatRole(userProfile.role)}
+                      </span>
+                    )}
                   </div>
                 </div>
                 
+                {/* Navigation Links */}
                 {(userProfile?.role === 'admin' || userProfile?.role === 'moderator') && (
                   <a
                     href="/admin/users"
@@ -291,7 +269,7 @@ export default function Header() {
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     <Shield className="w-4 h-4" />
-                    <span>Admin Panel</span>
+                    <span>User Management</span>
                   </a>
                 )}
                 
