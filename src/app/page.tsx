@@ -6,6 +6,8 @@ import AddAlertForm from '@/components/AddAlertForm'
 import AddCrimeForm from '@/components/AddCrimeForm'
 import EditAlertForm from '@/components/EditAlertForm'
 import BoloCardGenerator from '@/components/BoloCardGenerator'
+import { ensureUserProfile, getSafeUserProfile } from '@/lib/supabase/users'
+import router from 'next/router'
 
 interface AlertVehicle {
   id: string
@@ -437,83 +439,82 @@ export default function Dashboard() {
     }
   }, [user, viewMode])
 
-  useEffect(() => {
-    let mounted = true
+  // Replace the initialization useEffect with this:
 
-    const initializeApp = async () => {
-      if (!hasValidSupabaseConfig) {
-        console.warn('Supabase not configured')
-        setLoading(false)
+useEffect(() => {
+  let mounted = true
+
+  const initializeDashboard = async () => {
+    try {
+      console.log('🔄 Initializing dashboard...')
+      
+      // Check session first
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!mounted) return
+      
+      if (!session?.user) {
+        console.log('🚫 No user session, redirecting to login')
         setAuthChecked(true)
+        setLoading(false)
+        router.push('/login')
         return
       }
 
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        console.log('Initial user:', user)
-       
-        if (mounted) {
-          setUser(user)
-          setAuthChecked(true)
-         
-          if (user) {
-            ensureUserExists(user.id, {
-              email: user.email!,
-              name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
-            }).catch(error => {
-              console.warn('User creation failed (non-critical):', error)
-            })
-            await fetchAlerts()
-          } else {
-            setLoading(false)
-          }
-        }
-      } catch (error) {
-        console.error('Initialization error:', error)
-        if (mounted) {
-          setLoading(false)
-          setAuthChecked(true)
-        }
-      }
-    }
+      console.log('✅ User authenticated:', session.user.email)
+      setUser(session.user)
+      
+      // Load profile and data in parallel
+      const [profile, _] = await Promise.allSettled([
+        ensureUserProfile(session.user.id, {
+          email: session.user.email!,
+          name: session.user.user_metadata?.name
+        }),
+        fetchInitialData()
+      ])
 
-    initializeApp()
-    refreshAlerts()
+      if (!mounted) return
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session?.user)
-       
-        if (!mounted) return
-       
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          setUser(session?.user ?? null)
-         
-          if (session?.user) {
-            ensureUserExists(session.user.id, {
-              email: session.user.email!,
-              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User'
-            }).catch(error => {
-              console.warn('User creation failed (non-critical):', error)
-            })
-            setTimeout(() => {
-              fetchAlerts()
-            }, 500)
-          }
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setAlerts([])
-          setCrimeReports([])
-          setLoading(false)
+      // Handle profile result
+      if (profile.status === 'fulfilled' && profile.value) {
+        console.log('✅ User profile loaded:', profile.value.email, profile.value.role)
+        ensureUserProfile(session.user.id, {
+          email: profile.value.email,
+          name: profile.value.name || undefined
+        })
+      } else {
+        console.error('❌ Failed to load user profile:', profile)
+        // Try to get profile safely as fallback
+        const safeProfile = await getSafeUserProfile(session.user.id)
+        if (safeProfile) {
+          ensureUserProfile(session.user.id, {
+            email: safeProfile.email,
+            name: safeProfile.name || undefined
+          })
+        } else {
+          console.error('❌ No profile available for user')
         }
       }
-    )
 
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
+      setAuthChecked(true)
+      console.log('✅ Dashboard initialization complete')
+      
+    } catch (error) {
+      console.error('❌ Dashboard initialization error:', error)
+      if (mounted) {
+        setAuthChecked(true)
+        setLoading(false)
+        router.push('/login')
+      }
     }
-  }, [])
+  }
+
+  initializeDashboard()
+
+  return () => {
+    mounted = false
+  }
+}, [router])
 
   useEffect(() => {
     if (authChecked && user) {
@@ -1927,4 +1928,8 @@ function GuidelineCard({ icon, title, description, color }: {
       </div>
     </div>
   )
+}
+
+function fetchInitialData(): any {
+  throw new Error('Function not implemented.')
 }
