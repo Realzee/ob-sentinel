@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { User, LogOut, Shield, Menu, X } from 'lucide-react'
+import { ensureUserProfile } from '@/lib/supabase/users'
 
 // Helper function to safely fetch user profile
 async function getSafeUserProfile(userId: string) {
@@ -36,48 +37,85 @@ export default function Header() {
 
   // OPTIMIZED: Authentication with minimal checks
   useEffect(() => {
-    let mounted = true
+  let mounted = true
 
-    const initializeAuth = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!mounted) return
-        
-        setUser(user)
-        if (user) {
-          const profile = await getSafeUserProfile(user.id)
-          if (mounted) {
-            setUserProfile(profile)
-          }
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error)
-      }
-    }
-
-    initializeAuth()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+  const initializeAuth = async () => {
+    try {
+      console.log('🔄 Initializing header auth...')
+      const { data: { user } } = await supabase.auth.getUser()
+      
       if (!mounted) return
       
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
+      console.log('✅ Header auth user:', user?.email)
+      setUser(user)
       
-      if (currentUser) {
-        const profile = await getSafeUserProfile(currentUser.id)
+      if (user) {
+        console.log('🔄 Fetching user profile for header...')
+        const profile = await getSafeUserProfile(user.id)
         if (mounted) {
-          setUserProfile(profile)
+          if (profile) {
+            console.log('✅ Header profile loaded:', profile.email, profile.role)
+            setUserProfile(profile)
+          } else {
+            console.log('❌ No profile found for header, trying to create...')
+            // Try to create profile if it doesn't exist
+            try {
+              const newProfile = await ensureUserProfile(user.id, {
+                email: user.email!,
+                name: user.user_metadata?.name
+              })
+              if (mounted) {
+                setUserProfile(newProfile)
+              }
+            } catch (createError) {
+              console.error('❌ Failed to create profile in header:', createError)
+            }
+          }
         }
-      } else {
-        setUserProfile(null)
       }
-    })
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
+    } catch (error) {
+      console.error('❌ Header auth initialization error:', error)
     }
-  }, [])
+  }
+
+  initializeAuth()
+
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    if (!mounted) return
+    
+    console.log('🔄 Auth state changed:', event)
+    const currentUser = session?.user ?? null
+    setUser(currentUser)
+    
+    if (currentUser) {
+      console.log('🔄 Auth change - fetching profile...')
+      const profile = await getSafeUserProfile(currentUser.id)
+      if (mounted) {
+        if (profile) {
+          setUserProfile(profile)
+        } else {
+          // Try to create profile
+          try {
+            const newProfile = await ensureUserProfile(currentUser.id, {
+              email: currentUser.email!,
+              name: currentUser.user_metadata?.name
+            })
+            setUserProfile(newProfile)
+          } catch (error) {
+            console.error('❌ Failed to create profile on auth change:', error)
+          }
+        }
+      }
+    } else {
+      setUserProfile(null)
+    }
+  })
+
+  return () => {
+    mounted = false
+    subscription.unsubscribe()
+  }
+}, [])
 
   // FIXED: Logout with redirect to login page
   const handleSignOut = async () => {
