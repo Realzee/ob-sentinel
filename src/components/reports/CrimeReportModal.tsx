@@ -1,33 +1,30 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { reportsAPI, VehicleAlert } from '@/lib/supabase'; // Add VehicleAlert import
+import { reportsAPI, CrimeReport } from '@/lib/supabase'; // Add CrimeReport import
 
-interface VehicleReportModalProps {
+interface CrimeReportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onReportCreated: () => void;
   user: any;
-  editReport?: VehicleAlert | null;
+  editReport?: CrimeReport | null;
 }
 
-export default function VehicleReportModal({ 
+export default function CrimeReportModal({ 
   isOpen, 
   onClose, 
   onReportCreated, 
   user,
   editReport 
-}: VehicleReportModalProps) {
+}: CrimeReportModalProps) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    license_plate: '',
-    vehicle_make: '',
-    vehicle_model: '',
-    vehicle_color: '',
-    year: '',
-    reason: '',
-    last_seen_location: '',
-    last_seen_time: '',
+    title: '',
+    description: '',
+    location: '',
+    incident_time: '',
+    report_type: 'theft',
     severity: 'medium'
   });
 
@@ -35,26 +32,20 @@ export default function VehicleReportModal({
   useEffect(() => {
     if (editReport) {
       setFormData({
-        license_plate: editReport.license_plate || '',
-        vehicle_make: editReport.vehicle_make || '',
-        vehicle_model: editReport.vehicle_model || '',
-        vehicle_color: editReport.vehicle_color || '',
-        year: editReport.year?.toString() || '',
-        reason: editReport.reason || '',
-        last_seen_location: editReport.last_seen_location || '',
-        last_seen_time: editReport.last_seen_time || '',
+        title: editReport.title || '',
+        description: editReport.description || '',
+        location: editReport.location || '',
+        incident_time: editReport.incident_time || '',
+        report_type: editReport.report_type || 'theft',
         severity: editReport.severity || 'medium'
       });
     } else if (!isOpen) {
       setFormData({
-        license_plate: '',
-        vehicle_make: '',
-        vehicle_model: '',
-        vehicle_color: '',
-        year: '',
-        reason: '',
-        last_seen_location: '',
-        last_seen_time: '',
+        title: '',
+        description: '',
+        location: '',
+        incident_time: '',
+        report_type: 'theft',
         severity: 'medium'
       });
     }
@@ -68,25 +59,26 @@ export default function VehicleReportModal({
 
     try {
       if (editReport) {
-        await reportsAPI.updateVehicleAlert(editReport.id, {
+        await reportsAPI.updateCrimeReport(editReport.id, {
           ...formData,
-          year: formData.year ? parseInt(formData.year) : null,
-          last_seen_time: formData.last_seen_time || null,
+          incident_time: formData.incident_time || null,
         });
       } else {
-        await reportsAPI.createVehicleAlert({
+        await reportsAPI.createCrimeReport({
           ...formData,
-          year: formData.year ? parseInt(formData.year) : null,
-          last_seen_time: formData.last_seen_time || null,
+          incident_time: formData.incident_time || null,
           reported_by: user.id,
-          status: 'pending'
+          status: 'pending',
+          evidence_images: [],
+          witness_info: null,
+          contact_allowed: false
         });
       }
 
       onReportCreated();
       onClose();
     } catch (error) {
-      console.error('Error creating vehicle report:', error);
+      console.error('Error creating crime report:', error);
       alert('Error creating report. Please try again.');
     } finally {
       setLoading(false);
@@ -106,10 +98,9 @@ export default function VehicleReportModal({
         <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose}></div>
 
         <div className="inline-block w-full max-w-2xl my-8 overflow-hidden text-left align-middle transition-all transform theme-card rounded-xl sm:rounded-2xl">
-          {/* Header */}
           <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-red-800 flex justify-between items-center">
             <h3 className="text-lg font-medium text-white theme-text-glow">
-              {editReport ? 'Edit Vehicle Report' : 'File New Vehicle Report'}
+              {editReport ? 'Edit Crime Report' : 'File New Crime Report'}
             </h3>
             <button
               onClick={onClose}
@@ -121,103 +112,72 @@ export default function VehicleReportModal({
             </button>
           </div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-            {/* License Plate & Make */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
-                  License Plate *
-                </label>
-                <input
-                  type="text"
-                  name="license_plate"
-                  value={formData.license_plate}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
-                  placeholder="ABC 123 GP"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
-                  Vehicle Make *
-                </label>
-                <input
-                  type="text"
-                  name="vehicle_make"
-                  value={formData.vehicle_make}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
-                  placeholder="Toyota"
-                />
-              </div>
-            </div>
-
-            {/* Model & Color */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
-                  Vehicle Model
-                </label>
-                <input
-                  type="text"
-                  name="vehicle_model"
-                  value={formData.vehicle_model}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
-                  placeholder="Corolla"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
-                  Color
-                </label>
-                <input
-                  type="text"
-                  name="vehicle_color"
-                  value={formData.vehicle_color}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
-                  placeholder="White"
-                />
-              </div>
-            </div>
-
-            {/* Reason */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
-                Reason for Report *
-              </label>
-              <textarea
-                name="reason"
-                value={formData.reason}
-                onChange={handleChange}
-                required
-                rows={3}
-                className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
-                placeholder="Describe why this vehicle is being reported..."
-              />
-            </div>
-
-            {/* Location */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
-                Last Seen Location *
+                Incident Title *
               </label>
               <input
                 type="text"
-                name="last_seen_location"
-                value={formData.last_seen_location}
+                name="title"
+                value={formData.title}
                 onChange={handleChange}
                 required
                 className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
-                placeholder="123 Main Street, City"
+                placeholder="Brief description of the incident"
               />
             </div>
 
-            {/* Severity & Time */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
+                Description *
+              </label>
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
+                required
+                rows={4}
+                className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
+                placeholder="Detailed description of what happened..."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
+                  Location *
+                </label>
+                <input
+                  type="text"
+                  name="location"
+                  value={formData.location}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
+                  placeholder="Where did this happen?"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
+                  Incident Type
+                </label>
+                <select
+                  name="report_type"
+                  value={formData.report_type}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="theft" className="bg-black">Theft</option>
+                  <option value="assault" className="bg-black">Assault</option>
+                  <option value="vandalism" className="bg-black">Vandalism</option>
+                  <option value="burglary" className="bg-black">Burglary</option>
+                  <option value="suspicious" className="bg-black">Suspicious Activity</option>
+                  <option value="other" className="bg-black">Other</option>
+                </select>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
@@ -237,19 +197,18 @@ export default function VehicleReportModal({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
-                  Last Seen Time
+                  Incident Time
                 </label>
                 <input
                   type="datetime-local"
-                  name="last_seen_time"
-                  value={formData.last_seen_time}
+                  name="incident_time"
+                  value={formData.incident_time}
                   onChange={handleChange}
                   className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-3 pt-4">
               <button
                 type="button"

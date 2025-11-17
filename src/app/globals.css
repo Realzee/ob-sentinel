@@ -10,6 +10,7 @@
   --inner-glow: #D4A64A;
   --border-stroke: #8B0000;
   --background: #000000;
+  --blue-glow: #0066FF;
 }
 
 * {
@@ -66,8 +67,26 @@ body {
   transform: translateY(-2px);
 }
 
+.theme-button-secondary {
+  background: linear-gradient(135deg, var(--blue-glow) 0%, #0044CC 100%);
+  border: 1px solid #0088FF;
+  box-shadow: 0 0 10px var(--blue-glow);
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.theme-button-secondary:hover {
+  background: linear-gradient(135deg, #0044CC 0%, var(--blue-glow) 100%);
+  box-shadow: 0 0 20px var(--blue-glow);
+  transform: translateY(-2px);
+}
+
 .theme-text-glow {
   text-shadow: 0 0 10px var(--outer-glow), 0 0 20px var(--inner-glow);
+}
+
+.theme-text-glow-blue {
+  text-shadow: 0 0 10px var(--blue-glow), 0 0 20px #0088FF;
 }
 
 /* Custom scrollbar */
@@ -105,4 +124,23 @@ body {
   textarea {
     min-height: 44px;
   }
+}
+
+/* Animation for background pulses */
+@keyframes redPulse {
+  0%, 100% { opacity: 0.1; transform: scale(1); }
+  50% { opacity: 0.15; transform: scale(1.1); }
+}
+
+@keyframes bluePulse {
+  0%, 100% { opacity: 0.1; transform: scale(1); }
+  50% { opacity: 0.15; transform: scale(1.05); }
+}
+
+.red-pulse {
+  animation: redPulse 4s ease-in-out infinite;
+}
+
+.blue-pulse {
+  animation: bluePulse 3s ease-in-out infinite;
 }
