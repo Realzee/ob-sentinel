@@ -306,11 +306,7 @@ export default function Dashboard() {
   const [boloAlert, setBoloAlert] = useState<AlertVehicle | null>(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
+  
   // Remove alert function
   const removeAlert = (alertId: string) => {
     setNewReportAlerts(prev => prev.filter(alert => alert.id !== alertId));
