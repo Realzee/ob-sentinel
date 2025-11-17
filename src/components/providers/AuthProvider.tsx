@@ -23,6 +23,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         const userData = await authAPI.getCurrentUser();
         setUser(userData);
+        
+        // Make zweli@msn.com admin if they just signed in
+        if (session.user.email === 'zweli@msn.com') {
+          try {
+            await authAPI.makeUserAdmin('zweli@msn.com');
+            // Refresh user data to get updated role
+            const updatedUser = await authAPI.getCurrentUser();
+            setUser(updatedUser);
+          } catch (error) {
+            console.log('Note: User might not exist yet or already be admin');
+          }
+        }
       }
       setLoading(false);
     };
@@ -32,10 +44,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
-          // Ensure user profile exists
-          await authAPI.ensureUserExists(session.user.id, session.user.email!);
           const userData = await authAPI.getCurrentUser();
           setUser(userData);
+          
+          // Make zweli@msn.com admin on sign in
+          if (session.user.email === 'zweli@msn.com') {
+            try {
+              await authAPI.makeUserAdmin('zweli@msn.com');
+              const updatedUser = await authAPI.getCurrentUser();
+              setUser(updatedUser);
+            } catch (error) {
+              console.log('Note: Admin setup might have failed');
+            }
+          }
         } else {
           setUser(null);
         }
