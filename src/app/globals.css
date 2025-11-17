@@ -144,3 +144,43 @@ body {
 .blue-pulse {
   animation: bluePulse 3s ease-in-out infinite;
 }
+
+/* Quick Action Gradients - New Colors */
+.quick-action-gradient-vehicle {
+  background: linear-gradient(135deg, #FF6B35 0%, #FF8E53 50%, #FF4B1F 100%);
+}
+
+.quick-action-gradient-crime {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #6B8DD6 100%);
+}
+
+.quick-action-glow-vehicle {
+  box-shadow: 
+    0 0 20px rgba(255, 107, 53, 0.5),
+    0 0 40px rgba(255, 142, 83, 0.3),
+    inset 0 0 20px rgba(255, 75, 31, 0.2);
+}
+
+.quick-action-glow-crime {
+  box-shadow: 
+    0 0 20px rgba(102, 126, 234, 0.5),
+    0 0 40px rgba(118, 75, 162, 0.3),
+    inset 0 0 20px rgba(107, 141, 214, 0.2);
+}
+
+/* Hover effects for quick actions */
+.quick-action-gradient-vehicle:hover {
+  background: linear-gradient(135deg, #FF4B1F 0%, #FF6B35 50%, #FF8E53 100%);
+  box-shadow: 
+    0 0 25px rgba(255, 107, 53, 0.7),
+    0 0 50px rgba(255, 142, 83, 0.4),
+    inset 0 0 25px rgba(255, 75, 31, 0.3);
+}
+
+.quick-action-gradient-crime:hover {
+  background: linear-gradient(135deg, #6B8DD6 0%, #667eea 50%, #764ba2 100%);
+  box-shadow: 
+    0 0 25px rgba(102, 126, 234, 0.7),
+    0 0 50px rgba(118, 75, 162, 0.4),
+    inset 0 0 25px rgba(107, 141, 214, 0.3);
+}

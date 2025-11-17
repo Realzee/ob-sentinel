@@ -35,6 +35,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const [isActionsModalOpen, setIsActionsModalOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [quickActionsOpen, setQuickActionsOpen] = useState(true); // Toggle state for quick actions
   const { signOut } = useAuth();
 
   useEffect(() => {
@@ -256,23 +257,36 @@ export default function MainDashboard({ user }: MainDashboardProps) {
           </button>
         </div>
 
-        {/* Quick Actions - Stack on mobile */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 mb-6 sm:mb-8">
+        {/* Quick Actions Toggle Header */}
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold theme-text-glow">Quick Actions</h3>
           <button
-            onClick={() => setIsVehicleModalOpen(true)}
-            className="theme-gradient rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white theme-glow text-left hover:scale-105 transition-transform"
+            onClick={() => setQuickActionsOpen(!quickActionsOpen)}
+            className="theme-border px-3 py-1 rounded-lg text-sm transition-all hover:bg-red-900/20"
           >
-            <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2 theme-text-glow">Report Stolen Vehicle</h3>
-            <p className="text-xs sm:text-sm opacity-90">Report and track stolen vehicles</p>
-          </button>
-          <button
-            onClick={() => setIsCrimeModalOpen(true)}
-            className="theme-gradient rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white theme-glow text-left hover:scale-105 transition-transform"
-          >
-            <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2 theme-text-glow">Report Crime Incident</h3>
-            <p className="text-xs sm:text-sm opacity-90">Report criminal activities</p>
+            {quickActionsOpen ? 'Hide' : 'Show'}
           </button>
         </div>
+
+        {/* Quick Actions - Collapsible Section */}
+        {quickActionsOpen && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 mb-6 sm:mb-8">
+            <button
+              onClick={() => setIsVehicleModalOpen(true)}
+              className="quick-action-gradient-vehicle rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white quick-action-glow-vehicle text-left hover:scale-105 transition-transform"
+            >
+              <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2 theme-text-glow">Report Stolen Vehicle</h3>
+              <p className="text-xs sm:text-sm opacity-90">Report and track stolen vehicles</p>
+            </button>
+            <button
+              onClick={() => setIsCrimeModalOpen(true)}
+              className="quick-action-gradient-crime rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white quick-action-glow-crime text-left hover:scale-105 transition-transform"
+            >
+              <h3 className="text-base sm:text-lg font-semibold mb-1 sm:mb-2 theme-text-glow">Report Crime Incident</h3>
+              <p className="text-xs sm:text-sm opacity-90">Report criminal activities</p>
+            </button>
+          </div>
+        )}
 
         {/* Stats Grid - 2 columns on mobile, 4 on desktop */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-6 sm:mb-8">
