@@ -92,7 +92,7 @@ export default function LoginPage() {
         setSuccess(`${demoType === 'admin' ? 'Admin' : 'User'} demo login successful! Redirecting...`)
         
         setTimeout(() => {
-          router.push('/dashboard')
+          router.push('../dashboard')
           router.refresh()
         }, 1000)
       }

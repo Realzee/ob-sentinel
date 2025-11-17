@@ -113,7 +113,7 @@ export const getSafeUserProfile = async (userId: string): Promise<UserProfile | 
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single()
+      .maybeSingle() // Use maybeSingle instead of single to avoid errors
 
     if (error) {
       console.error('Error fetching user profile:', error)
@@ -122,7 +122,7 @@ export const getSafeUserProfile = async (userId: string): Promise<UserProfile | 
 
     return profile
   } catch (error) {
-    console.error('Unexpected error in getSafeUserProfile:', error)
+    console.error('Error in getSafeUserProfile:', error)
     return null
   }
 }
@@ -450,6 +450,30 @@ export const updateUserRoleEnhanced = async (
       error: error instanceof Error ? error : new Error('Unknown error'), 
       success: false 
     }
+  }
+}
+
+export const getCurrentUserProfile = async (): Promise<UserProfile | null> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+
+    // Use a direct query without policies that might cause recursion
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Error fetching user profile:', error)
+      return null
+    }
+
+    return profile
+  } catch (error) {
+    console.error('Error in getCurrentUserProfile:', error)
+    return null
   }
 }
 
