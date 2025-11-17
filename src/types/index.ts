@@ -52,3 +52,8 @@ export interface CrimeReport {
     email: string
   }
 }
+
+export interface Alert {
+  id: string;
+  // Add other alert properties as needed
+}

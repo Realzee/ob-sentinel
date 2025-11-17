@@ -1,14 +1,15 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
+import { Alert } from '@/types'
 import { ensureUserExists, ensureUserProfile, getSafeUserProfile, supabase } from '@/lib/supabase'
-import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map, Calendar, Eye, CheckCircle, AlertCircle as AlertCircleIcon } from 'lucide-react'
+import { Search, AlertTriangle, Shield, Users, Plus, FileText, Edit, Trash2, Image as ImageIcon, X, Clock, Car, MapPin, Camera, FileCheck, User, MessageCircle, Hash, Building, Scale, AlertCircle, Navigation, Map, Calendar, Eye, CheckCircle, AlertCircle as AlertCircleIcon, LogOut, UserCog, Settings, Bell, Filter, Download, Upload, BarChart3, Database, ShieldCheck, Map as MapIcon } from 'lucide-react'
 import AddAlertForm from '@/components/AddAlertForm'
 import AddCrimeForm from '@/components/AddCrimeForm'
 import EditAlertForm from '@/components/EditAlertForm'
 import LazyImage from '@/components/LazyImage'
 import BoloCardGenerator from '@/components/BoloCardGenerator'
 import { debounce } from '@/lib/utils'
-
 
 interface AlertVehicle {
   id: string
@@ -33,6 +34,8 @@ interface AlertVehicle {
   users: {
     name: string
     email: string
+    role: string
+    approved: boolean
   }
 }
 
@@ -61,6 +64,8 @@ interface CrimeReport {
   users: {
     name: string
     email: string
+    role: string
+    approved: boolean
   }
 }
 
@@ -166,6 +171,120 @@ function GuidelineCard(props: { icon: React.ReactNode; title: string; descriptio
   );
 }
 
+// Control Room Controller Panel Component
+function ControlRoomPanel({ userProfile, stats, onExportData, onManageUsers }: { 
+  userProfile: any; 
+  stats: any;
+  onExportData: (type: string) => void;
+  onManageUsers: () => void;
+}) {
+  const [showPanel, setShowPanel] = useState(false);
+
+  if (!userProfile || (userProfile.role !== 'admin' && userProfile.role !== 'moderator')) {
+    return null;
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setShowPanel(!showPanel)}
+        className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center space-x-2"
+      >
+        <Settings className="w-5 h-5" />
+        <span>Control Room</span>
+      </button>
+
+      {showPanel && (
+        <div className="absolute top-full right-0 mt-2 w-80 bg-dark-gray border border-purple-600 rounded-lg shadow-xl z-50">
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-primary-white">Control Room</h3>
+              <button
+                onClick={() => setShowPanel(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {/* Quick Stats */}
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="bg-gray-800 p-2 rounded">
+                  <div className="text-accent-gold font-semibold">{stats.totalVehicleAlerts}</div>
+                  <div className="text-gray-400 text-xs">Vehicle Alerts</div>
+                </div>
+                <div className="bg-gray-800 p-2 rounded">
+                  <div className="text-red-400 font-semibold">{stats.totalCrimeReports}</div>
+                  <div className="text-gray-400 text-xs">Crime Reports</div>
+                </div>
+                <div className="bg-gray-800 p-2 rounded">
+                  <div className="text-green-400 font-semibold">{stats.activeReports}</div>
+                  <div className="text-gray-400 text-xs">Active</div>
+                </div>
+                <div className="bg-gray-800 p-2 rounded">
+                  <div className="text-blue-400 font-semibold">{stats.recoveredReports}</div>
+                  <div className="text-gray-400 text-xs">Resolved</div>
+                </div>
+              </div>
+
+              {/* Control Actions */}
+              <div className="space-y-2">
+                <button
+                  onClick={() => onManageUsers()}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded text-sm flex items-center space-x-2"
+                >
+                  <UserCog className="w-4 h-4" />
+                  <span>Manage Users</span>
+                </button>
+                
+                <button
+                  onClick={() => onExportData('all')}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded text-sm flex items-center space-x-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Export All Data</span>
+                </button>
+
+                <button
+                  onClick={() => onExportData('vehicles')}
+                  className="w-full bg-accent-gold text-black hover:bg-yellow-500 py-2 px-3 rounded text-sm flex items-center space-x-2"
+                >
+                  <Car className="w-4 h-4" />
+                  <span>Export Vehicles</span>
+                </button>
+
+                <button
+                  onClick={() => onExportData('crimes')}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded text-sm flex items-center space-x-2"
+                >
+                  <Shield className="w-4 h-4" />
+                  <span>Export Crimes</span>
+                </button>
+              </div>
+
+              {/* System Status */}
+              <div className="pt-2 border-t border-gray-700">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400">System Status</span>
+                  <span className="text-green-400 flex items-center space-x-1">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Operational</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm mt-1">
+                  <span className="text-gray-400">Your Role</span>
+                  <span className="text-purple-400 capitalize">{userProfile.role}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [alerts, setAlerts] = useState<AlertVehicle[]>([])
   const [crimeReports, setCrimeReports] = useState<CrimeReport[]>([])
@@ -185,6 +304,12 @@ export default function Dashboard() {
   const [authChecked, setAuthChecked] = useState(false)
   const [newReportAlerts, setNewReportAlerts] = useState<NewReportAlert[]>([])
   const [boloAlert, setBoloAlert] = useState<AlertVehicle | null>(null)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   // Remove alert function
   const removeAlert = (alertId: string) => {
@@ -217,81 +342,106 @@ export default function Dashboard() {
     console.log('🔔 New report alert:', type, report.ob_number);
   };
 
-  // SIMPLIFIED AUTHENTICATION
-  // Replace the entire useEffect for authentication with this:
-// Step 1: Replace the entire authentication useEffect in page.tsx
-useEffect(() => {
-  console.log('🔄 Dashboard: Starting simplified authentication check...');
-  
-  const initializeAuth = async () => {
+  // Handle logout
+  const handleLogout = async () => {
     try {
-      // Get current session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('Session error:', sessionError);
-        setAuthChecked(true);
-        setLoading(false);
-        return;
-      }
-      
-      if (session?.user) {
-        console.log('✅ Dashboard: User found:', session.user.email);
-        setUser(session.user);
-        
-        // Ensure user profile exists
-        const profile = await ensureUserProfile(session.user.id, {
-          email: session.user.email!,
-          name: session.user.user_metadata?.name
-        });
-        
-        setUserProfile(profile);
-        
-        // Fetch data regardless of profile status
-        await fetchAlerts();
-      } else {
-        console.log('❌ Dashboard: No user session');
-        setUser(null);
-        setUserProfile(null);
-        setLoading(false);
-      }
-      
-      setAuthChecked(true);
+      await supabase.auth.signOut();
+      setUser(null);
+      setUserProfile(null);
+      setAlerts([]);
+      setCrimeReports([]);
+      // Redirect to login page
+      window.location.href = '/login';
     } catch (error) {
-      console.error('❌ Auth initialization error:', error);
-      setAuthChecked(true);
-      setLoading(false);
+      console.error('Logout error:', error);
     }
   };
 
-  initializeAuth();
+  // Control Room Functions
+  const handleExportData = async (type: string) => {
+    console.log(`Exporting ${type} data...`);
+    // Implementation for data export
+    alert(`Export ${type} data functionality would be implemented here`);
+  };
 
-  // Simplified auth state listener
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    async (event, session) => {
-      console.log('🔄 Dashboard: Auth state changed:', event);
-      
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      
-      if (currentUser) {
-        const profile = await ensureUserProfile(currentUser.id, {
-          email: currentUser.email!,
-          name: currentUser.user_metadata?.name
-        });
-        setUserProfile(profile);
-        await fetchAlerts();
-      } else {
-        setAlerts([]);
-        setCrimeReports([]);
-        setUserProfile(null);
+  const handleManageUsers = () => {
+    // Navigate to users management page or open modal
+    alert('User management functionality would be implemented here');
+  };
+
+  // SIMPLIFIED AUTHENTICATION
+  useEffect(() => {
+    console.log('🔄 Dashboard: Starting simplified authentication check...');
+    
+    const initializeAuth = async () => {
+      try {
+        // Get current session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Session error:', sessionError);
+          setAuthChecked(true);
+          setLoading(false);
+          return;
+        }
+        
+        if (session?.user) {
+          console.log('✅ Dashboard: User found:', session.user.email);
+          setUser(session.user);
+          
+          // Ensure user profile exists
+          const profile = await ensureUserProfile(session.user.id, {
+            email: session.user.email!,
+            name: session.user.user_metadata?.name
+          });
+          
+          setUserProfile(profile);
+          
+          // Fetch data regardless of profile status
+          await fetchAlerts();
+        } else {
+          console.log('❌ Dashboard: No user session');
+          setUser(null);
+          setUserProfile(null);
+          setLoading(false);
+        }
+        
+        setAuthChecked(true);
+      } catch (error) {
+        console.error('❌ Auth initialization error:', error);
+        setAuthChecked(true);
         setLoading(false);
       }
-    }
-  );
+    };
 
-  return () => subscription.unsubscribe();
-}, []);
+    initializeAuth();
+
+    // Simplified auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('🔄 Dashboard: Auth state changed:', event);
+        
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        
+        if (currentUser) {
+          const profile = await ensureUserProfile(currentUser.id, {
+            email: currentUser.email!,
+            name: currentUser.user_metadata?.name
+          });
+          setUserProfile(profile);
+          await fetchAlerts();
+        } else {
+          setAlerts([]);
+          setCrimeReports([]);
+          setUserProfile(null);
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Get user location
   useEffect(() => {
@@ -309,8 +459,6 @@ useEffect(() => {
       );
     }
   }, []);
-
-  
 
   // MAIN FUNCTION TO FETCH REPORTS
   const fetchAlerts = async () => {
@@ -347,20 +495,24 @@ useEffect(() => {
       
       // Get user data separately for each alert to avoid nested query issues
       const alertsWithUsers = await Promise.all(
-        (alertsData || []).map(async (alert: { user_id: string }) => {
-          const userProfile = await getSafeUserProfile(alert.user_id);
-          return {
-            ...alert,
-            users: userProfile ? {
-              name: userProfile.name,
-              email: userProfile.email
-            } : {
-              name: 'Unknown User',
-              email: 'unknown@example.com'
-            }
-          };
-        })
-      );
+  (alertsData || []).map(async (alert: any) => {
+    const userProfile = await getSafeUserProfile(alert.user_id);
+    return {
+      ...alert,
+      users: userProfile ? {
+        name: userProfile.name,
+        email: userProfile.email,
+        role: userProfile.role,
+        approved: userProfile.approved
+      } : {
+        name: 'Unknown User',
+        email: 'unknown@example.com',
+        role: 'user',
+        approved: false
+      }
+    } as AlertVehicle; // Add type assertion here
+  })
+);
       
       setAlerts(alertsWithUsers);
     }
@@ -385,20 +537,24 @@ useEffect(() => {
       
       // Get user data separately for each crime report
       const crimesWithUsers = await Promise.all(
-        (crimesData || []).map(async (report: { user_id: string }) => {
-          const userProfile = await getSafeUserProfile(report.user_id);
-          return {
-            ...report,
-            users: userProfile ? {
-              name: userProfile.name,
-              email: userProfile.email
-            } : {
-              name: 'Unknown User',
-              email: 'unknown@example.com'
-            }
-          };
-        })
-      );
+  (crimesData || []).map(async (report: any) => {
+    const userProfile = await getSafeUserProfile(report.user_id);
+    return {
+      ...report,
+      users: userProfile ? {
+        name: userProfile.name,
+        email: userProfile.email,
+        role: userProfile.role,
+        approved: userProfile.approved
+      } : {
+        name: 'Unknown User',
+        email: 'unknown@example.com',
+        role: 'user',
+        approved: false
+      }
+    } as CrimeReport; // Add type assertion here
+  })
+);
       
       setCrimeReports(crimesWithUsers);
     }
@@ -700,16 +856,97 @@ useEffect(() => {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="text-center">
-        <div className="flex justify-center mb-6">
-          <img
-            src="/rapid911-ireport-logo2.png"
-            alt="Rapid Rangers Logo"
-            className="w-30 h-auto"
-          />
+      {/* Header with User Info */}
+      <div className="flex justify-between items-center">
+        <div className="text-center flex-1">
+          <div className="flex justify-center mb-6">
+            <img
+              src="/rapid911-ireport-logo2.png"
+              alt="Rapid Rangers Logo"
+              className="w-30 h-auto"
+            />
+          </div>
+          <p className="text-gray-400 text-lg">Community Safety Reporting System</p>
         </div>
-        <p className="text-gray-400 text-lg">Community Safety Reporting System</p>
+
+        {/* User Info and Controls */}
+        {user && (
+          <div className="flex items-center space-x-4">
+            {/* Control Room Panel for Admins/Moderators */}
+            {(userProfile?.role === 'admin' || userProfile?.role === 'moderator') && (
+              <ControlRoomPanel 
+                userProfile={userProfile}
+                stats={stats}
+                onExportData={handleExportData}
+                onManageUsers={handleManageUsers}
+              />
+            )}
+
+            {/* User Profile Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center space-x-3 bg-gray-800 hover:bg-gray-700 rounded-lg px-4 py-2 transition-colors"
+              >
+                <div className="text-right">
+                  <div className="text-primary-white text-sm font-medium">
+                    {userProfile?.name || user.email?.split('@')[0]}
+                  </div>
+                  <div className="text-xs text-gray-400 flex items-center space-x-1">
+                    <span>{user.email}</span>
+                    <span>•</span>
+                    <span className="capitalize text-accent-gold">{userProfile?.role}</span>
+                    {userProfile?.approved && (
+                      <>
+                        <span>•</span>
+                        <span className="text-green-400 flex items-center space-x-1">
+                          <CheckCircle className="w-3 h-3" />
+                          <span>Approved</span>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="w-8 h-8 bg-accent-gold rounded-full flex items-center justify-center">
+                  <User className="w-4 h-4 text-black" />
+                </div>
+              </button>
+
+              {showUserMenu && (
+                <div className="absolute top-full right-0 mt-2 w-64 bg-dark-gray border border-gray-700 rounded-lg shadow-xl z-50">
+                  <div className="p-4 border-b border-gray-700">
+                    <div className="text-primary-white font-medium">{userProfile?.name || 'User'}</div>
+                    <div className="text-sm text-gray-400">{user.email}</div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-xs text-gray-500 capitalize">{userProfile?.role}</span>
+                      {userProfile?.approved ? (
+                        <span className="text-green-400 text-xs flex items-center space-x-1">
+                          <CheckCircle className="w-3 h-3" />
+                          <span>Approved</span>
+                        </span>
+                      ) : (
+                        <span className="text-yellow-400 text-xs flex items-center space-x-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Pending</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="p-2">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center space-x-2 px-3 py-2 text-red-400 hover:bg-red-900 hover:text-red-300 rounded transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tab Navigation */}
@@ -949,6 +1186,11 @@ useEffect(() => {
           </p>
           <p className="text-xs text-gray-500 mt-1">
             Reported by {getUserDisplayName(alert)} • {formatDate(alert.created_at)} at {formatTime(alert.created_at)}
+            {alert.users?.role && alert.users.role !== 'user' && (
+              <span className="ml-2 px-1 py-0.5 bg-purple-600 text-white text-xs rounded capitalize">
+                {alert.users.role}
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -1069,6 +1311,11 @@ useEffect(() => {
           </p>
           <p className="text-xs text-gray-500 mt-1">
             Reported by {getUserDisplayName(report)} • {formatDate(report.created_at)} at {formatTime(report.created_at)}
+            {report.users?.role && report.users.role !== 'user' && (
+              <span className="ml-2 px-1 py-0.5 bg-purple-600 text-white text-xs rounded capitalize">
+                {report.users.role}
+              </span>
+            )}
           </p>
         </div>
       </div>

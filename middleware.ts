@@ -32,9 +32,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
-  // If user is signed in and the current path is /login, redirect to /dashboard
+  // If user is signed in and the current path is /login, redirect to main dashboard (/)
   if (session && req.nextUrl.pathname === '/login') {
-    return NextResponse.redirect(new URL('/dashboard', req.url))
+    return NextResponse.redirect(new URL('/', req.url))
   }
 
   return res

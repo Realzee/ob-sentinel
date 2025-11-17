@@ -26,7 +26,7 @@ export default function LoginPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
         console.log('✅ User already logged in, redirecting to dashboard')
-        router.push('/dashboard')
+        router.push('/')
       }
     }
     checkAuth()
@@ -54,7 +54,7 @@ export default function LoginPage() {
         
         // Short delay to show success message
         setTimeout(() => {
-          router.push('/dashboard')
+          router.push('/')
           router.refresh() // Refresh to update auth state
         }, 1000)
       }
