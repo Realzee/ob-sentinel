@@ -10,12 +10,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// User role types
 export type UserRole = 'admin' | 'moderator' | 'controller' | 'user';
 export type UserStatus = 'pending' | 'active' | 'suspended';
 export type ReportStatus = 'pending' | 'under_review' | 'resolved' | 'rejected';
 
-// Profile interface
 export interface Profile {
   id: string;
   email: string;
@@ -29,7 +27,6 @@ export interface Profile {
   updated_at: string;
 }
 
-// Vehicle Alert interface
 export interface VehicleAlert {
   id: string;
   license_plate: string;
@@ -52,7 +49,6 @@ export interface VehicleAlert {
   };
 }
 
-// Crime Report interface
 export interface CrimeReport {
   id: string;
   title: string;
@@ -74,293 +70,272 @@ export interface CrimeReport {
   };
 }
 
-// Enhanced user functions
+// Enhanced authAPI with all required methods
 export const authAPI = {
-  // Get current user with profile
   async getCurrentUser() {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) return null;
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) return null;
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-
-    return { ...user, profile };
-  },
-
-  // Check if user has specific role
-  async hasRole(requiredRole: UserRole): Promise<boolean> {
-    const user = await this.getCurrentUser();
-    return user?.profile?.role === requiredRole;
-  },
-
-  // Check if user has at least one of the required roles
-  async hasAnyRole(requiredRoles: UserRole[]): Promise<boolean> {
-    const user = await this.getCurrentUser();
-    return requiredRoles.includes(user?.profile?.role);
-  },
-
-  // Get all users (admin only)
-  async getAllUsers() {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return data;
-  },
-
-  // Update user role and status
-  async updateUserRole(userId: string, updates: Partial<Profile>) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', userId);
-
-    if (error) throw error;
-    return data;
-  },
-
-  // Get user profile by ID
-  async getUserProfile(userId: string) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-
-  // Ensure user exists in profiles table (for auth callbacks)
-  async ensureUserExists(userId: string, email: string) {
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', userId)
-      .single();
-
-    if (!existingProfile) {
-      const { data: newProfile, error } = await supabase
+      const { data: profile } = await supabase
         .from('profiles')
-        .insert([
-          {
-            id: userId,
-            email: email,
-            role: 'user',
-            status: 'pending'
-          }
-        ])
-        .select()
+        .select('*')
+        .eq('id', user.id)
         .single();
 
-      if (error) {
-        console.error('Error creating user profile:', error);
-        throw error;
-      }
-      return newProfile;
+      return { ...user, profile };
+    } catch (error) {
+      console.error('Error getting current user:', error);
+      return null;
     }
-    return existingProfile;
   },
 
-  // Ensure user profile is complete
-  async ensureUserProfile(userId: string, updates: Partial<Profile>) {
-  // Map 'name' to 'full_name' if provided for backward compatibility
-  const profileUpdates = { ...updates };
-  if ('name' in profileUpdates) {
-    profileUpdates.full_name = (profileUpdates as any).name;
-    delete (profileUpdates as any).name;
-  }
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .update(profileUpdates)
-    .eq('id', userId)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error updating user profile:', error);
-    throw error;
-  }
-  return data;
-},
-
-  // Get user profile safely (handles errors)
-  async getSafeUserProfile(userId: string) {
+  async getAllUsers() {
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting all users:', error);
+      return [];
+    }
+  },
+
+  async updateUserRole(userId: string, updates: Partial<Profile>) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      throw error;
+    }
+  },
+
+  async ensureUserExists(userId: string, email: string) {
+    try {
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
         .eq('id', userId)
         .single();
 
-      if (error) {
-        console.error('Error fetching user profile:', error);
-        return null;
+      if (!existingProfile) {
+        const { data: newProfile, error } = await supabase
+          .from('profiles')
+          .insert([{ 
+            id: userId, 
+            email, 
+            role: 'user', 
+            status: 'pending' 
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+        return newProfile;
       }
-      return data;
+      return existingProfile;
     } catch (error) {
-      console.error('Error in getSafeUserProfile:', error);
-      return null;
+      console.error('Error ensuring user exists:', error);
+      throw error;
     }
-  }
-};
-
-// Report functions
-export const reportsAPI = {
-  // Vehicle alerts
-  async getVehicleAlerts() {
-    const { data, error } = await supabase
-      .from('alerts_vehicles')
-      .select(`
-        *,
-        profiles:reported_by(full_name, email)
-      `)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return data;
   },
 
-  async createVehicleAlert(alertData: Omit<VehicleAlert, 'id' | 'created_at' | 'updated_at' | 'profiles'>) {
-    const { data, error } = await supabase
-      .from('alerts_vehicles')
-      .insert([alertData])
-      .select(`
-        *,
-        profiles:reported_by(full_name, email)
-      `)
-      .single();
+  async makeUserAdmin(email: string) {
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .update({ 
+          role: 'admin', 
+          status: 'active',
+          full_name: 'Zweli Admin'
+        })
+        .eq('email', email)
+        .select()
+        .single();
 
-    if (error) throw error;
-    return data;
+      if (error) throw error;
+      return profile;
+    } catch (error) {
+      console.error('Error making user admin:', error);
+      throw error;
+    }
+  },
+};
+
+// Enhanced reportsAPI with all required methods
+export const reportsAPI = {
+  async getVehicleAlerts() {
+    try {
+      const { data, error } = await supabase
+        .from('alerts_vehicles')
+        .select('*, profiles:reported_by(full_name, email)')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting vehicle alerts:', error);
+      return [];
+    }
+  },
+
+  async createVehicleAlert(alertData: any) {
+    try {
+      const { data, error } = await supabase
+        .from('alerts_vehicles')
+        .insert([alertData])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating vehicle alert:', error);
+      throw error;
+    }
   },
 
   async updateVehicleAlert(id: string, updates: Partial<VehicleAlert>) {
-    const { data, error } = await supabase
-      .from('alerts_vehicles')
-      .update(updates)
-      .eq('id', id)
-      .select(`
-        *,
-        profiles:reported_by(full_name, email)
-      `)
-      .single();
-
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await supabase
+        .from('alerts_vehicles')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating vehicle alert:', error);
+      throw error;
+    }
   },
 
-  // Crime reports
   async getCrimeReports() {
-    const { data, error } = await supabase
-      .from('crime_reports')
-      .select(`
-        *,
-        profiles:reported_by(full_name, email)
-      `)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await supabase
+        .from('crime_reports')
+        .select('*, profiles:reported_by(full_name, email)')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting crime reports:', error);
+      return [];
+    }
   },
 
-  async createCrimeReport(reportData: Omit<CrimeReport, 'id' | 'created_at' | 'updated_at' | 'profiles'>) {
-    const { data, error } = await supabase
-      .from('crime_reports')
-      .insert([reportData])
-      .select(`
-        *,
-        profiles:reported_by(full_name, email)
-      `)
-      .single();
-
-    if (error) throw error;
-    return data;
+  async createCrimeReport(reportData: any) {
+    try {
+      const { data, error } = await supabase
+        .from('crime_reports')
+        .insert([reportData])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating crime report:', error);
+      throw error;
+    }
   },
 
   async updateCrimeReport(id: string, updates: Partial<CrimeReport>) {
-    const { data, error } = await supabase
-      .from('crime_reports')
-      .update(updates)
-      .eq('id', id)
-      .select(`
-        *,
-        profiles:reported_by(full_name, email)
-      `)
-      .single();
-
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await supabase
+        .from('crime_reports')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating crime report:', error);
+      throw error;
+    }
   },
 
-  // Dashboard statistics
   async getDashboardStats() {
-    const [vehicles, crimes] = await Promise.all([
-      supabase.from('alerts_vehicles').select('status, severity', { count: 'exact' }),
-      supabase.from('crime_reports').select('status, severity', { count: 'exact' })
-    ]);
+    try {
+      const [vehicles, crimes] = await Promise.all([
+        supabase.from('alerts_vehicles').select('*', { count: 'exact' }),
+        supabase.from('crime_reports').select('*', { count: 'exact' })
+      ]);
 
-    return {
-      vehicleAlerts: {
-        total: vehicles.count || 0,
-        byStatus: vehicles.data?.reduce((acc: any, item) => {
-          acc[item.status] = (acc[item.status] || 0) + 1;
-          return acc;
-        }, {}),
-        bySeverity: vehicles.data?.reduce((acc: any, item) => {
-          acc[item.severity] = (acc[item.severity] || 0) + 1;
-          return acc;
-        }, {})
-      },
-      crimeReports: {
-        total: crimes.count || 0,
-        byStatus: crimes.data?.reduce((acc: any, item) => {
-          acc[item.status] = (acc[item.status] || 0) + 1;
-          return acc;
-        }, {}),
-        bySeverity: crimes.data?.reduce((acc: any, item) => {
-          acc[item.severity] = (acc[item.severity] || 0) + 1;
-          return acc;
-        }, {})
-      }
-    };
+      const today = new Date().toISOString().split('T')[0];
+      const todayVehicles = vehicles.data?.filter(v => 
+        v.created_at.split('T')[0] === today
+      ).length || 0;
+
+      return {
+        totalVehicles: vehicles.count || 0,
+        totalCrimes: crimes.count || 0,
+        todayVehicles,
+        activeVehicles: vehicles.data?.filter(v => v.status === 'pending' || v.status === 'under_review').length || 0,
+        resolvedVehicles: vehicles.data?.filter(v => v.status === 'resolved').length || 0,
+        vehiclesWithLocation: vehicles.data?.filter(v => v.last_seen_location).length || 0,
+      };
+    } catch (error) {
+      console.error('Error getting dashboard stats:', error);
+      return {
+        totalVehicles: 0,
+        totalCrimes: 0,
+        todayVehicles: 0,
+        activeVehicles: 0,
+        resolvedVehicles: 0,
+        vehiclesWithLocation: 0,
+      };
+    }
   }
 };
 
 // Dispatch functions
 export const dispatchAPI = {
   async createDispatchLog(logData: any) {
-    const { data, error } = await supabase
-      .from('dispatch_logs')
-      .insert([logData])
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await supabase
+        .from('dispatch_logs')
+        .insert([logData])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating dispatch log:', error);
+      throw error;
+    }
   },
 
   async getDispatchLogs() {
-    const { data, error } = await supabase
-      .from('dispatch_logs')
-      .select(`
-        *,
-        profiles:assigned_to(full_name, badge_number)
-      `)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await supabase
+        .from('dispatch_logs')
+        .select('*, profiles:assigned_to(full_name, badge_number)')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting dispatch logs:', error);
+      return [];
+    }
   }
 };
-
-// Export individual functions for backward compatibility
-export const ensureUserExists = authAPI.ensureUserExists;
-export const ensureUserProfile = authAPI.ensureUserProfile;
-export const getSafeUserProfile = authAPI.getSafeUserProfile;
