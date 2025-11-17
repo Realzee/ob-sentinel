@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { createBrowserClient } from '@supabase/ssr'
 import { Eye, EyeOff, User, Lock, AlertCircle, CheckCircle } from 'lucide-react'
 
 export default function LoginPage() {
@@ -15,6 +15,11 @@ export default function LoginPage() {
   const [success, setSuccess] = useState('')
   const router = useRouter()
 
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
   // Check if user is already logged in
   useEffect(() => {
     const checkAuth = async () => {
@@ -25,7 +30,7 @@ export default function LoginPage() {
       }
     }
     checkAuth()
-  }, [router])
+  }, [router, supabase])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
