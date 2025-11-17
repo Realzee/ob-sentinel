@@ -41,9 +41,11 @@ export interface SupabaseResult<T> {
 }
 
 // Ensure user exists in database (maintains backward compatibility)
-export const ensureUserExists = async (userId: string, userData: { email: string; name?: string; avatar_url?: string }): Promise<UserProfile | null> => {
+export const ensureUserExists = async (
+  userId: string, 
+  userData: { email: string; name?: string; avatar_url?: string }
+): Promise<UserProfile | null> => {
   try {
-    // Check if user already exists
     const { data: existingUser, error: fetchError } = await supabase
       .from('profiles')
       .select('*')
@@ -57,7 +59,7 @@ export const ensureUserExists = async (userId: string, userData: { email: string
 
     if (existingUser) {
       // Update last login for existing user
-      const { data: updatedUser, error: updateError } = await supabase
+      const { data: updatedUser } = await supabase
         .from('profiles')
         .update({ 
           last_login: new Date().toISOString(),
@@ -67,12 +69,7 @@ export const ensureUserExists = async (userId: string, userData: { email: string
         .select()
         .single()
 
-      if (updateError) {
-        console.error('Error updating user last login:', updateError)
-        return existingUser // Return existing user even if update fails
-      }
-
-      return updatedUser
+      return updatedUser || existingUser
     }
 
     // Create new user profile
@@ -151,7 +148,10 @@ export const getAllUsers = async (): Promise<UserProfile[]> => {
 }
 
 // Update user profile (maintains backward compatibility)
-export const updateUserProfile = async (userId: string, updates: Partial<UserProfile>): Promise<UserProfile | null> => {
+export const updateUserProfile = async (
+  userId: string, 
+  updates: Partial<UserProfile>
+): Promise<UserProfile | null> => {
   try {
     const { data, error } = await supabase
       .from('profiles')
@@ -214,7 +214,7 @@ export const getOnlineUsers = async (): Promise<OnlineUser[]> => {
         *,
         profiles (*)
       `)
-      .gte('last_seen', new Date(Date.now() - 5 * 60 * 1000).toISOString()) // Last 5 minutes
+      .gte('last_seen', new Date(Date.now() - 5 * 60 * 1000).toISOString())
       .order('last_seen', { ascending: false })
 
     if (error) {
@@ -235,7 +235,7 @@ export const cleanupOnlineUsers = async (): Promise<boolean> => {
     const { error } = await supabase
       .from('online_users')
       .delete()
-      .lt('last_seen', new Date(Date.now() - 10 * 60 * 1000).toISOString()) // Older than 10 minutes
+      .lt('last_seen', new Date(Date.now() - 10 * 60 * 1000).toISOString())
 
     if (error) {
       console.error('Error cleaning up online users:', error)
@@ -261,13 +261,11 @@ export const getUserProfileEnhanced = async (userId: string): Promise<SupabaseRe
       .single()
 
     if (error) {
-      console.error('Error fetching user profile:', error)
       return { data: null, error, success: false }
     }
 
     return { data: profile, error: null, success: true }
   } catch (error) {
-    console.error('Unexpected error in getUserProfileEnhanced:', error)
     return { 
       data: null, 
       error: error instanceof Error ? error : new Error('Unknown error'), 
@@ -286,13 +284,11 @@ export const getUserProfileByEmail = async (email: string): Promise<SupabaseResu
       .single()
 
     if (error) {
-      console.error('Error fetching user profile by email:', error)
       return { data: null, error, success: false }
     }
 
     return { data: profile, error: null, success: true }
   } catch (error) {
-    console.error('Unexpected error in getUserProfileByEmail:', error)
     return { 
       data: null, 
       error: error instanceof Error ? error : new Error('Unknown error'), 
@@ -317,7 +313,6 @@ export const getUsersPaginated = async (
       .range(from, to)
 
     if (error) {
-      console.error('Error fetching paginated users:', error)
       return { data: null, error, success: false }
     }
 
@@ -330,7 +325,6 @@ export const getUsersPaginated = async (
       success: true 
     }
   } catch (error) {
-    console.error('Unexpected error in getUsersPaginated:', error)
     return { 
       data: null, 
       error: error instanceof Error ? error : new Error('Unknown error'), 
@@ -348,13 +342,11 @@ export const deleteUserProfileEnhanced = async (userId: string): Promise<Supabas
       .eq('id', userId)
 
     if (error) {
-      console.error('Error deleting user profile:', error)
       return { data: null, error, success: false }
     }
 
     return { data: true, error: null, success: true }
   } catch (error) {
-    console.error('Unexpected error in deleteUserProfileEnhanced:', error)
     return { 
       data: null, 
       error: error instanceof Error ? error : new Error('Unknown error'), 
@@ -372,13 +364,11 @@ export const setUserOfflineEnhanced = async (userId: string): Promise<SupabaseRe
       .eq('user_id', userId)
 
     if (error) {
-      console.error('Error setting user offline:', error)
       return { data: null, error, success: false }
     }
 
     return { data: true, error: null, success: true }
   } catch (error) {
-    console.error('Unexpected error in setUserOfflineEnhanced:', error)
     return { 
       data: null, 
       error: error instanceof Error ? error : new Error('Unknown error'), 
@@ -397,13 +387,11 @@ export const searchUsersEnhanced = async (query: string): Promise<SupabaseResult
       .limit(20)
 
     if (error) {
-      console.error('Error searching users:', error)
       return { data: null, error, success: false }
     }
 
     return { data: profiles || [], error: null, success: true }
   } catch (error) {
-    console.error('Unexpected error in searchUsersEnhanced:', error)
     return { 
       data: null, 
       error: error instanceof Error ? error : new Error('Unknown error'), 
@@ -422,13 +410,11 @@ export const getUsersByRoleEnhanced = async (role: UserProfile['role']): Promise
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching users by role:', error)
       return { data: null, error, success: false }
     }
 
     return { data: profiles || [], error: null, success: true }
   } catch (error) {
-    console.error('Unexpected error in getUsersByRoleEnhanced:', error)
     return { 
       data: null, 
       error: error instanceof Error ? error : new Error('Unknown error'), 
@@ -454,13 +440,11 @@ export const updateUserRoleEnhanced = async (
       .single()
 
     if (error) {
-      console.error('Error updating user role:', error)
       return { data: null, error, success: false }
     }
 
     return { data, error: null, success: true }
   } catch (error) {
-    console.error('Unexpected error in updateUserRoleEnhanced:', error)
     return { 
       data: null, 
       error: error instanceof Error ? error : new Error('Unknown error'), 
@@ -483,17 +467,27 @@ export const approveUserEnhanced = async (userId: string): Promise<SupabaseResul
       .single()
 
     if (error) {
-      console.error('Error approving user:', error)
       return { data: null, error, success: false }
     }
 
     return { data, error: null, success: true }
   } catch (error) {
-    console.error('Unexpected error in approveUserEnhanced:', error)
     return { 
       data: null, 
       error: error instanceof Error ? error : new Error('Unknown error'), 
       success: false 
     }
   }
+}
+
+// Utility function to check if user is approved
+export const isUserApproved = async (userId: string): Promise<boolean> => {
+  const profile = await getSafeUserProfile(userId)
+  return profile?.approved || false
+}
+
+// Utility function to get user role
+export const getUserRole = async (userId: string): Promise<UserProfile['role'] | null> => {
+  const profile = await getSafeUserProfile(userId)
+  return profile?.role || null
 }
