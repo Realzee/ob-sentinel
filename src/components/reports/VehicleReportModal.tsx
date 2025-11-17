@@ -81,15 +81,17 @@ export default function VehicleReportModal({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-3 sm:px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose}></div>
+        {/* Backdrop */}
+        <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose}></div>
 
-        <div className="inline-block w-full max-w-2xl my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-xl sm:rounded-2xl">
+        {/* Modal */}
+        <div className="inline-block w-full max-w-2xl my-8 overflow-hidden text-left align-middle transition-all transform theme-card rounded-xl sm:rounded-2xl">
           {/* Header */}
-          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex justify-between items-center">
-            <h3 className="text-lg font-medium text-gray-900">File New Vehicle Report</h3>
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-red-800 flex justify-between items-center">
+            <h3 className="text-lg font-medium text-white theme-text-glow">File New Vehicle Report</h3>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+              className="text-gray-400 hover:text-white transition-colors p-1"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -102,7 +104,7 @@ export default function VehicleReportModal({
             {/* License Plate & Make */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
                   License Plate *
                 </label>
                 <input
@@ -111,12 +113,12 @@ export default function VehicleReportModal({
                   value={formData.license_plate}
                   onChange={handleChange}
                   required
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="ABC 123 GP"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
                   Vehicle Make *
                 </label>
                 <input
@@ -125,7 +127,7 @@ export default function VehicleReportModal({
                   value={formData.vehicle_make}
                   onChange={handleChange}
                   required
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="Toyota"
                 />
               </div>
@@ -134,7 +136,7 @@ export default function VehicleReportModal({
             {/* Model & Color */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
                   Vehicle Model
                 </label>
                 <input
@@ -142,12 +144,12 @@ export default function VehicleReportModal({
                   name="vehicle_model"
                   value={formData.vehicle_model}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="Corolla"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
                   Color
                 </label>
                 <input
@@ -155,7 +157,7 @@ export default function VehicleReportModal({
                   name="vehicle_color"
                   value={formData.vehicle_color}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="White"
                 />
               </div>
@@ -163,7 +165,7 @@ export default function VehicleReportModal({
 
             {/* Reason */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
                 Reason for Report *
               </label>
               <textarea
@@ -172,14 +174,14 @@ export default function VehicleReportModal({
                 onChange={handleChange}
                 required
                 rows={3}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
                 placeholder="Describe why this vehicle is being reported..."
               />
             </div>
 
             {/* Location */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
                 Last Seen Location *
               </label>
               <input
@@ -188,7 +190,7 @@ export default function VehicleReportModal({
                 value={formData.last_seen_location}
                 onChange={handleChange}
                 required
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white placeholder-gray-500 bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
                 placeholder="123 Main Street, City"
               />
             </div>
@@ -196,23 +198,23 @@ export default function VehicleReportModal({
             {/* Severity & Time */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
                   Severity
                 </label>
                 <select
                   name="severity"
                   value={formData.severity}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
                 >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="critical">Critical</option>
+                  <option value="low" className="bg-black">Low</option>
+                  <option value="medium" className="bg-black">Medium</option>
+                  <option value="high" className="bg-black">High</option>
+                  <option value="critical" className="bg-black">Critical</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 sm:mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-1 sm:mb-2">
                   Last Seen Time
                 </label>
                 <input
@@ -220,7 +222,7 @@ export default function VehicleReportModal({
                   name="last_seen_time"
                   value={formData.last_seen_time}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm theme-border rounded-lg text-white bg-black focus:outline-none focus:ring-2 focus:ring-red-500"
                 />
               </div>
             </div>
@@ -230,14 +232,14 @@ export default function VehicleReportModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-purple-500 order-2 sm:order-1"
+                className="theme-border px-4 py-2 text-sm font-medium text-white bg-black hover:bg-red-900/20 rounded-lg transition-colors order-2 sm:order-1"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-lg hover:bg-purple-700 focus:ring-2 focus:ring-purple-500 disabled:opacity-50 order-1 sm:order-2"
+                className="theme-button px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 order-1 sm:order-2"
               >
                 {loading ? 'Submitting...' : 'Submit Report'}
               </button>
