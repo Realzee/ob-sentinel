@@ -3,36 +3,96 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 250, 250, 250;
-  --background-end-rgb: 255, 255, 255;
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 0, 0, 0;
+  --background-end-rgb: 0, 0, 0;
+  --outer-glow: #FF0000;
+  --inner-glow: #D4A64A;
+  --border-stroke: #8B0000;
+  --background: #000000;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-start-rgb));
+  background: var(--background);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  min-height: 100vh;
 }
 
-.gradient-bg {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+/* New Theme Classes */
+.theme-gradient {
+  background: linear-gradient(135deg, var(--outer-glow) 0%, var(--inner-glow) 50%, var(--border-stroke) 100%);
 }
 
-.card-shadow {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+.theme-glow {
+  box-shadow: 
+    0 0 20px var(--outer-glow),
+    0 0 40px var(--inner-glow),
+    inset 0 0 20px var(--border-stroke);
 }
 
-.stat-card {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e5e7eb;
+.theme-border {
+  border: 2px solid var(--border-stroke);
+  box-shadow: 
+    0 0 10px var(--outer-glow),
+    inset 0 0 10px var(--inner-glow);
+}
+
+.theme-card {
+  background: var(--background);
+  border: 1px solid var(--border-stroke);
+  box-shadow: 
+    0 0 15px var(--outer-glow),
+    inset 0 0 10px var(--inner-glow);
+}
+
+.theme-button {
+  background: linear-gradient(135deg, var(--outer-glow) 0%, var(--border-stroke) 100%);
+  border: 1px solid var(--inner-glow);
+  box-shadow: 0 0 10px var(--outer-glow);
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.theme-button:hover {
+  background: linear-gradient(135deg, var(--border-stroke) 0%, var(--outer-glow) 100%);
+  box-shadow: 0 0 20px var(--outer-glow);
+  transform: translateY(-2px);
+}
+
+.theme-text-glow {
+  text-shadow: 0 0 10px var(--outer-glow), 0 0 20px var(--inner-glow);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-stroke);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--outer-glow);
 }
 
 /* Mobile optimizations */
 @media (max-width: 640px) {
-  .stat-card {
-    padding: 0.75rem;
+  .theme-card {
+    margin: 0.5rem;
+    padding: 1rem;
   }
 }
 

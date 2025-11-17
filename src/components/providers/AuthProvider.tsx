@@ -24,15 +24,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userData = await authAPI.getCurrentUser();
         setUser(userData);
         
-        // Make zweli@msn.com admin if they just signed in
-        if (session.user.email === 'zweli@msn.com') {
+        // Make zweli@msn.com admin - with proper null checks
+        if (session.user.email === 'zweli@msn.com' && userData?.profile && userData.id) {
           try {
-            await authAPI.makeUserAdmin('zweli@msn.com');
-            // Refresh user data to get updated role
-            const updatedUser = await authAPI.getCurrentUser();
-            setUser(updatedUser);
+            await authAPI.makeUserAdmin(userData.id);
+            console.log('Admin rights set for zweli@msn.com');
           } catch (error) {
-            console.log('Note: User might not exist yet or already be admin');
+            console.log('User might already be admin');
           }
         }
       }
@@ -47,14 +45,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const userData = await authAPI.getCurrentUser();
           setUser(userData);
           
-          // Make zweli@msn.com admin on sign in
-          if (session.user.email === 'zweli@msn.com') {
+          // Make zweli@msn.com admin on sign in - with proper null checks
+          if (session.user.email === 'zweli@msn.com' && userData?.profile && userData.id) {
             try {
-              await authAPI.makeUserAdmin('zweli@msn.com');
-              const updatedUser = await authAPI.getCurrentUser();
-              setUser(updatedUser);
+              await authAPI.makeUserAdmin(userData.id);
+              console.log('Admin rights updated for zweli@msn.com');
             } catch (error) {
-              console.log('Note: Admin setup might have failed');
+              console.log('Admin setup note - user might already be admin');
             }
           }
         } else {

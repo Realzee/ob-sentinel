@@ -50,14 +50,14 @@ export interface VehicleAlert {
   };
 }
 
-// Auth API - SIMPLIFIED to handle profile creation manually
+// Auth API - SIMPLIFIED
 export const authAPI = {
   async getCurrentUser() {
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error || !user) return null;
 
-      // Try to get profile
+      // Check if profile exists
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -66,12 +66,14 @@ export const authAPI = {
 
       // If profile doesn't exist, create it
       if (profileError && profileError.code === 'PGRST116') {
-        console.log('Profile not found, creating new profile...');
-        const newProfile = await this.createProfile(user.id, user.email!);
-        return { ...user, profile: newProfile };
+        console.log('Creating new profile for user:', user.email);
+        return await this.createProfile(user.id, user.email!);
       }
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+        return { ...user, profile: null };
+      }
 
       return { ...user, profile };
     } catch (error) {
@@ -81,40 +83,49 @@ export const authAPI = {
   },
 
   async createProfile(userId: string, email: string) {
+  try {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .insert([{ 
+        id: userId, 
+        email, 
+        role: 'user', 
+        status: 'active' 
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating profile:', error);
+      // Return user without profile if creation fails
+      const { data: { user } } = await supabase.auth.getUser();
+      return user ? { ...user, profile: null } : null;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    return user ? { ...user, profile } : null;
+  } catch (error) {
+    console.error('Error in createProfile:', error);
+    const { data: { user } } = await supabase.auth.getUser();
+    return user ? { ...user, profile: null } : null;
+  }
+},
+
+  async makeUserAdmin(userId: string) {
     try {
       const { data: profile, error } = await supabase
         .from('profiles')
-        .insert([{ 
-          id: userId, 
-          email, 
-          role: 'user', 
-          status: 'active' 
-        }])
+        .update({ 
+          role: 'admin', 
+          status: 'active',
+          full_name: 'Zweli Admin'
+        })
+        .eq('id', userId)
         .select()
         .single();
 
-      if (error) {
-        console.error('Error creating profile:', error);
-        throw error;
-      }
-
-      return profile;
-    } catch (error) {
-      console.error('Error in createProfile:', error);
-      throw error;
-    }
-  },
-
-  async makeUserAdmin(email: string) {
-    try {
-      // Use the SQL function we created
-      const { data, error } = await supabase.rpc('ensure_admin_user', {
-        target_email: email,
-        full_name: 'Zweli Admin'
-      });
-
       if (error) throw error;
-      return data;
+      return profile;
     } catch (error) {
       console.error('Error making user admin:', error);
       throw error;
@@ -133,7 +144,7 @@ export const reportsAPI = {
       
       if (error) {
         console.error('Error getting vehicle alerts:', error);
-        throw error;
+        return [];
       }
       return data || [];
     } catch (error) {
@@ -160,10 +171,7 @@ export const reportsAPI = {
 
   async getDashboardStats() {
     try {
-      const [vehicles, crimes] = await Promise.all([
-        supabase.from('alerts_vehicles').select('*', { count: 'exact' }),
-        supabase.from('crime_reports').select('*', { count: 'exact' })
-      ]);
+      const vehicles = await supabase.from('alerts_vehicles').select('*', { count: 'exact' });
 
       const today = new Date().toISOString().split('T')[0];
       const todayVehicles = vehicles.data?.filter(v => 
@@ -172,7 +180,6 @@ export const reportsAPI = {
 
       return {
         totalVehicles: vehicles.count || 0,
-        totalCrimes: crimes.count || 0,
         todayVehicles,
         activeVehicles: vehicles.data?.filter(v => v.status === 'pending' || v.status === 'under_review').length || 0,
         resolvedVehicles: vehicles.data?.filter(v => v.status === 'resolved').length || 0,
@@ -182,7 +189,6 @@ export const reportsAPI = {
       console.error('Error getting dashboard stats:', error);
       return {
         totalVehicles: 0,
-        totalCrimes: 0,
         todayVehicles: 0,
         activeVehicles: 0,
         resolvedVehicles: 0,
