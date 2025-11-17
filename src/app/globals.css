@@ -9,6 +9,14 @@
   --foreground-rgb: 255, 255, 255;
   --background-start-rgb: 0, 0, 0;
   --background-end-rgb: 26, 26, 26;
+  --accent-gold: #D4AF37;
+  --accent-red: #EF4444;
+  --accent-blue: #3B82F6;
+  --dark-gray: #1A1A1A;
+  --medium-gray: #2D2D2D;
+  --light-gray: #374151;
+  --text-primary: #FFFFFF;
+  --text-secondary: #9CA3AF;
 }
 
 * {
@@ -25,7 +33,7 @@ body {
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
+  color: var(--text-primary);
   background: linear-gradient(
       to bottom,
       rgb(var(--background-start-rgb)),
@@ -39,17 +47,12 @@ a {
   text-decoration: none;
 }
 
-/* Image preview modal styles */
-.image-preview-modal {
-  backdrop-filter: blur(5px);
-}
-
-/* Custom component classes without @apply */
+/* Custom component classes */
 .btn-primary {
-  background-image: url('/button-bg.png'); /* Path to your button image */
-  background-size: 100% 100%; /* This makes the image cover the entire button */
-  background-position: center; /* Centers the image */
-  background-repeat: no-repeat; /* Prevents the image from repeating */
+  background-image: url('/button-bg.png');
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
   color: white;
   font-weight: 600;
   padding: 12px 24px;
@@ -63,8 +66,9 @@ a {
 
 .btn-primary:hover {
   box-shadow: 0 10px 25px rgba(212, 175, 55, 0.3);
-  transform: translateY(-1px); /* Optional: Add slight lift on hover */
+  transform: translateY(-1px);
 }
+
 .btn-secondary {
   background: linear-gradient(135deg, #DC2626 0%, #F87171 100%);
   color: #FFFFFF;
@@ -79,8 +83,8 @@ a {
 }
 
 .btn-outline {
-  border: 2px solid #D4AF37;
-  color: #D4AF37;
+  border: 2px solid var(--accent-gold);
+  color: var(--accent-gold);
   font-weight: 500;
   padding: 8px 16px;
   border-radius: 8px;
@@ -88,13 +92,13 @@ a {
 }
 
 .btn-outline:hover {
-  background-color: #D4AF37;
+  background-color: var(--accent-gold);
   color: #000000;
 }
 
 .card {
-  background-color: #2D2D2D;
-  border: 1px solid #374151;
+  background-color: var(--medium-gray);
+  border: 1px solid var(--light-gray);
   border-radius: 12px;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
@@ -102,30 +106,31 @@ a {
 .form-input {
   width: 100%;
   padding: 12px 16px;
-  background-color: #1A1A1A;
-  border: 1px solid #4B5563;
+  background-color: var(--dark-gray);
+  border: 1px solid var(--light-gray);
   border-radius: 8px;
-  color: #FFFFFF;
+  color: var(--text-primary);
   font-family: inherit;
+  transition: all 0.2s;
 }
 
 .form-input:focus {
-  outline: 2px solid #D4AF37;
+  outline: 2px solid var(--accent-gold);
   border-color: transparent;
 }
 
 .form-input::placeholder {
-  color: #9CA3AF;
+  color: var(--text-secondary);
 }
 
 /* Flash animation for RAPID iREPORT text */
 @keyframes flashRedBlue {
   0%, 100% { 
-    color: #EF4444; /* red-500 */
+    color: var(--accent-red);
     text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
   }
   50% { 
-    color: #3B82F6; /* blue-500 */
+    color: var(--accent-blue);
     text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
   }
 }
@@ -136,9 +141,8 @@ a {
 
 .flex-container {
   display: flex;
-  justify-content: center; /* Centers horizontally */
-  align-items: center; /* Centers vertically */
- 
+  justify-content: center;
+  align-items: center;
 }
 
 /* Custom scrollbar */
@@ -147,11 +151,11 @@ a {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1A1A1A;
+  background: var(--dark-gray);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #D4AF37;
+  background: var(--accent-gold);
   border-radius: 3px;
 }
 
@@ -159,6 +163,7 @@ a {
   background: #F7EF8A;
 }
 
+/* Animations */
 @keyframes slide-in-right {
   from {
     transform: translateX(100%);
@@ -166,6 +171,26 @@ a {
   }
   to {
     transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
     opacity: 1;
   }
 }
@@ -178,4 +203,99 @@ a {
 
 .slide-in-from-right {
   animation-name: slide-in-right;
+}
+
+.slide-in-from-left {
+  animation-name: slide-in-left;
+}
+
+.fade-in {
+  animation-name: fade-in;
+}
+
+/* Utility classes */
+.text-primary-white {
+  color: var(--text-primary);
+}
+
+.text-accent-gold {
+  color: var(--accent-gold);
+}
+
+.text-accent-red {
+  color: var(--accent-red);
+}
+
+.text-accent-blue {
+  color: var(--accent-blue);
+}
+
+.bg-dark-gray {
+  background-color: var(--dark-gray);
+}
+
+.bg-medium-gray {
+  background-color: var(--medium-gray);
+}
+
+.bg-accent-gold {
+  background-color: var(--accent-gold);
+}
+
+.border-accent-gold {
+  border-color: var(--accent-gold);
+}
+
+/* Image preview modal styles */
+.image-preview-modal {
+  backdrop-filter: blur(5px);
+}
+
+/* Loading states */
+.loading-skeleton {
+  background: linear-gradient(90deg, var(--medium-gray) 25%, var(--light-gray) 50%, var(--medium-gray) 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Responsive text */
+@media (max-width: 768px) {
+  .btn-primary,
+  .btn-secondary {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+  
+  .form-input {
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+}
+
+/* Focus accessibility */
+button:focus-visible,
+a:focus-visible,
+.form-input:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 2px;
+}
+
+/* Print styles */
+@media print {
+  .btn-primary,
+  .btn-secondary,
+  .btn-outline {
+    background: none;
+    color: black;
+    border: 1px solid black;
+  }
 }
