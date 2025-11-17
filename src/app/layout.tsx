@@ -9,9 +9,11 @@ export const metadata: Metadata = {
   description: 'Modern, secure incident logging and community alert system for rapid reporting',
   icons: {
     icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
+    // Remove apple touch icon for now
+    // apple: '/apple-touch-icon.png',
   },
-  manifest: '/manifest.json',
+  // Remove manifest for now
+  // manifest: '/manifest.json',
   keywords: ['crime reporting', 'community safety', 'incident logging', 'security alerts'],
   authors: [{ name: 'RAPID iREPORT' }],
   creator: 'RAPID iREPORT',
