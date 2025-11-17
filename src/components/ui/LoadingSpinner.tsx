@@ -12,8 +12,7 @@ export default function LoadingSpinner({ size = 'md', className = '' }: LoadingS
 
   return (
     <div 
-      className={`animate-spin rounded-full border-b-2 border-blue-600 ${sizeClasses[size]} ${className}`}
-      data-testid="loading-spinner"
+      className={`animate-spin rounded-full border-b-2 border-purple-600 ${sizeClasses[size]} ${className}`}
     ></div>
   );
 }

@@ -10,6 +10,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// Types
 export type UserRole = 'admin' | 'moderator' | 'controller' | 'user';
 export type UserStatus = 'pending' | 'active' | 'suspended';
 export type ReportStatus = 'pending' | 'under_review' | 'resolved' | 'rejected';
@@ -137,7 +138,7 @@ export const authAPI = {
             id: userId, 
             email, 
             role: 'user', 
-            status: 'pending' 
+            status: 'active' 
           }])
           .select()
           .single();
@@ -154,6 +155,17 @@ export const authAPI = {
 
   async makeUserAdmin(email: string) {
     try {
+      // First get the user ID from auth.users
+      const { data: authUser } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .single();
+
+      if (!authUser) {
+        throw new Error('User not found');
+      }
+
       const { data: profile, error } = await supabase
         .from('profiles')
         .update({ 
@@ -161,7 +173,7 @@ export const authAPI = {
           status: 'active',
           full_name: 'Zweli Admin'
         })
-        .eq('email', email)
+        .eq('id', authUser.id)
         .select()
         .single();
 
