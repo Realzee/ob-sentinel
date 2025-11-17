@@ -7,6 +7,7 @@ interface AuthContextType {
   user: any;
   loading: boolean;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -14,6 +15,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  const refreshUser = async () => {
+    const userData = await authAPI.getCurrentUser();
+    setUser(userData);
+  };
 
   useEffect(() => {
     // Get initial session
@@ -31,6 +37,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event);
+        
         if (session?.user) {
           const userData = await authAPI.getCurrentUser();
           setUser(userData);
@@ -45,13 +53,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   const value = {
     user,
     loading,
     signOut,
+    refreshUser,
   };
 
   return (

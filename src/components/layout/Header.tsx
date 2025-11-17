@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@/components/providers/AuthProvider';
+import Button from '@/components/ui/Button';
 
 export default function Header() {
   const { user, signOut } = useAuth();
@@ -33,12 +34,13 @@ export default function Header() {
                     {user.profile?.role} • {user.profile?.status}
                   </div>
                 </div>
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={signOut}
-                  className="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-md text-sm font-medium text-gray-700 transition-colors"
                 >
                   Sign Out
-                </button>
+                </Button>
               </>
             )}
           </div>
