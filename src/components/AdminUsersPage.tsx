@@ -1,11 +1,9 @@
 // components/AdminUsersPage.tsx
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase, getOnlineUsers, updateUserPresence } from '@/lib/supabase'
-import { cacheManager, debounce, performanceMonitor } from '@/lib/cache'
-import { ProgressiveLoader, UserTableSkeleton, UserCardSkeleton } from '@/components/ProgressiveLoader'
-import { Users, Shield, CheckCircle, XCircle, Edit, Save, X, User, Clock, Search, Filter, Wifi, WifiOff, Mail, Phone, MapPin, Calendar, Trash2, AlertTriangle, Eye, Ban, CheckSquare, Square, Plus, Key, RefreshCw } from 'lucide-react'
+import { Users, Shield, CheckCircle, XCircle, Edit, Save, X, User, Clock, Search, Filter, Wifi, WifiOff, Mail, Phone, MapPin, Calendar, Trash2, AlertTriangle, Eye, Ban, CheckSquare, Square, Plus, Key } from 'lucide-react'
 
 interface UserProfile {
   id: string
@@ -38,28 +36,10 @@ interface NewUserForm {
   sendInvite: boolean
 }
 
-// Debounce hook for search
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value)
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
-
-    return () => {
-      clearTimeout(handler)
-    }
-  }, [value, delay])
-
-  return debouncedValue
-}
-
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserProfile[]>([])
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([])
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -74,14 +54,6 @@ export default function AdminUsersPage() {
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
   const [showAddUserModal, setShowAddUserModal] = useState(false)
   const [addingUser, setAddingUser] = useState(false)
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
-  const [accessChecked, setAccessChecked] = useState(false)
-  const [hasAdminAccess, setHasAdminAccess] = useState(false)
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 50,
-    hasMore: true
-  })
 
   const [newUserForm, setNewUserForm] = useState<NewUserForm>({
     email: '',
@@ -93,188 +65,30 @@ export default function AdminUsersPage() {
     sendInvite: true
   })
 
-  // Debounced search term
-  const debouncedSearchTerm = useDebounce(searchTerm, 300)
-
-  // FIXED: Return proper structure from fetchUsersOptimized
-  const fetchUsersOptimized = async (page: number = 1, limit: number = 50) => {
-    return performanceMonitor.measure('fetchUsers', async () => {
-      try {
-        const offset = (page - 1) * limit
-        
-        const { data: profiles, error, count } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact' })
-          .order('created_at', { ascending: false })
-          .range(offset, offset + limit - 1)
-
-        if (error) throw error
-        
-        const result = {
-          users: profiles || [],
-          hasMore: (profiles?.length || 0) === limit
-        }
-        
-        setUsers(result.users)
-        setLastRefresh(new Date())
-        setPagination(prev => ({
-          ...prev,
-          hasMore: result.hasMore
-        }))
-        
-        return result
-        
-      } catch (error: any) {
-        console.error('Error fetching users:', error)
-        setError(error.message)
-        return { users: [], hasMore: false }
-      }
-    })
-  }
-
-  // Cached version
-  const fetchUsersWithCache = async (page: number = 1, loadMore: boolean = false) => {
-    const cacheKey = `users-${page}`
-    const cached = cacheManager.get(cacheKey)
-
-    if (cached && !loadMore) {
-      setUsers(cached.users)
-      setPagination(prev => ({ ...prev, hasMore: cached.hasMore }))
-      setLoading(false)
-      return
-    }
-
-    if (!loadMore) {
-      setLoading(true)
-    } else {
-      setRefreshing(true)
-    }
-    
-    const result = await fetchUsersOptimized(page, pagination.limit)
-    
-    if (loadMore) {
-      setUsers(prev => [...prev, ...result.users])
-    }
-    
-    cacheManager.set(cacheKey, result)
-    
-    if (!loadMore) {
-      setLoading(false)
-    } else {
-      setRefreshing(false)
-    }
-  }
-
-  // Load more users
-  const loadMoreUsers = async () => {
-    const nextPage = pagination.page + 1
-    await fetchUsersWithCache(nextPage, true)
-    setPagination(prev => ({ ...prev, page: nextPage }))
-  }
-
-  // Memoized stats calculation
-  const stats = useMemo(() => {
-    const onlineUserIds = new Set(
-      onlineUsers
-        .filter(ou => {
-          const lastSeen = new Date(ou.last_seen)
-          return (Date.now() - lastSeen.getTime()) < 5 * 60 * 1000 // 5 minutes
-        })
-        .map(ou => ou.user_id)
-    )
-
-    return {
-      total: users.length,
-      approved: users.filter(u => u.approved).length,
-      pending: users.filter(u => !u.approved).length,
-      online: users.filter(u => onlineUserIds.has(u.id)).length,
-      admins: users.filter(u => u.role === 'admin').length,
-      moderators: users.filter(u => u.role === 'moderator').length,
-      regular: users.filter(u => u.role === 'user').length
-    }
-  }, [users, onlineUsers])
-
-  // Memoized filtered users
-  const filteredUsers = useMemo(() => {
-    const onlineUserIds = new Set(
-      onlineUsers
-        .filter(ou => {
-          const lastSeen = new Date(ou.last_seen)
-          return (Date.now() - lastSeen.getTime()) < 5 * 60 * 1000
-        })
-        .map(ou => ou.user_id)
-    )
-
-    return users.filter(user => {
-      const matchesSearch = 
-        user.email.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-        user.name?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-        user.role.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-        user.phone?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-        user.location?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
-      
-      const matchesRole = filterRole === 'all' || user.role === filterRole
-      const matchesApproved = filterApproved === 'all' || 
-        (filterApproved === 'approved' && user.approved) ||
-        (filterApproved === 'pending' && !user.approved)
-      
-      const matchesStatus = filterStatus === 'all' || 
-        (filterStatus === 'online' && onlineUserIds.has(user.id)) ||
-        (filterStatus === 'offline' && !onlineUserIds.has(user.id))
-      
-      return matchesSearch && matchesRole && matchesApproved && matchesStatus
-    })
-  }, [users, debouncedSearchTerm, filterRole, filterApproved, filterStatus, onlineUsers])
-
-  // Quick admin access check
-  const checkAdminAccess = useCallback(async () => {
-    try {
-      console.time('adminAccessCheck')
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) {
-        setAccessChecked(true)
-        setHasAdminAccess(false)
-        return
-      }
-
-      setCurrentUser(user)
-
-      // Quick role check without updating last login
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-
-      if (profileError || !profile) {
-        setAccessChecked(true)
-        setHasAdminAccess(false)
-        return
-      }
-
-      const isAdminOrModerator = profile.role === 'admin' || profile.role === 'moderator'
-      setHasAdminAccess(isAdminOrModerator)
-      setAccessChecked(true)
-
-      if (isAdminOrModerator) {
-        // Now load the actual data
-        await fetchUsersWithCache()
-        await updateUserLastLogin(user.id)
-        startOptimizedPresenceUpdates()
-      }
-      
-    } catch (error) {
-      console.error('Error checking admin access:', error)
-      setAccessChecked(true)
-      setHasAdminAccess(false)
-    } finally {
-      console.timeEnd('adminAccessCheck')
-    }
+  useEffect(() => {
+    checkAuth()
+    fetchUsers()
+    startPresenceUpdates()
   }, [])
 
+  // Simple password generator (for demo purposes)
+  const generateTempPassword = () => {
+    return 'TempPassword123!' // In production, generate a secure random password
+  }
+
+  const checkAuth = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    setCurrentUser(user)
+    
+    if (user) {
+      updateUserPresence(user.id)
+      // Update last login for admin user
+      await updateUserLastLogin(user.id)
+    }
+  }
+
   // Update user's last login time
-  const updateUserLastLogin = useCallback(async (userId: string) => {
+  const updateUserLastLogin = async (userId: string) => {
     try {
       const { error } = await supabase
         .from('profiles')
@@ -289,91 +103,149 @@ export default function AdminUsersPage() {
         return { error }
       }
       
+      console.log('✅ Last login updated for user:', userId)
       return { success: true }
     } catch (error) {
       console.error('Error updating last login:', error)
       return { error }
     }
-  }, [])
+  }
 
-  const startOptimizedPresenceUpdates = useCallback(async () => {
-    if (!currentUser) return
+  const fetchUsers = async () => {
+    try {
+      setLoading(true)
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false })
 
-    // Update presence every 5 minutes instead of 2
-    const presenceInterval = setInterval(async () => {
-      await updateUserPresence(currentUser.id)
-    }, 300000)
+      if (error) throw error
+      setUsers(profiles || [])
+    } catch (error: any) {
+      setError(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-    // Fetch online users every 5 minutes instead of 2
-    const fetchInterval = setInterval(async () => {
-      try {
-        const users = await getOnlineUsers()
-        setOnlineUsers(users)
-      } catch (error) {
-        console.error('Error fetching online users:', error)
+  const startPresenceUpdates = async () => {
+    // Update presence every minute
+    const interval = setInterval(async () => {
+      if (currentUser) {
+        await updateUserPresence(currentUser.id)
       }
-    }, 300000)
+      const onlineUsers = await getOnlineUsers()
+      setOnlineUsers(onlineUsers)
+    }, 60000)
 
     // Initial load
     const onlineUsers = await getOnlineUsers()
     setOnlineUsers(onlineUsers)
 
-    return () => {
-      clearInterval(presenceInterval)
-      clearInterval(fetchInterval)
-    }
-  }, [currentUser])
+    return () => clearInterval(interval)
+  }
 
   // Add new user function
-  const handleAddUser = useCallback(async () => {
-    if (!newUserForm.email) {
-      setError('Email is required')
-      return
-    }
+  // Replace the handleAddUser function in AdminUsersPage.tsx
+// Alternative handleAddUser function for client-side only
+const handleAddUser = async () => {
+  if (!newUserForm.email) {
+    setError('Email is required')
+    return
+  }
 
-    setAddingUser(true)
-    setError('')
+  setAddingUser(true)
+  setError('')
 
-    try {
-      const response = await fetch('/api/admin/create-user', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(newUserForm)
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create user')
+  try {
+    // Use signUp method instead of admin.createUser
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: newUserForm.email,
+      password: generateTempPassword(),
+      options: {
+        data: {
+          name: newUserForm.name
+        }
       }
+    })
 
-      setSuccess('User added successfully!')
-      setShowAddUserModal(false)
-      setNewUserForm({
-        email: '',
-        name: '',
-        phone: '',
-        location: '',
-        role: 'user',
-        approved: true,
-        sendInvite: true
-      })
-      
-      // Refresh users list and clear cache
-      cacheManager.clearByPattern('users-')
-      await fetchUsersWithCache()
-      
-    } catch (error: any) {
-      console.error('Error adding user:', error)
-      setError(error.message || 'Failed to add user')
-    } finally {
-      setAddingUser(false)
+    if (authError) {
+      // If user already exists, we can still create/update their profile
+      if (authError.message.includes('already registered')) {
+        console.log('User already exists, creating profile...')
+        
+        // Get the user by email
+        const { data: existingUsers } = await supabase.auth.admin.listUsers()
+        const user = existingUsers?.users.find(u => u.email === newUserForm.email)
+        
+        if (!user) {
+          throw new Error('User exists but could not be found')
+        }
+        
+        // Create or update profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: user.id,
+            email: newUserForm.email,
+            name: newUserForm.name,
+            phone: newUserForm.phone,
+            location: newUserForm.location,
+            role: newUserForm.role,
+            approved: newUserForm.approved,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'id',
+            ignoreDuplicates: false
+          })
+
+        if (profileError) throw profileError
+      } else {
+        throw authError
+      }
+    } else if (authData.user) {
+      // Create profile for new user
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: authData.user.id,
+          email: newUserForm.email,
+          name: newUserForm.name,
+          phone: newUserForm.phone,
+          location: newUserForm.location,
+          role: newUserForm.role,
+          approved: newUserForm.approved,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+
+      if (profileError) throw profileError
     }
-  }, [newUserForm])
 
-  const handleEdit = useCallback((user: UserProfile) => {
+    setSuccess('User added successfully!')
+    setShowAddUserModal(false)
+    setNewUserForm({
+      email: '',
+      name: '',
+      phone: '',
+      location: '',
+      role: 'user',
+      approved: true,
+      sendInvite: true
+    })
+    
+    // Refresh users list
+    await fetchUsers()
+    
+  } catch (error: any) {
+    console.error('Error adding user:', error)
+    setError(error.message || 'Failed to add user')
+  } finally {
+    setAddingUser(false)
+  }
+}
+
+  const handleEdit = (user: UserProfile) => {
     setEditingUserId(user.id)
     setEditForm({ 
       name: user.name || '',
@@ -383,9 +255,9 @@ export default function AdminUsersPage() {
       phone: user.phone || '',
       location: user.location || ''
     })
-  }, [])
+  }
 
-  const handleSave = useCallback(async (userId: string) => {
+  const handleSave = async (userId: string) => {
     try {
       const { error } = await supabase
         .from('profiles')
@@ -397,9 +269,8 @@ export default function AdminUsersPage() {
 
       if (error) throw error
 
-      // Refresh users list and clear cache
-      cacheManager.clearByPattern('users-')
-      await fetchUsersWithCache()
+      // Refresh users list to get updated data
+      await fetchUsers()
       setEditingUserId(null)
       setEditForm({})
       setSuccess('User updated successfully')
@@ -407,22 +278,30 @@ export default function AdminUsersPage() {
     } catch (error: any) {
       setError(error.message)
     }
-  }, [editForm])
+  }
 
-  const handleCancel = useCallback(() => {
+  const handleCancel = () => {
     setEditingUserId(null)
     setEditForm({})
-  }, [])
+  }
 
-  const handleDeleteUser = useCallback(async (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       return
     }
 
     try {
-      // Optimistic update - remove from local state immediately
-      setUsers(prev => prev.filter(user => user.id !== userId))
-      
+      // First try to delete from auth (if admin permissions)
+      try {
+        const { error: authError } = await supabase.auth.admin.deleteUser(userId)
+        if (authError) {
+          console.log('Note: Could not delete from auth (may require admin privileges)')
+        }
+      } catch (authError) {
+        console.log('Note: Auth deletion failed, proceeding with profile deletion only')
+      }
+
+      // Delete from profiles
       const { error } = await supabase
         .from('profiles')
         .delete()
@@ -430,18 +309,15 @@ export default function AdminUsersPage() {
 
       if (error) throw error
 
+      setUsers(users.filter(user => user.id !== userId))
       setSuccess('User deleted successfully')
       setTimeout(() => setSuccess(''), 3000)
-      // Clear cache
-      cacheManager.clearByPattern('users-')
     } catch (error: any) {
       setError(error.message)
-      // Refresh on error to get correct state
-      await fetchUsersWithCache()
     }
-  }, [])
+  }
 
-  const handleBulkAction = useCallback(async () => {
+  const handleBulkAction = async () => {
     if (!bulkAction || selectedUsers.length === 0) {
       setError('Please select users and an action')
       return
@@ -466,9 +342,7 @@ export default function AdminUsersPage() {
         case 'delete':
           if (!confirm(`Are you sure you want to delete ${selectedUsers.length} users?`)) return
           
-          // Optimistic update
-          setUsers(prev => prev.filter(user => !selectedUsers.includes(user.id)))
-          
+          // Delete profiles
           const { error: deleteError } = await supabase
             .from('profiles')
             .delete()
@@ -476,19 +350,14 @@ export default function AdminUsersPage() {
             
           if (deleteError) throw deleteError
           
+          setUsers(users.filter(user => !selectedUsers.includes(user.id)))
           setSelectedUsers([])
           setSuccess(`${selectedUsers.length} users deleted successfully`)
           setTimeout(() => setSuccess(''), 3000)
-          cacheManager.clearByPattern('users-')
           return
         default:
           return
       }
-
-      // Optimistic update for other actions
-      setUsers(prev => prev.map(user => 
-        selectedUsers.includes(user.id) ? { ...user, ...updates } : user
-      ))
 
       const { error } = await supabase
         .from('profiles')
@@ -500,187 +369,115 @@ export default function AdminUsersPage() {
 
       if (error) throw error
 
+      // Refresh the users list
+      await fetchUsers()
       setSelectedUsers([])
       setBulkAction('')
       setSuccess(`Bulk action completed for ${selectedUsers.length} users`)
       setTimeout(() => setSuccess(''), 3000)
-      cacheManager.clearByPattern('users-')
     } catch (error: any) {
       setError(error.message)
-      // Refresh on error
-      await fetchUsersWithCache()
     }
-  }, [bulkAction, selectedUsers])
+  }
 
-  const toggleUserSelection = useCallback((userId: string) => {
+  const toggleUserSelection = (userId: string) => {
     setSelectedUsers(prev => 
       prev.includes(userId) 
         ? prev.filter(id => id !== userId)
         : [...prev, userId]
     )
-  }, [])
+  }
 
-  const selectAllUsers = useCallback(() => {
+  const selectAllUsers = () => {
     setSelectedUsers(
       selectedUsers.length === filteredUsers.length 
         ? [] 
         : filteredUsers.map(user => user.id)
     )
-  }, [selectedUsers.length, filteredUsers])
+  }
 
-  const getOnlineStatus = useCallback((userId: string) => {
+  const getOnlineStatus = (userId: string) => {
     const onlineUser = onlineUsers.find(u => u.user_id === userId)
     if (onlineUser) {
       const lastSeen = new Date(onlineUser.last_seen)
       const now = new Date()
       const diffMinutes = Math.floor((now.getTime() - lastSeen.getTime()) / 60000)
-      return diffMinutes < 5 ? 'online' : `active ${diffMinutes}m ago`
+      return diffMinutes < 2 ? 'online' : `active ${diffMinutes}m ago`
     }
     return 'offline'
-  }, [onlineUsers])
+  }
 
-  const isUserOnline = useCallback((userId: string) => {
+  const isUserOnline = (userId: string) => {
     const status = getOnlineStatus(userId)
     return status === 'online'
-  }, [getOnlineStatus])
+  }
 
-  const handleRefresh = useCallback(async () => {
-    cacheManager.clearByPattern('users-')
-    await fetchUsersWithCache()
-  }, [])
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = 
+      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.location?.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    const matchesRole = filterRole === 'all' || user.role === filterRole
+    const matchesApproved = filterApproved === 'all' || 
+      (filterApproved === 'approved' && user.approved) ||
+      (filterApproved === 'pending' && !user.approved)
+    
+    const matchesStatus = filterStatus === 'all' || 
+      (filterStatus === 'online' && isUserOnline(user.id)) ||
+      (filterStatus === 'offline' && !isUserOnline(user.id))
+    
+    return matchesSearch && matchesRole && matchesApproved && matchesStatus
+  })
 
-  // Initial admin access check
-  useEffect(() => {
-    checkAdminAccess()
-  }, [checkAdminAccess])
+  const stats = {
+    total: users.length,
+    approved: users.filter(u => u.approved).length,
+    pending: users.filter(u => !u.approved).length,
+    online: users.filter(u => isUserOnline(u.id)).length,
+    admins: users.filter(u => u.role === 'admin').length,
+    moderators: users.filter(u => u.role === 'moderator').length,
+    regular: users.filter(u => u.role === 'user').length
+  }
 
-  // OPTIMIZED Real-time subscriptions
-  useEffect(() => {
-    if (!hasAdminAccess || !currentUser) return
-
-    console.log('🔔 Setting up optimized real-time subscriptions...')
-
-    const debouncedRefresh = debounce(() => {
-      cacheManager.clearByPattern('users-')
-      fetchUsersWithCache()
-    }, 2000)
-
-    const channel = supabase
-      .channel('optimized-profiles-changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'profiles'
-        },
-        (payload) => {
-          console.log('Profile change detected:', payload.eventType)
-          debouncedRefresh()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      channel.unsubscribe()
-    }
-  }, [hasAdminAccess, currentUser])
-
-  // Auto-clear messages
-  useEffect(() => {
-    if (error || success) {
-      const timer = setTimeout(() => {
-        setError('')
-        setSuccess('')
-      }, 5000)
-      return () => clearTimeout(timer)
-    }
-  }, [error, success])
-
-  // Show loading while checking access
-  if (!accessChecked) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-dark-gray p-4 md:p-8">
+      <div className="min-h-screen bg-dark-gray p-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
-            <p className="text-gray-400">Checking admin access...</p>
+            <p className="text-gray-400">Loading users...</p>
           </div>
         </div>
       </div>
     )
   }
 
-  // Show unauthorized if no admin access
-  if (!hasAdminAccess) {
-    return (
-      <div className="min-h-screen bg-dark-gray p-4 md:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center py-12">
-            <div className="bg-red-900 border border-red-700 text-red-300 px-4 md:px-6 py-4 rounded-lg max-w-md mx-auto">
-              <Shield className="w-8 h-8 md:w-12 md:h-12 mx-auto mb-4 text-red-400" />
-              <h2 className="text-lg md:text-xl font-bold mb-2">Access Denied</h2>
-              <p className="text-gray-300 text-sm md:text-base">
-                You don't have permission to access the admin panel. 
-                Please contact an administrator if you believe this is an error.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Show loading for initial data load
-  if (loading && users.length === 0) {
-    return (
-      <div className="min-h-screen bg-dark-gray p-4 md:p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-gold mx-auto mb-4"></div>
-            <p className="text-gray-400">Loading user data...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Main admin panel content
   return (
     <div className="min-h-screen bg-dark-gray p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 md:mb-8 space-y-4 sm:space-y-0">
+        <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-3">
             <div className="bg-accent-gold p-2 rounded-lg">
-              <Users className="w-5 h-5 md:w-6 md:h-6 text-black" />
+              <Users className="w-6 h-6 text-black" />
             </div>
             <div>
-              <h1 className="text-xl md:text-3xl font-bold text-primary-white">User Management</h1>
-              <p className="text-gray-400 text-sm">
-                {refreshing ? 'Refreshing...' : `Last refresh: ${lastRefresh.toLocaleTimeString()}`}
-              </p>
+              <h1 className="text-3xl font-bold text-primary-white">User Management</h1>
+              <p className="text-gray-400">Manage user accounts and permissions</p>
             </div>
           </div>
-          <div className="flex items-center space-x-4">
-            <div className="text-sm text-gray-400">
-              {stats.online} users online
-            </div>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
-              title="Refresh"
-            >
-              <RefreshCw className={`w-4 h-4 md:w-5 md:h-5 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
+          <div className="text-sm text-gray-400">
+            {stats.online} users online
           </div>
         </div>
 
-        {/* Error/Success Messages */}
         {error && (
-          <div className="bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded mb-6 animate-in slide-in-from-top">
+          <div className="bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded mb-6">
             <div className="flex items-center justify-between">
-              <span className="text-sm md:text-base">{error}</span>
+              <span>{error}</span>
               <button onClick={() => setError('')} className="text-red-300 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
@@ -689,9 +486,9 @@ export default function AdminUsersPage() {
         )}
 
         {success && (
-          <div className="bg-green-900 border border-green-700 text-green-300 px-4 py-3 rounded mb-6 animate-in slide-in-from-top">
+          <div className="bg-green-900 border border-green-700 text-green-300 px-4 py-3 rounded mb-6">
             <div className="flex items-center justify-between">
-              <span className="text-sm md:text-base">{success}</span>
+              <span>{success}</span>
               <button onClick={() => setSuccess('')} className="text-green-300 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
@@ -699,66 +496,64 @@ export default function AdminUsersPage() {
           </div>
         )}
 
-        {/* Stats Cards - RESPONSIVE */}
-        {!loading || users.length > 0 ? (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
-            <div className="card p-4 md:p-6 border-l-4 border-accent-gold">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs md:text-sm text-gray-400">Total Users</p>
-                  <p className="text-xl md:text-3xl font-bold text-accent-gold">{stats.total}</p>
-                </div>
-                <Users className="w-6 h-6 md:w-8 md:h-8 text-accent-gold" />
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="card p-6 border-l-4 border-accent-gold">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">Total Users</p>
+                <p className="text-3xl font-bold text-accent-gold">{stats.total}</p>
               </div>
-            </div>
-
-            <div className="card p-4 md:p-6 border-l-4 border-green-600">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs md:text-sm text-gray-400">Approved Users</p>
-                  <p className="text-xl md:text-3xl font-bold text-green-400">{stats.approved}</p>
-                </div>
-                <CheckCircle className="w-6 h-6 md:w-8 md:h-8 text-green-400" />
-              </div>
-            </div>
-
-            <div className="card p-4 md:p-6 border-l-4 border-blue-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs md:text-sm text-gray-400">Online Now</p>
-                  <p className="text-xl md:text-3xl font-bold text-blue-400">{stats.online}</p>
-                </div>
-                <Wifi className="w-6 h-6 md:w-8 md:h-8 text-blue-400" />
-              </div>
-            </div>
-
-            <div className="card p-4 md:p-6 border-l-4 border-purple-600">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs md:text-sm text-gray-400">Admins/Mods</p>
-                  <p className="text-xl md:text-3xl font-bold text-purple-400">{stats.admins + stats.moderators}</p>
-                </div>
-                <Shield className="w-6 h-6 md:w-8 md:h-8 text-purple-400" />
-              </div>
+              <Users className="w-8 h-8 text-accent-gold" />
             </div>
           </div>
-        ) : null}
+
+          <div className="card p-6 border-l-4 border-green-600">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">Approved Users</p>
+                <p className="text-3xl font-bold text-green-400">{stats.approved}</p>
+              </div>
+              <CheckCircle className="w-8 h-8 text-green-400" />
+            </div>
+          </div>
+
+          <div className="card p-6 border-l-4 border-blue-500">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">Online Now</p>
+                <p className="text-3xl font-bold text-blue-400">{stats.online}</p>
+              </div>
+              <Wifi className="w-8 h-8 text-blue-400" />
+            </div>
+          </div>
+
+          <div className="card p-6 border-l-4 border-purple-600">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">Admins/Mods</p>
+                <p className="text-3xl font-bold text-purple-400">{stats.admins + stats.moderators}</p>
+              </div>
+              <Shield className="w-8 h-8 text-purple-400" />
+            </div>
+          </div>
+        </div>
 
         {/* Bulk Actions */}
         {selectedUsers.length > 0 && (
-          <div className="card p-4 md:p-6 mb-6 bg-blue-900 border-blue-700">
+          <div className="card p-6 mb-6 bg-blue-900 border-blue-700">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0">
               <div className="flex items-center space-x-3">
-                <CheckSquare className="w-4 h-4 md:w-5 md:h-5 text-blue-300" />
-                <span className="text-primary-white text-sm md:text-base">
+                <CheckSquare className="w-5 h-5 text-blue-300" />
+                <span className="text-primary-white">
                   {selectedUsers.length} user{selectedUsers.length > 1 ? 's' : ''} selected
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap gap-2">
                 <select
                   value={bulkAction}
                   onChange={(e) => setBulkAction(e.target.value)}
-                  className="bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm w-full sm:w-auto"
+                  className="bg-gray-700 border border-gray-600 text-white rounded px-3 py-2"
                 >
                   <option value="">Bulk Actions</option>
                   <option value="approve">Approve Users</option>
@@ -769,13 +564,13 @@ export default function AdminUsersPage() {
                 </select>
                 <button
                   onClick={handleBulkAction}
-                  className="btn-primary flex items-center justify-center space-x-2 text-sm w-full sm:w-auto"
+                  className="bg-accent-gold text-black px-4 py-2 rounded font-medium hover:bg-yellow-500 transition-colors"
                 >
-                  <span>Apply</span>
+                  Apply
                 </button>
                 <button
                   onClick={() => setSelectedUsers([])}
-                  className="bg-gray-600 text-white px-4 py-2 rounded font-medium hover:bg-gray-500 transition-colors text-sm w-full sm:w-auto"
+                  className="bg-gray-600 text-white px-4 py-2 rounded font-medium hover:bg-gray-500 transition-colors"
                 >
                   Clear
                 </button>
@@ -785,7 +580,7 @@ export default function AdminUsersPage() {
         )}
 
         {/* Filters and Search */}
-        <div className="card p-4 md:p-6 mb-6">
+        <div className="card p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -794,7 +589,7 @@ export default function AdminUsersPage() {
                 placeholder="Search users..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="form-input pl-10 w-full"
+                className="form-input pl-10"
               />
             </div>
 
@@ -830,11 +625,11 @@ export default function AdminUsersPage() {
             </select>
           </div>
 
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
+          <div className="flex justify-between items-center">
             <div className="flex space-x-2">
               <button
                 onClick={() => setViewMode('table')}
-                className={`px-3 py-2 rounded text-sm ${
+                className={`px-3 py-1 rounded ${
                   viewMode === 'table' ? 'bg-accent-gold text-black' : 'bg-gray-700 text-gray-300'
                 }`}
               >
@@ -842,304 +637,277 @@ export default function AdminUsersPage() {
               </button>
               <button
                 onClick={() => setViewMode('cards')}
-                className={`px-3 py-2 rounded text-sm ${
+                className={`px-3 py-1 rounded ${
                   viewMode === 'cards' ? 'bg-accent-gold text-black' : 'bg-gray-700 text-gray-300'
                 }`}
               >
                 Card View
               </button>
             </div>
-            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 w-full sm:w-auto">
+            <div className="flex space-x-3">
               <button
                 onClick={() => setShowAddUserModal(true)}
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 text-sm"
+                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors flex items-center space-x-2"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add User</span>
               </button>
               <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="btn-primary flex items-center justify-center space-x-2 text-sm disabled:opacity-50"
+                onClick={fetchUsers}
+                className="bg-accent-blue text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
               >
-                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
+                Refresh
               </button>
             </div>
           </div>
         </div>
 
-        {/* Users Table or Cards */}
-        {loading && users.length === 0 ? (
-          viewMode === 'table' ? <UserTableSkeleton /> : <UserCardSkeleton />
-        ) : (
-          viewMode === 'table' ? (
-            <div className="card p-4 md:p-6">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-700">
-                      <th className="text-left p-3 md:p-4 text-gray-400 font-medium text-sm">
-                        <div className="flex items-center space-x-2">
+        {/* Users Table */}
+        {viewMode === 'table' ? (
+          <div className="card p-6">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left p-4 text-gray-400 font-medium">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
+                          onChange={selectAllUsers}
+                          className="rounded border-gray-600 bg-dark-gray text-accent-gold focus:ring-accent-gold"
+                        />
+                        <span>User</span>
+                      </div>
+                    </th>
+                    <th className="text-left p-4 text-gray-400 font-medium">Status</th>
+                    <th className="text-left p-4 text-gray-400 font-medium">Role</th>
+                    <th className="text-left p-4 text-gray-400 font-medium">Last Login</th>
+                    <th className="text-left p-4 text-gray-400 font-medium">Online</th>
+                    <th className="text-left p-4 text-gray-400 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map(user => (
+                    <tr key={user.id} className="border-b border-gray-800 hover:bg-gray-800 transition-colors">
+                      <td className="p-4">
+                        <div className="flex items-center space-x-3">
                           <input
                             type="checkbox"
-                            checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
-                            onChange={selectAllUsers}
+                            checked={selectedUsers.includes(user.id)}
+                            onChange={() => toggleUserSelection(user.id)}
                             className="rounded border-gray-600 bg-dark-gray text-accent-gold focus:ring-accent-gold"
                           />
-                          <span>User</span>
+                          <div>
+                            <p className="font-medium text-primary-white">
+                              {user.name || 'No name'}
+                            </p>
+                            <p className="text-sm text-gray-400">{user.email}</p>
+                            <p className="text-xs text-gray-500">
+                              Joined {new Date(user.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
                         </div>
-                      </th>
-                      <th className="text-left p-3 md:p-4 text-gray-400 font-medium text-sm">Status</th>
-                      <th className="text-left p-3 md:p-4 text-gray-400 font-medium text-sm">Role</th>
-                      <th className="text-left p-3 md:p-4 text-gray-400 font-medium text-sm">Last Login</th>
-                      <th className="text-left p-3 md:p-4 text-gray-400 font-medium text-sm">Online</th>
-                      <th className="text-left p-3 md:p-4 text-gray-400 font-medium text-sm">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.map((user) => (
-                      <tr key={user.id} className="border-b border-gray-800 hover:bg-gray-800 transition-colors">
-                        <td className="p-3 md:p-4">
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedUsers.includes(user.id)}
-                              onChange={() => toggleUserSelection(user.id)}
-                              className="rounded border-gray-600 bg-dark-gray text-accent-gold focus:ring-accent-gold"
-                            />
-                            <div className="min-w-0">
-                              <p className="font-medium text-primary-white text-sm truncate">
-                                {user.name || 'No name'}
-                              </p>
-                              <p className="text-xs text-gray-400 truncate">{user.email}</p>
-                              <p className="text-xs text-gray-500">
-                                Joined {new Date(user.created_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-3 md:p-4">
-                          {user.approved ? (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-600 text-white">
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Approved
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-600 text-white">
-                              <Clock className="w-3 h-3 mr-1" />
-                              Pending
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 md:p-4">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            user.role === 'admin' ? 'bg-purple-600 text-white' :
-                            user.role === 'moderator' ? 'bg-blue-600 text-white' :
-                            'bg-gray-600 text-white'
-                          }`}>
-                            {user.role}
+                      </td>
+                      <td className="p-4">
+                        {user.approved ? (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-600 text-white">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Approved
                           </span>
-                        </td>
-                        <td className="p-3 md:p-4 text-xs md:text-sm text-gray-400">
-                          {user.last_login 
-                            ? new Date(user.last_login).toLocaleString()
-                            : 'Never'
-                          }
-                        </td>
-                        <td className="p-3 md:p-4">
-                          <div className="flex items-center space-x-2">
-                            {isUserOnline(user.id) ? (
-                              <>
-                                <Wifi className="w-3 h-3 md:w-4 md:h-4 text-green-400" />
-                                <span className="text-green-400 text-xs">Online</span>
-                              </>
-                            ) : (
-                              <>
-                                <WifiOff className="w-3 h-3 md:w-4 md:h-4 text-gray-500" />
-                                <span className="text-gray-500 text-xs">
-                                  {getOnlineStatus(user.id)}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-3 md:p-4">
-                          <div className="flex space-x-1 md:space-x-2">
-                            {editingUserId === user.id ? (
-                              <>
-                                <button
-                                  onClick={() => handleSave(user.id)}
-                                  className="text-green-500 hover:text-green-400 p-1 rounded transition-colors"
-                                  title="Save"
-                                >
-                                  <Save className="w-3 h-3 md:w-4 md:h-4" />
-                                </button>
-                                <button
-                                  onClick={handleCancel}
-                                  className="text-red-500 hover:text-red-400 p-1 rounded transition-colors"
-                                  title="Cancel"
-                                >
-                                  <X className="w-3 h-3 md:w-4 md:h-4" />
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => handleEdit(user)}
-                                  className="text-accent-gold hover:text-yellow-400 p-1 rounded transition-colors"
-                                  title="Edit User"
-                                >
-                                  <Edit className="w-3 h-3 md:w-4 md:h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteUser(user.id)}
-                                  className="text-red-400 hover:text-red-300 p-1 rounded transition-colors"
-                                  title="Delete User"
-                                >
-                                  <Trash2 className="w-3 h-3 md:w-4 md:h-4" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-600 text-white">
+                            <Clock className="w-3 h-3 mr-1" />
+                            Pending
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          user.role === 'admin' ? 'bg-purple-600 text-white' :
+                          user.role === 'moderator' ? 'bg-blue-600 text-white' :
+                          'bg-gray-600 text-white'
+                        }`}>
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="p-4 text-sm text-gray-400">
+                        {user.last_login 
+                          ? new Date(user.last_login).toLocaleString()
+                          : 'Never'
+                        }
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center space-x-2">
+                          {isUserOnline(user.id) ? (
+                            <>
+                              <Wifi className="w-4 h-4 text-green-400" />
+                              <span className="text-green-400 text-sm">Online</span>
+                            </>
+                          ) : (
+                            <>
+                              <WifiOff className="w-4 h-4 text-gray-500" />
+                              <span className="text-gray-500 text-sm">
+                                {getOnlineStatus(user.id)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex space-x-2">
+                          {editingUserId === user.id ? (
+                            <>
+                              <button
+                                onClick={() => handleSave(user.id)}
+                                className="text-green-500 hover:text-green-400 p-1 rounded transition-colors"
+                                title="Save"
+                              >
+                                <Save className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={handleCancel}
+                                className="text-red-500 hover:text-red-400 p-1 rounded transition-colors"
+                                title="Cancel"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleEdit(user)}
+                                className="text-accent-gold hover:text-yellow-400 p-1 rounded transition-colors"
+                                title="Edit User"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(user.id)}
+                                className="text-red-400 hover:text-red-300 p-1 rounded transition-colors"
+                                title="Delete User"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
-                {filteredUsers.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    <Users className="w-8 h-8 md:w-12 md:h-12 mx-auto mb-4 opacity-50" />
-                    <p>No users found matching your criteria</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Load More Button */}
-              {pagination.hasMore && (
-                <div className="flex justify-center pt-6">
-                  <button
-                    onClick={loadMoreUsers}
-                    disabled={refreshing}
-                    className="btn-primary flex items-center space-x-2 disabled:opacity-50"
-                  >
-                    {refreshing ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        <span>Loading...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Load More Users</span>
-                      </>
-                    )}
-                  </button>
+              {filteredUsers.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No users found matching your criteria</p>
                 </div>
               )}
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-              {filteredUsers.map((user) => (
-                <div key={user.id} className="card p-4 md:p-6 hover:border-accent-gold transition-colors">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 md:w-12 md:h-12 bg-accent-gold rounded-full flex items-center justify-center text-black font-bold text-lg">
-                        {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="font-semibold text-primary-white text-sm md:text-base truncate">{user.name || 'No name'}</h3>
-                        <p className="text-xs text-gray-400 truncate">{user.email}</p>
-                      </div>
+          </div>
+        ) : (
+          /* Card View */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredUsers.map(user => (
+              <div key={user.id} className="card p-6 hover:border-accent-gold transition-colors">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-12 h-12 bg-accent-gold rounded-full flex items-center justify-center text-black font-bold text-lg">
+                      {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={selectedUsers.includes(user.id)}
-                      onChange={() => toggleUserSelection(user.id)}
-                      className="rounded border-gray-600 bg-dark-gray text-accent-gold focus:ring-accent-gold"
-                    />
+                    <div>
+                      <h3 className="font-semibold text-primary-white">{user.name || 'No name'}</h3>
+                      <p className="text-sm text-gray-400">{user.email}</p>
+                    </div>
                   </div>
+                  <input
+                    type="checkbox"
+                    checked={selectedUsers.includes(user.id)}
+                    onChange={() => toggleUserSelection(user.id)}
+                    className="rounded border-gray-600 bg-dark-gray text-accent-gold focus:ring-accent-gold"
+                  />
+                </div>
 
-                  <div className="space-y-2 md:space-y-3 mb-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-400">Status:</span>
-                      {user.approved ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-600 text-white">
-                          Approved
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-600 text-white">
-                          Pending
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-400">Role:</span>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        user.role === 'admin' ? 'bg-purple-600 text-white' :
-                        user.role === 'moderator' ? 'bg-blue-600 text-white' :
-                        'bg-gray-600 text-white'
-                      }`}>
-                        {user.role}
+                <div className="space-y-3 mb-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-400">Status:</span>
+                    {user.approved ? (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-600 text-white">
+                        Approved
                       </span>
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-400">Online:</span>
-                      <div className="flex items-center space-x-1">
-                        {isUserOnline(user.id) ? (
-                          <>
-                            <Wifi className="w-3 h-3 text-green-400" />
-                            <span className="text-green-400 text-xs">Online</span>
-                          </>
-                        ) : (
-                          <>
-                            <WifiOff className="w-3 h-3 text-gray-500" />
-                            <span className="text-gray-500 text-xs">Offline</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {user.last_login && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-400">Last Login:</span>
-                        <span className="text-xs text-gray-400">
-                          {new Date(user.last_login).toLocaleDateString()}
-                        </span>
-                      </div>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-600 text-white">
+                        Pending
+                      </span>
                     )}
                   </div>
 
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleEdit(user)}
-                      className="flex-1 btn-primary py-2 px-3 rounded text-sm font-medium"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDeleteUser(user.id)}
-                      className="bg-red-600 text-white py-2 px-3 rounded text-sm font-medium hover:bg-red-700 transition-colors"
-                    >
-                      Delete
-                    </button>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-400">Role:</span>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      user.role === 'admin' ? 'bg-purple-600 text-white' :
+                      user.role === 'moderator' ? 'bg-blue-600 text-white' :
+                      'bg-gray-600 text-white'
+                    }`}>
+                      {user.role}
+                    </span>
                   </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-400">Online:</span>
+                    <div className="flex items-center space-x-1">
+                      {isUserOnline(user.id) ? (
+                        <>
+                          <Wifi className="w-3 h-3 text-green-400" />
+                          <span className="text-green-400 text-xs">Online</span>
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="w-3 h-3 text-gray-500" />
+                          <span className="text-gray-500 text-xs">Offline</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {user.last_login && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-400">Last Login:</span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(user.last_login).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )
+
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => handleEdit(user)}
+                    className="flex-1 bg-accent-gold text-black py-2 px-3 rounded text-sm font-medium hover:bg-yellow-500 transition-colors"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDeleteUser(user.id)}
+                    className="bg-red-600 text-white py-2 px-3 rounded text-sm font-medium hover:bg-red-700 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
 
         {/* Add User Modal */}
         {showAddUserModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-              <div className="p-4 md:p-6 border-b border-gray-700">
+              <div className="p-6 border-b border-gray-700">
                 <h3 className="text-lg font-semibold text-primary-white">Add New User</h3>
               </div>
-              <div className="p-4 md:p-6 space-y-4">
+              <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     Email Address *
@@ -1237,10 +1005,10 @@ export default function AdminUsersPage() {
                   <p>A temporary password will be generated automatically. The user will need to reset their password on first login.</p>
                 </div>
               </div>
-              <div className="p-4 md:p-6 border-t border-gray-700 flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3">
+              <div className="p-6 border-t border-gray-700 flex justify-end space-x-3">
                 <button
                   onClick={() => setShowAddUserModal(false)}
-                  className="px-4 py-2 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded transition-colors text-sm"
+                  className="px-4 py-2 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded transition-colors"
                   disabled={addingUser}
                 >
                   Cancel
@@ -1248,7 +1016,7 @@ export default function AdminUsersPage() {
                 <button
                   onClick={handleAddUser}
                   disabled={addingUser || !newUserForm.email}
-                  className="btn-primary flex items-center justify-center space-x-2 text-sm disabled:opacity-50"
+                  className="btn-primary flex items-center space-x-2 disabled:opacity-50"
                 >
                   {addingUser ? (
                     <>
@@ -1269,12 +1037,12 @@ export default function AdminUsersPage() {
 
         {/* Edit Modal */}
         {editingUserId && (
-          <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-dark-gray border border-gray-700 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-              <div className="p-4 md:p-6 border-b border-gray-700">
+              <div className="p-6 border-b border-gray-700">
                 <h3 className="text-lg font-semibold text-primary-white">Edit User</h3>
               </div>
-              <div className="p-4 md:p-6 space-y-4">
+              <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     Name
@@ -1353,16 +1121,16 @@ export default function AdminUsersPage() {
                   </select>
                 </div>
               </div>
-              <div className="p-4 md:p-6 border-t border-gray-700 flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3">
+              <div className="p-6 border-t border-gray-700 flex justify-end space-x-3">
                 <button
                   onClick={handleCancel}
-                  className="px-4 py-2 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded transition-colors text-sm"
+                  className="px-4 py-2 border border-gray-600 text-gray-300 hover:bg-gray-700 rounded transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => handleSave(editingUserId)}
-                  className="btn-primary text-sm"
+                  className="btn-primary"
                 >
                   Save Changes
                 </button>

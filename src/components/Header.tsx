@@ -2,7 +2,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { getSafeUserProfile, supabase } from '@/lib/supabase'
 import { User, LogOut, Shield, Menu, X } from 'lucide-react'
 
@@ -11,85 +10,46 @@ export default function Header() {
   const [userProfile, setUserProfile] = useState<any>(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const router = useRouter()
 
-  // Optimized authentication with router
-  useEffect(() => {
-    let mounted = true
-
-    const initializeAuth = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!mounted) return
-        
-        setUser(user)
-        if (user) {
-          const profile = await getSafeUserProfile(user.id)
-          if (mounted) {
-            setUserProfile(profile)
-          }
-        }
-      } catch (error) {
-        console.error('Auth initialization error:', error)
-      }
+  // components/Header.tsx - Updated useEffect
+useEffect(() => {
+  const getUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    setUser(user)
+    if (user) {
+      const profile = await getSafeUserProfile(user.id)
+      setUserProfile(profile)
     }
+  }
+  getUser()
 
-    initializeAuth()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return
-      
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-      
-      if (currentUser) {
-        const profile = await getSafeUserProfile(currentUser.id)
-        if (mounted) {
-          setUserProfile(profile)
-        }
-      } else {
-        setUserProfile(null)
-      }
-    })
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
-  }, [])
-
-  // FIXED: Logout with redirect to login page
-  const handleSignOut = async () => {
-    try {
-      console.log('🚪 Logging out...');
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        console.error('Logout error:', error)
-        return
-      }
-      
-      // Clear local state
-      setUser(null)
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const currentUser = session?.user ?? null
+    setUser(currentUser)
+    
+    if (currentUser) {
+      const profile = await getSafeUserProfile(currentUser.id)
+      setUserProfile(profile)
+    } else {
       setUserProfile(null)
-      setShowDropdown(false)
-      setMobileMenuOpen(false)
-      
-      console.log('✅ Logged out, redirecting to login...');
-      
-      // Redirect to login page
-      router.push('/login')
-      router.refresh() // Refresh the router to ensure clean state
-      
-    } catch (error) {
-      console.error('Logout error:', error)
     }
+  })
+
+  return () => subscription.unsubscribe()
+}, [])
+
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    setShowDropdown(false)
+    setMobileMenuOpen(false)
   }
 
   return (
     <header className="bg-dark-gray border-b border-gray-700">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center py-4">
-          {/* Logo */}
+          {/* Logo - Fixed alignment */}
           <div className="flex items-center space-x-4">
             <div className="flex flex-col">
               <img 
@@ -154,15 +114,14 @@ export default function Header() {
                       
                       {/* Show Admin Panel for Admin and Moderator roles */}
                       {(userProfile?.role === 'admin' || userProfile?.role === 'moderator') && (
-                        <a
-                          href="/admin/users"
-                          className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                          onClick={() => setShowDropdown(false)}
-                        >
-                          <Shield className="w-4 h-4" />
-                          <span>Admin Panel</span>
-                        </a>
-                      )}
+  <a
+    href="/admin/users"
+    className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors"
+  >
+    <Shield className="w-4 h-4" />
+    <span>Admin Panel</span>
+  </a>
+)}
                       
                       <a
                         href="/profile"
@@ -268,4 +227,8 @@ export default function Header() {
       `}</style>
     </header>
   )
+}
+
+function updateUserLastLogin(id: string) {
+    throw new Error('Function not implemented.')
 }

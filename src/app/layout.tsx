@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import Header from '@/components/Header'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 export const metadata: Metadata = {
   title: 'RAPID iREPORT - Smart Reporting System',
@@ -17,11 +18,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-primary-black text-primary-white">
-        <Header />
-        <main className="max-w-6xl mx-auto px-4 py-8">
-          {children}
-        </main>
+      <body>
+        <ErrorBoundary>
+          <Header />
+          <main className="min-h-screen bg-dark-gray">
+            {children}
+          </main>
+        </ErrorBoundary>
       </body>
     </html>
   )
