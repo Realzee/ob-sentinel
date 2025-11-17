@@ -1,165 +1,203 @@
+// lib/supabase.ts
 import { createClient } from '@supabase/supabase-js'
 
-// Check if we're in browser environment
-const isBrowser = typeof window !== 'undefined'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Get environment variables
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// Validate environment variables
-if (!supabaseUrl || !supabaseAnonKey) {
-  if (isBrowser) {
-    console.warn('❌ Missing Supabase environment variables')
-  }
-}
-
-// Create Supabase client with optimized configuration
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key',
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      flowType: 'pkce',
-      storage: isBrowser ? localStorage : undefined,
-      storageKey: 'rapid-ireport-auth',
-      debug: false,
-      autoRefreshToken: true
-    },
-    global: {
-      headers: {
-        'X-Client-Info': 'rapid-ireport'
-      }
-    }
-  }
-)
-
-// Helper to check if we have real credentials
 export const hasValidSupabaseConfig = !!(supabaseUrl && supabaseAnonKey)
 
-// Helper function to get current SA time
-export function getSATimestamp(): string {
-  return new Date().toLocaleString('en-ZA', {
-    timeZone: 'Africa/Johannesburg',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  })
+// User profile management
+export interface UserProfile {
+  id: string
+  email: string
+  name: string | null
+  approved: boolean
+  role: 'user' | 'moderator' | 'admin'
+  last_login: string | null
+  created_at: string
+  updated_at: string
+  phone?: string
+  location?: string
 }
 
-// Improved user creation with better error handling
-export async function ensureUserExists(userId: string, userData: { email: string; name?: string; phone?: string }) {
-  if (!hasValidSupabaseConfig) {
-    console.warn('Supabase not configured - skipping user creation')
-    return null
-  }
-
+// Ensure user exists in database
+export const ensureUserExists = async (userId: string, userData: { email: string; name?: string }) => {
   try {
-    // Check if user exists with better error handling
-    const { data: existingUser, error: checkError } = await supabase
-      .from('users')
-      .select('id, email, name')
+    const { data: existingUser, error: fetchError } = await supabase
+      .from('profiles')
+      .select('*')
       .eq('id', userId)
-      .maybeSingle() // Use maybeSingle to avoid throwing on no rows
+      .single()
 
-    if (checkError) {
-      console.warn('Error checking user existence:', checkError)
-      // Continue to try creation anyway
-    }
-
-    // If user doesn't exist, create them
-    if (!existingUser) {
-      console.log('Creating new user profile for:', userData.email)
-      
-      const { data: newUser, error: createError } = await supabase
-        .from('users')
-        .insert([
-          {
-            id: userId,
-            email: userData.email,
-            name: userData.name || userData.email.split('@')[0],
-            phone: userData.phone || '',
-            popia_consent: true,
-            consent_given_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ])
-        .select()
-        .single()
-
-      if (createError) {
-        console.error('Error creating user profile:', createError)
-        
-        // If it's a duplicate error, the user might have been created by another process
-        if (createError.code === '23505') { // Unique violation
-          console.log('User already exists, fetching existing user...')
-          const { data: fetchedUser } = await supabase
-            .from('users')
-            .select('id, email, name')
-            .eq('id', userId)
-            .single()
-          return fetchedUser
-        }
-        return null
-      }
-      
-      console.log('User profile created successfully:', newUser?.email)
-      return newUser
-    }
-
-    console.log('User profile already exists:', existingUser.email)
-    return existingUser
-  } catch (error) {
-    console.error('Unexpected error in ensureUserExists:', error)
-    return null
-  }
-}
-
-// Improved auth state management
-export async function getCurrentUser() {
-  if (!hasValidSupabaseConfig) {
-    console.warn('Supabase not configured')
-    return null
-  }
-  
-  try {
-    const { data: { user }, error } = await supabase.auth.getUser()
-    
-    if (error) {
-      console.warn('Auth session issue (non-critical):', error.message)
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error('Error fetching user:', fetchError)
       return null
     }
-    
-    return user
+
+    if (existingUser) {
+      return existingUser
+    }
+
+    // Create new user profile
+    const { data: newUser, error: createError } = await supabase
+      .from('profiles')
+      .insert([
+        {
+          id: userId,
+          email: userData.email,
+          name: userData.name || null,
+          approved: false,
+          role: 'user',
+          last_login: new Date().toISOString()
+        }
+      ])
+      .select()
+      .single()
+
+    if (createError) {
+      console.error('Error creating user:', createError)
+      return null
+    }
+
+    return newUser
   } catch (error) {
-    console.warn('Unexpected error getting current user:', error)
+    console.error('Error in ensureUserExists:', error)
     return null
   }
 }
 
-// Safe database operations with error handling
-export async function safeDbOperation<T>(
-  operation: () => Promise<{ data: T | null; error: any }>,
-  fallback: T | null = null
-): Promise<T | null> {
+// Alias for ensureUserExists (for backward compatibility)
+export const ensureUserProfile = ensureUserExists
+
+// Get user profile safely
+export const getSafeUserProfile = async (userId: string): Promise<UserProfile | null> => {
   try {
-    const { data, error } = await operation()
-    
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+
     if (error) {
-      console.warn('Database operation failed:', error)
-      return fallback
+      console.error('Error fetching user profile:', error)
+      return null
     }
-    
+
+    return profile
+  } catch (error) {
+    console.error('Error in getSafeUserProfile:', error)
+    return null
+  }
+}
+
+// Get all users (for admin)
+export const getAllUsers = async (): Promise<UserProfile[]> => {
+  try {
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching all users:', error)
+      return []
+    }
+
+    return profiles || []
+  } catch (error) {
+    console.error('Error in getAllUsers:', error)
+    return []
+  }
+}
+
+// Update user profile
+export const updateUserProfile = async (userId: string, updates: Partial<UserProfile>) => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error updating user profile:', error)
+      return null
+    }
+
     return data
   } catch (error) {
-    console.warn('Unexpected error in database operation:', error)
-    return fallback
+    console.error('Error in updateUserProfile:', error)
+    return null
+  }
+}
+
+// Online users functionality
+export interface OnlineUser {
+  id: string
+  user_id: string
+  last_seen: string
+  online: boolean
+  profiles: UserProfile
+}
+
+export const updateUserPresence = async (userId: string) => {
+  try {
+    const { error } = await supabase
+      .from('online_users')
+      .upsert({
+        user_id: userId,
+        last_seen: new Date().toISOString(),
+        online: true
+      })
+
+    if (error) {
+      console.error('Error updating user presence:', error)
+    }
+  } catch (error) {
+    console.error('Error in updateUserPresence:', error)
+  }
+}
+
+export const getOnlineUsers = async (): Promise<OnlineUser[]> => {
+  try {
+    const { data: onlineUsers, error } = await supabase
+      .from('online_users')
+      .select(`
+        *,
+        profiles (*)
+      `)
+      .gte('last_seen', new Date(Date.now() - 5 * 60 * 1000).toISOString()) // Last 5 minutes
+
+    if (error) {
+      console.error('Error fetching online users:', error)
+      return []
+    }
+
+    return onlineUsers || []
+  } catch (error) {
+    console.error('Error in getOnlineUsers:', error)
+    return []
+  }
+}
+
+// Clean up old online users
+export const cleanupOnlineUsers = async () => {
+  try {
+    const { error } = await supabase
+      .from('online_users')
+      .delete()
+      .lt('last_seen', new Date(Date.now() - 10 * 60 * 1000).toISOString()) // Older than 10 minutes
+
+    if (error) {
+      console.error('Error cleaning up online users:', error)
+    }
+  } catch (error) {
+    console.error('Error in cleanupOnlineUsers:', error)
   }
 }
