@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { reportsAPI, ReportStatus } from '@/lib/supabase';
+import { reportsAPI, ReportStatus, supabase } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
+import Image from 'next/image';
 
 interface CrimeReportModalProps {
   isOpen: boolean;
@@ -12,6 +13,9 @@ interface CrimeReportModalProps {
   editReport?: any;
 }
 
+// Define severity type to match the expected union type
+type SeverityType = 'low' | 'medium' | 'high' | 'critical';
+
 export default function CrimeReportModal({ 
   isOpen, 
   onClose, 
@@ -20,16 +24,21 @@ export default function CrimeReportModal({
   editReport 
 }: CrimeReportModalProps) {
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     location: '',
     incident_time: '',
     report_type: '',
-    severity: 'medium',
+    severity: 'medium' as SeverityType,
     witness_info: '',
     contact_allowed: false
   });
+
+  const [images, setImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
 
   // Confirmation modal state
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -47,6 +56,10 @@ export default function CrimeReportModal({
         witness_info: editReport.witness_info || '',
         contact_allowed: editReport.contact_allowed || false
       });
+      // Load existing images if editing
+      if (editReport.evidence_images) {
+        setUploadedImageUrls(editReport.evidence_images);
+      }
     } else {
       setFormData({
         title: '',
@@ -58,12 +71,80 @@ export default function CrimeReportModal({
         witness_info: '',
         contact_allowed: false
       });
+      setUploadedImageUrls([]);
     }
-  }, [editReport, isOpen]); // Added isOpen to reset when modal opens
+    setImages([]);
+    setImagePreviews([]);
+  }, [editReport, isOpen]);
 
   const showSuccess = (message: string) => {
     setSuccessMessage(message);
     setShowSuccessModal(true);
+  };
+
+  const handleImageUpload = async (files: FileList) => {
+    const newImages: File[] = [];
+    const newPreviews: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith('image/')) {
+        newImages.push(file);
+        // Create preview
+        const previewUrl = URL.createObjectURL(file);
+        newPreviews.push(previewUrl);
+      }
+    }
+
+    setImages(prev => [...prev, ...newImages]);
+    setImagePreviews(prev => [...prev, ...newPreviews]);
+  };
+
+  const removeImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => {
+      URL.revokeObjectURL(prev[index]);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const removeUploadedImage = (index: number) => {
+    setUploadedImageUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadImagesToStorage = async (reportId: string): Promise<string[]> => {
+    if (images.length === 0) return uploadedImageUrls;
+
+    setUploading(true);
+    const uploadedUrls: string[] = [...uploadedImageUrls];
+
+    try {
+      for (const image of images) {
+        const fileExt = image.name.split('.').pop();
+        const fileName = `${reportId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('crime-evidence')
+          .upload(fileName, image);
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('crime-evidence')
+          .getPublicUrl(fileName);
+
+        uploadedUrls.push(publicUrl);
+      }
+    } catch (error) {
+      console.error('Error uploading images:', error);
+      throw error;
+    } finally {
+      setUploading(false);
+    }
+
+    return uploadedUrls;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,26 +156,38 @@ export default function CrimeReportModal({
         title: formData.title,
         description: formData.description,
         location: formData.location,
-        incident_time: formData.incident_time ? new Date(formData.incident_time).toISOString() : null,
+        incident_time: formData.incident_time ? new Date(formData.incident_time).toISOString() : undefined,
         report_type: formData.report_type,
         severity: formData.severity,
         witness_info: formData.witness_info,
-        evidence_images: [],
+        evidence_images: uploadedImageUrls,
         contact_allowed: Boolean(formData.contact_allowed),
         reported_by: user.id,
         status: 'pending' as ReportStatus
       };
 
+      let result;
       if (editReport) {
-        await reportsAPI.updateCrimeReport(editReport.id, reportData);
+        // Upload new images and combine with existing
+        const allImageUrls = await uploadImagesToStorage(editReport.id);
+        result = await reportsAPI.updateCrimeReport(editReport.id, {
+          ...reportData,
+          evidence_images: allImageUrls
+        });
       } else {
-        await reportsAPI.createCrimeReport(reportData);
+        result = await reportsAPI.createCrimeReport(reportData);
+        // Upload images for new report
+        if (images.length > 0) {
+          const imageUrls = await uploadImagesToStorage(result.id);
+          await reportsAPI.updateCrimeReport(result.id, {
+            evidence_images: imageUrls
+          });
+        }
       }
 
       onReportCreated();
       onClose();
       
-      // Show success message
       showSuccess(editReport ? 'Crime report updated successfully!' : 'Crime report created successfully!');
     } catch (error) {
       console.error('Error saving crime report:', error);
@@ -112,7 +205,30 @@ export default function CrimeReportModal({
     }));
   };
 
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const location = `${latitude}, ${longitude}`;
+          setFormData(prev => ({
+            ...prev,
+            location: location
+          }));
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          alert('Unable to get current location. Please enter manually.');
+        }
+      );
+    } else {
+      alert('Geolocation is not supported by this browser.');
+    }
+  };
+
   const handleModalClose = () => {
+    // Clean up image preview URLs
+    imagePreviews.forEach(url => URL.revokeObjectURL(url));
     setFormData({
       title: '',
       description: '',
@@ -123,6 +239,9 @@ export default function CrimeReportModal({
       witness_info: '',
       contact_allowed: false
     });
+    setImages([]);
+    setImagePreviews([]);
+    setUploadedImageUrls([]);
     onClose();
   };
 
@@ -226,15 +345,28 @@ export default function CrimeReportModal({
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     Incident Location *
                   </label>
-                  <input
-                    type="text"
-                    name="location"
-                    value={formData.location}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                    placeholder="123 Main Street, City, State"
-                  />
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      name="location"
+                      value={formData.location}
+                      onChange={handleChange}
+                      required
+                      className="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                      placeholder="123 Main Street, City or coordinates"
+                    />
+                    <button
+                      type="button"
+                      onClick={getCurrentLocation}
+                      className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors flex items-center space-x-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="hidden sm:inline">Current</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div>
@@ -249,6 +381,84 @@ export default function CrimeReportModal({
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   />
                 </div>
+              </div>
+
+              {/* Image Upload */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Evidence Images
+                </label>
+                <div className="border-2 border-dashed border-gray-600 rounded-xl p-6 text-center">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => e.target.files && handleImageUpload(e.target.files)}
+                    className="hidden"
+                    id="image-upload"
+                  />
+                  <label
+                    htmlFor="image-upload"
+                    className="cursor-pointer flex flex-col items-center justify-center space-y-2"
+                  >
+                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-gray-400 text-sm">Click to upload images</span>
+                    <span className="text-gray-500 text-xs">PNG, JPG, JPEG up to 5MB</span>
+                  </label>
+                </div>
+
+                {/* Image Previews */}
+                {(imagePreviews.length > 0 || uploadedImageUrls.length > 0) && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-gray-300 mb-2">Uploaded Images:</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                      {/* Existing uploaded images */}
+                      {uploadedImageUrls.map((url, index) => (
+                        <div key={`existing-${index}`} className="relative group">
+                          <Image
+                            src={url}
+                            alt={`Evidence ${index + 1}`}
+                            width={100}
+                            height={100}
+                            className="w-full h-24 object-cover rounded-lg"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeUploadedImage(index)}
+                            className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                      {/* New image previews */}
+                      {imagePreviews.map((preview, index) => (
+                        <div key={`new-${index}`} className="relative group">
+                          <Image
+                            src={preview}
+                            alt={`Preview ${index + 1}`}
+                            width={100}
+                            height={100}
+                            className="w-full h-24 object-cover rounded-lg"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(index)}
+                            className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Description */}
@@ -308,10 +518,10 @@ export default function CrimeReportModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || uploading}
                   className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
                 >
-                  {loading ? (
+                  {(loading || uploading) ? (
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                   ) : (
                     <>

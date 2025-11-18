@@ -14,6 +14,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export type UserRole = 'admin' | 'moderator' | 'controller' | 'user';
 export type UserStatus = 'pending' | 'active' | 'suspended';
 export type ReportStatus = 'pending' | 'under_review' | 'resolved' | 'rejected';
+export type SeverityType = 'low' | 'medium' | 'high' | 'critical';
 
 export interface Profile {
   id: string;
@@ -34,20 +35,17 @@ export interface VehicleAlert {
   vehicle_make: string;
   vehicle_model: string;
   vehicle_color: string;
-  year: number | null;
+  year?: number;
   reason: string;
   last_seen_location: string;
-  last_seen_time: string | null;
+  last_seen_time?: string;
+  severity: SeverityType;
+  notes?: string;
+  evidence_images?: string[];
   reported_by: string;
   status: ReportStatus;
-  severity: string;
-  notes: string | null;
   created_at: string;
   updated_at: string;
-  profiles?: {
-    full_name: string;
-    email: string;
-  };
 }
 
 export interface CrimeReport {
@@ -55,21 +53,24 @@ export interface CrimeReport {
   title: string;
   description: string;
   location: string;
-  incident_time: string | null;
+  incident_time?: string;
   report_type: string;
+  severity: SeverityType;
+  witness_info?: string;
+  evidence_images?: string[];
+  contact_allowed: boolean;
   reported_by: string;
   status: ReportStatus;
-  severity: string;
-  evidence_images: string[];
-  witness_info: string | null;
-  contact_allowed: boolean;
   created_at: string;
   updated_at: string;
-  profiles?: {
-    full_name: string;
-    email: string;
-  };
 }
+
+// Database insert/update types
+export type VehicleAlertInsert = Omit<VehicleAlert, 'id' | 'created_at' | 'updated_at'>;
+export type VehicleAlertUpdate = Partial<Omit<VehicleAlert, 'id' | 'created_at' | 'updated_at'>>;
+
+export type CrimeReportInsert = Omit<CrimeReport, 'id' | 'created_at' | 'updated_at'>;
+export type CrimeReportUpdate = Partial<Omit<CrimeReport, 'id' | 'created_at' | 'updated_at'>>;
 
 // Auth API
 export const authAPI = {
@@ -80,7 +81,7 @@ export const authAPI = {
 
       // Check if profile exists
       const { data: profile, error: profileError } = await supabase
-        .from('profiles')
+        .from('user_profiles')
         .select('*')
         .eq('id', user.id)
         .single();
@@ -106,7 +107,7 @@ export const authAPI = {
   async createProfile(userId: string, email: string) {
     try {
       const { data: profile, error } = await supabase
-        .from('profiles')
+        .from('user_profiles')
         .insert([{ 
           id: userId, 
           email, 
@@ -135,7 +136,7 @@ export const authAPI = {
   async getAllUsers() {
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('user_profiles')
         .select('*')
         .order('created_at', { ascending: false });
       
@@ -150,7 +151,7 @@ export const authAPI = {
   async updateUserRole(userId: string, updates: Partial<Profile>) {
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('user_profiles')
         .update(updates)
         .eq('id', userId)
         .select()
@@ -167,7 +168,7 @@ export const authAPI = {
   async makeUserAdmin(userId: string) {
     try {
       const { data: profile, error } = await supabase
-        .from('profiles')
+        .from('user_profiles')
         .update({ 
           role: 'admin', 
           status: 'active',
@@ -192,8 +193,8 @@ export const reportsAPI = {
   async getVehicleAlerts() {
     try {
       const { data, error } = await supabase
-        .from('alerts_vehicles')
-        .select('*, profiles:reported_by(full_name, email)')
+        .from('vehicle_alerts')
+        .select('*, user_profiles:reported_by(full_name, email)')
         .order('created_at', { ascending: false });
       
       if (error) {
@@ -207,10 +208,10 @@ export const reportsAPI = {
     }
   },
 
-  async createVehicleAlert(alertData: any) {
+  async createVehicleAlert(alertData: VehicleAlertInsert) {
     try {
       const { data, error } = await supabase
-        .from('alerts_vehicles')
+        .from('vehicle_alerts')
         .insert([alertData])
         .select()
         .single();
@@ -223,10 +224,10 @@ export const reportsAPI = {
     }
   },
 
-  async updateVehicleAlert(id: string, updates: Partial<VehicleAlert>) {
+  async updateVehicleAlert(id: string, updates: VehicleAlertUpdate) {
     try {
       const { data, error } = await supabase
-        .from('alerts_vehicles')
+        .from('vehicle_alerts')
         .update(updates)
         .eq('id', id)
         .select()
@@ -243,7 +244,7 @@ export const reportsAPI = {
   async deleteVehicleAlert(id: string) {
     try {
       const { data, error } = await supabase
-        .from('alerts_vehicles')
+        .from('vehicle_alerts')
         .delete()
         .eq('id', id)
         .select()
@@ -262,7 +263,7 @@ export const reportsAPI = {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
-        .select('*, profiles:reported_by(full_name, email)')
+        .select('*, user_profiles:reported_by(full_name, email)')
         .order('created_at', { ascending: false });
       
       if (error) {
@@ -276,7 +277,7 @@ export const reportsAPI = {
     }
   },
 
-  async createCrimeReport(reportData: any) {
+  async createCrimeReport(reportData: CrimeReportInsert) {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
@@ -292,7 +293,7 @@ export const reportsAPI = {
     }
   },
 
-  async updateCrimeReport(id: string, updates: Partial<CrimeReport>) {
+  async updateCrimeReport(id: string, updates: CrimeReportUpdate) {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
@@ -330,7 +331,7 @@ export const reportsAPI = {
   async getDashboardStats() {
     try {
       const [vehicles, crimes] = await Promise.all([
-        supabase.from('alerts_vehicles').select('*', { count: 'exact' }),
+        supabase.from('vehicle_alerts').select('*', { count: 'exact' }),
         supabase.from('crime_reports').select('*', { count: 'exact' })
       ]);
 
@@ -393,8 +394,8 @@ export const reportsAPI = {
   async searchVehicleAlerts(query: string) {
     try {
       const { data, error } = await supabase
-        .from('alerts_vehicles')
-        .select('*, profiles:reported_by(full_name, email)')
+        .from('vehicle_alerts')
+        .select('*, user_profiles:reported_by(full_name, email)')
         .or(`license_plate.ilike.%${query}%,vehicle_make.ilike.%${query}%,vehicle_model.ilike.%${query}%,last_seen_location.ilike.%${query}%`)
         .order('created_at', { ascending: false });
       
@@ -410,7 +411,7 @@ export const reportsAPI = {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
-        .select('*, profiles:reported_by(full_name, email)')
+        .select('*, user_profiles:reported_by(full_name, email)')
         .or(`title.ilike.%${query}%,description.ilike.%${query}%,location.ilike.%${query}%,report_type.ilike.%${query}%`)
         .order('created_at', { ascending: false });
       
@@ -426,8 +427,8 @@ export const reportsAPI = {
   async getVehicleAlertsByStatus(status: ReportStatus) {
     try {
       const { data, error } = await supabase
-        .from('alerts_vehicles')
-        .select('*, profiles:reported_by(full_name, email)')
+        .from('vehicle_alerts')
+        .select('*, user_profiles:reported_by(full_name, email)')
         .eq('status', status)
         .order('created_at', { ascending: false });
       
@@ -443,7 +444,7 @@ export const reportsAPI = {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
-        .select('*, profiles:reported_by(full_name, email)')
+        .select('*, user_profiles:reported_by(full_name, email)')
         .eq('status', status)
         .order('created_at', { ascending: false });
       
@@ -459,8 +460,8 @@ export const reportsAPI = {
   async getUserVehicleAlerts(userId: string) {
     try {
       const { data, error } = await supabase
-        .from('alerts_vehicles')
-        .select('*, profiles:reported_by(full_name, email)')
+        .from('vehicle_alerts')
+        .select('*, user_profiles:reported_by(full_name, email)')
         .eq('reported_by', userId)
         .order('created_at', { ascending: false });
       
@@ -476,7 +477,7 @@ export const reportsAPI = {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
-        .select('*, profiles:reported_by(full_name, email)')
+        .select('*, user_profiles:reported_by(full_name, email)')
         .eq('reported_by', userId)
         .order('created_at', { ascending: false });
       
@@ -511,7 +512,7 @@ export const dispatchAPI = {
     try {
       const { data, error } = await supabase
         .from('dispatch_logs')
-        .select('*, profiles:assigned_to(full_name, badge_number)')
+        .select('*, user_profiles:assigned_to(full_name, badge_number)')
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -526,7 +527,7 @@ export const dispatchAPI = {
     try {
       const { data, error } = await supabase
         .from('dispatch_logs')
-        .select('*, profiles:assigned_to(full_name, badge_number)')
+        .select('*, user_profiles:assigned_to(full_name, badge_number)')
         .eq('incident_id', incidentId)
         .eq('incident_type', incidentType)
         .order('created_at', { ascending: false });
@@ -546,13 +547,13 @@ export const utilsAPI = {
     try {
       const [vehicles, crimes] = await Promise.all([
         supabase
-          .from('alerts_vehicles')
-          .select('id, license_plate, status, severity, created_at, reported_by, profiles:reported_by(full_name)')
+          .from('vehicle_alerts')
+          .select('id, license_plate, status, severity, created_at, reported_by, user_profiles:reported_by(full_name)')
           .order('created_at', { ascending: false })
           .limit(limit),
         supabase
           .from('crime_reports')
-          .select('id, title, status, severity, created_at, reported_by, profiles:reported_by(full_name)')
+          .select('id, title, status, severity, created_at, reported_by, user_profiles:reported_by(full_name)')
           .order('created_at', { ascending: false })
           .limit(limit)
       ]);
@@ -574,8 +575,8 @@ export const utilsAPI = {
   async getSystemStats() {
     try {
       const [users, vehicles, crimes, dispatches] = await Promise.all([
-        supabase.from('profiles').select('*', { count: 'exact' }),
-        supabase.from('alerts_vehicles').select('*', { count: 'exact' }),
+        supabase.from('user_profiles').select('*', { count: 'exact' }),
+        supabase.from('vehicle_alerts').select('*', { count: 'exact' }),
         supabase.from('crime_reports').select('*', { count: 'exact' }),
         supabase.from('dispatch_logs').select('*', { count: 'exact' })
       ]);
@@ -601,6 +602,15 @@ export const utilsAPI = {
       };
     }
   }
+};
+
+// Type guards
+export const isVehicleAlert = (report: any): report is VehicleAlert => {
+  return 'license_plate' in report;
+};
+
+export const isCrimeReport = (report: any): report is CrimeReport => {
+  return 'title' in report;
 };
 
 // Export individual functions for backward compatibility

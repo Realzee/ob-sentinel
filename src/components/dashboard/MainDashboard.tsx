@@ -7,27 +7,38 @@ import VehicleReportModal from '@/components/reports/VehicleReportModal';
 import CrimeReportModal from '@/components/reports/CrimeReportModal';
 import ReportActionsModal from '@/components/reports/ReportActionsModal';
 import UserManagementModal from '@/components/admin/UserManagementModal';
+import LocationPreviewModal from '@/components/reports/LocationPreviewModal';
+import ImagePreviewModal from '@/components/reports/ImagePreviewModal';
 import Image from 'next/image';
 
 interface MainDashboardProps {
   user: any;
 }
 
+// Extend the types to include evidence_images for both report types
+interface VehicleAlertWithImages extends VehicleAlert {
+  evidence_images?: string[];
+}
+
+interface CrimeReportWithImages extends CrimeReport {
+  evidence_images?: string[];
+}
+
 type ReportType = 'vehicles' | 'crimes';
-type AnyReport = VehicleAlert | CrimeReport;
+type AnyReport = VehicleAlertWithImages | CrimeReportWithImages;
 
 // Type guards to check report types
-const isVehicleAlert = (report: AnyReport): report is VehicleAlert => {
+const isVehicleAlert = (report: AnyReport): report is VehicleAlertWithImages => {
   return 'license_plate' in report;
 };
 
-const isCrimeReport = (report: AnyReport): report is CrimeReport => {
+const isCrimeReport = (report: AnyReport): report is CrimeReportWithImages => {
   return 'title' in report;
 };
 
 export default function MainDashboard({ user }: MainDashboardProps) {
-  const [vehicleReports, setVehicleReports] = useState<VehicleAlert[]>([]);
-  const [crimeReports, setCrimeReports] = useState<CrimeReport[]>([]);
+  const [vehicleReports, setVehicleReports] = useState<VehicleAlertWithImages[]>([]);
+  const [crimeReports, setCrimeReports] = useState<CrimeReportWithImages[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeReportType, setActiveReportType] = useState<ReportType>('vehicles');
@@ -35,7 +46,13 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const [isCrimeModalOpen, setIsCrimeModalOpen] = useState(false);
   const [isActionsModalOpen, setIsActionsModalOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<any>(null);
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [selectedLocationTitle, setSelectedLocationTitle] = useState('');
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(true);
   const { signOut } = useAuth();
@@ -43,23 +60,21 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const isAdmin = user?.profile?.role === 'admin' || user?.profile?.role === 'moderator';
   const canDelete = isAdmin;
 
-  
-  
-
   useEffect(() => {
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === 'visible') {
-      // Reload data when page becomes visible again
-      loadData();
-    }
-  };
+    loadData();
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    };
 
-  document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-  return () => {
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-  };
-}, []);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   const loadData = async () => {
     try {
@@ -69,8 +84,9 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         reportsAPI.getCrimeReports(),
         reportsAPI.getDashboardStats()
       ]);
-      setVehicleReports(vehiclesData);
-      setCrimeReports(crimesData);
+      
+      setVehicleReports(vehiclesData as VehicleAlertWithImages[]);
+      setCrimeReports(crimesData as CrimeReportWithImages[]);
       setStats(statsData);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -95,16 +111,29 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   const handleViewLocation = (report: AnyReport) => {
     let location = '';
+    let title = '';
     
     if (isVehicleAlert(report)) {
       location = report.last_seen_location;
+      title = `Vehicle Location: ${report.license_plate}`;
     } else if (isCrimeReport(report)) {
       location = report.location;
+      title = `Crime Location: ${report.title}`;
     }
     
     if (location) {
-      const mapsUrl = `https://www.openstreetmap.org/search?query=${encodeURIComponent(location)}`;
-      window.open(mapsUrl, '_blank');
+      setSelectedLocation(location);
+      setSelectedLocationTitle(title);
+      setIsLocationModalOpen(true);
+    }
+  };
+
+  const handleViewImages = (report: AnyReport, imageIndex: number = 0) => {
+    const images = report.evidence_images || [];
+    if (images.length > 0) {
+      setSelectedImages(images);
+      setSelectedImageIndex(imageIndex);
+      setIsImageModalOpen(true);
     }
   };
 
@@ -125,12 +154,10 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     }
   };
 
-  // Add cleanup for modals when component unmounts or modal closes
-const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>>) => {
-  setModal(false);
-  setSelectedReport(null);
-};
-
+  const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>>) => {
+    setModal(false);
+    setSelectedReport(null);
+  };
 
   const currentReports = activeReportType === 'vehicles' ? vehicleReports : crimeReports;
 
@@ -140,16 +167,18 @@ const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>
       return {
         primary: report.license_plate,
         secondary: `${report.vehicle_make} ${report.vehicle_model} • ${report.vehicle_color}`,
-        location: report.last_seen_location
+        location: report.last_seen_location,
+        obNumber: report.ob_number
       };
     } else if (isCrimeReport(report)) {
       return {
         primary: report.title,
         secondary: report.description.substring(0, 100) + (report.description.length > 100 ? '...' : ''),
-        location: report.location
+        location: report.location,
+        obNumber: report.ob_number
       };
     }
-    return { primary: '', secondary: '', location: '' };
+    return { primary: '', secondary: '', location: '', obNumber: '' };
   };
 
   // Helper function to check if report has location
@@ -160,6 +189,11 @@ const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>
       return !!report.location;
     }
     return false;
+  };
+
+  // Helper function to check if report has images
+  const hasImages = (report: AnyReport) => {
+    return report.evidence_images && report.evidence_images.length > 0;
   };
 
   return (
@@ -274,7 +308,7 @@ const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>
         </div>
       </header>
 
-      {/* Centered Logo Section */}
+      {/* Centered Logo Section - Bigger without text */}
       <div className="bg-gradient-to-b from-black to-gray-900 py-12 border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-center text-center space-y-6">
@@ -439,14 +473,21 @@ const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>
               <div className="space-y-4">
                 {currentReports.slice(0, 10).map((report) => {
                   const display = getReportDisplayText(report);
+                  const reportImages = report.evidence_images || [];
+                  
                   return (
                     <div key={report.id} className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 hover:border-gray-600 transition-colors">
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 mb-3">
-                            <span className="font-semibold text-white text-lg truncate">
-                              {display.primary}
-                            </span>
+                            <div className="flex-1">
+                              <span className="font-semibold text-white text-lg truncate block">
+                                {display.primary}
+                              </span>
+                              <span className="text-sm text-blue-400 font-mono bg-blue-400/10 px-2 py-1 rounded inline-block mt-1">
+                                {display.obNumber}
+                              </span>
+                            </div>
                             <span className={`px-3 py-1 text-xs rounded-full font-medium ${
                               report.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
                               report.status === 'resolved' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
@@ -474,6 +515,42 @@ const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>
                               <span className="capitalize">{report.severity}</span>
                             </span>
                           </div>
+
+                          {/* Image Thumbnails */}
+                          {reportImages.length > 0 && (
+                            <div className="mt-3">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <span className="text-sm text-gray-400">{reportImages.length} image(s)</span>
+                              </div>
+                              <div className="flex space-x-2 overflow-x-auto pb-2">
+                                {reportImages.slice(0, 4).map((imageUrl: string, index: number) => (
+                                  <div 
+                                    key={index} 
+                                    className="relative flex-shrink-0 cursor-pointer group"
+                                    onClick={() => handleViewImages(report, index)}
+                                  >
+                                    <Image
+                                      src={imageUrl}
+                                      alt={`Evidence ${index + 1}`}
+                                      width={80}
+                                      height={80}
+                                      className="w-20 h-20 object-cover rounded-lg border border-gray-600 group-hover:border-blue-500 transition-colors"
+                                    />
+                                    {index === 3 && reportImages.length > 4 && (
+                                      <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
+                                        <span className="text-white text-sm font-medium">
+                                          +{reportImages.length - 4}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                       
@@ -499,6 +576,14 @@ const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>
                             View Location
                           </button>
                         )}
+                        {hasImages(report) && (
+                          <button
+                            onClick={() => handleViewImages(report)}
+                            className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors"
+                          >
+                            View Images
+                          </button>
+                        )}
                         {canDelete && (
                           <button
                             onClick={() => handleDeleteReport(report)}
@@ -521,7 +606,6 @@ const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>
       <VehicleReportModal 
         isOpen={isVehicleModalOpen}
         onClose={() => handleModalClose(setIsVehicleModalOpen)}
-
         onReportCreated={loadData}
         user={user}
         editReport={selectedReport && isVehicleAlert(selectedReport) ? selectedReport : null}
@@ -529,10 +613,7 @@ const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>
 
       <CrimeReportModal 
         isOpen={isCrimeModalOpen}
-        onClose={() => {
-          setIsCrimeModalOpen(false);
-          setSelectedReport(null);
-        }}
+        onClose={() => handleModalClose(setIsCrimeModalOpen)}
         onReportCreated={loadData}
         user={user}
         editReport={selectedReport && isCrimeReport(selectedReport) ? selectedReport : null}
@@ -540,10 +621,7 @@ const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>
 
       <ReportActionsModal 
         isOpen={isActionsModalOpen}
-        onClose={() => {
-          setIsActionsModalOpen(false);
-          setSelectedReport(null);
-        }}
+        onClose={() => handleModalClose(setIsActionsModalOpen)}
         report={selectedReport}
         reportType={activeReportType}
         onEdit={() => handleEditReport(selectedReport)}
@@ -556,6 +634,21 @@ const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>
         isOpen={isUserManagementOpen}
         onClose={() => setIsUserManagementOpen(false)}
         currentUser={user}
+      />
+
+      <LocationPreviewModal
+        isOpen={isLocationModalOpen}
+        onClose={() => setIsLocationModalOpen(false)}
+        location={selectedLocation}
+        title={selectedLocationTitle}
+      />
+
+      <ImagePreviewModal
+        isOpen={isImageModalOpen}
+        onClose={() => setIsImageModalOpen(false)}
+        images={selectedImages}
+        initialIndex={selectedImageIndex}
+        title="Evidence Images"
       />
 
       {/* Mobile Floating Action Button */}
