@@ -336,7 +336,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
           )}
         </div>
       </header>
-
+      
       {/* Centered Logo Section - Bigger without text */}
       <div className="bg-gradient-to-b from-black to-gray-900 py-12 border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
