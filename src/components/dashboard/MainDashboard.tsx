@@ -43,9 +43,23 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const isAdmin = user?.profile?.role === 'admin' || user?.profile?.role === 'moderator';
   const canDelete = isAdmin;
 
+  
+  
+
   useEffect(() => {
-    loadData();
-  }, []);
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      // Reload data when page becomes visible again
+      loadData();
+    }
+  };
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  return () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+}, []);
 
   const loadData = async () => {
     try {
@@ -110,6 +124,13 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       alert('Error deleting report. Please try again.');
     }
   };
+
+  // Add cleanup for modals when component unmounts or modal closes
+const handleModalClose = (setModal: React.Dispatch<React.SetStateAction<boolean>>) => {
+  setModal(false);
+  setSelectedReport(null);
+};
+
 
   const currentReports = activeReportType === 'vehicles' ? vehicleReports : crimeReports;
 
@@ -499,10 +520,8 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       {/* Modals */}
       <VehicleReportModal 
         isOpen={isVehicleModalOpen}
-        onClose={() => {
-          setIsVehicleModalOpen(false);
-          setSelectedReport(null);
-        }}
+        onClose={() => handleModalClose(setIsVehicleModalOpen)}
+
         onReportCreated={loadData}
         user={user}
         editReport={selectedReport && isVehicleAlert(selectedReport) ? selectedReport : null}

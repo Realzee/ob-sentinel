@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { authAPI, Profile, UserRole, UserStatus, supabase } from '@/lib/supabase';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
 
 interface UserManagementModalProps {
   isOpen: boolean;
@@ -17,6 +18,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
+  
+  // Confirmation modals
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+  const [confirmMessage, setConfirmMessage] = useState('');
   
   // Add user form state
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -51,6 +59,17 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
+  const showSuccess = (message: string) => {
+    setSuccessMessage(message);
+    setShowSuccessModal(true);
+  };
+
+  const showConfirmation = (message: string, action: () => void) => {
+    setConfirmMessage(message);
+    setConfirmAction(() => action);
+    setShowConfirmModal(true);
+  };
+
   const handleRoleUpdate = async (userId: string, newRole: string) => {
     const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
     if (!validRoles.includes(newRole as UserRole)) {
@@ -62,6 +81,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       setUpdating(userId);
       await authAPI.updateUserRole(userId, { role: newRole as UserRole });
       await loadUsers();
+      showSuccess('User role updated successfully!');
     } catch (error) {
       console.error('Error updating user role:', error);
       alert('Error updating user role. Please try again.');
@@ -81,6 +101,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       setUpdating(userId);
       await authAPI.updateUserRole(userId, { status: newStatus as UserStatus });
       await loadUsers();
+      showSuccess(`User status updated to ${newStatus}!`);
     } catch (error) {
       console.error('Error updating user status:', error);
       alert('Error updating user status. Please try again.');
@@ -90,21 +111,22 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   };
 
   const handleDeleteUser = async (userId: string, userEmail: string) => {
-    if (!window.confirm(`Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`)) {
-      return;
-    }
-
-    try {
-      setUpdating(userId);
-      await authAPI.updateUserRole(userId, { status: 'suspended' as UserStatus });
-      await loadUsers();
-      alert('User suspended successfully');
-    } catch (error) {
-      console.error('Error suspending user:', error);
-      alert('Error suspending user. Please try again.');
-    } finally {
-      setUpdating(null);
-    }
+    showConfirmation(
+      `Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`,
+      async () => {
+        try {
+          setUpdating(userId);
+          await authAPI.updateUserRole(userId, { status: 'suspended' as UserStatus });
+          await loadUsers();
+          showSuccess('User suspended successfully');
+        } catch (error) {
+          console.error('Error suspending user:', error);
+          alert('Error suspending user. Please try again.');
+        } finally {
+          setUpdating(null);
+        }
+      }
+    );
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -151,7 +173,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       setIsAddUserModalOpen(false);
       await loadUsers();
       
-      alert('User created successfully! They will need to confirm their email address.');
+      showSuccess('User created successfully! They will need to confirm their email address.');
     } catch (error: any) {
       console.error('Error creating user:', error);
       alert(error.message || 'Error creating user. Please try again.');
@@ -177,17 +199,28 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setEditingUser(true);
 
-      // Update profile information
-      const updates: any = {
-        full_name: editUserName || null,
-        role: editUserRole,
-        status: editUserStatus
-      };
+      // Only update fields that have changed
+      const updates: any = {};
+      
+      if (editUserName !== selectedUser.full_name) {
+        updates.full_name = editUserName || null;
+      }
+      
+      if (editUserRole !== selectedUser.role) {
+        updates.role = editUserRole;
+      }
+      
+      if (editUserStatus !== selectedUser.status) {
+        updates.status = editUserStatus;
+      }
 
-      await authAPI.updateUserRole(selectedUser.id, updates);
+      // Only update if there are changes to profile data
+      if (Object.keys(updates).length > 0) {
+        await authAPI.updateUserRole(selectedUser.id, updates);
+      }
 
-      // Update password if provided
-      if (editUserPassword) {
+      // Update password only if provided and not empty
+      if (editUserPassword && editUserPassword.trim() !== '') {
         const { error } = await supabase.auth.updateUser({
           password: editUserPassword
         });
@@ -204,7 +237,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       setIsEditUserModalOpen(false);
       await loadUsers();
       
-      alert('User updated successfully!');
+      showSuccess('User updated successfully!');
     } catch (error: any) {
       console.error('Error updating user:', error);
       alert(error.message || 'Error updating user. Please try again.');
@@ -218,6 +251,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       setUpdating(userId);
       await authAPI.updateUserRole(userId, { status: 'active' as UserStatus });
       await loadUsers();
+      showSuccess('User approved successfully!');
     } catch (error) {
       console.error('Error approving user:', error);
       alert('Error approving user. Please try again.');
@@ -227,17 +261,22 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   };
 
   const handleReactivateUser = async (userId: string) => {
-    try {
-      setUpdating(userId);
-      await authAPI.updateUserRole(userId, { status: 'active' as UserStatus });
-      await loadUsers();
-      alert('User reactivated successfully');
-    } catch (error) {
-      console.error('Error reactivating user:', error);
-      alert('Error reactivating user. Please try again.');
-    } finally {
-      setUpdating(null);
-    }
+    showConfirmation(
+      'Are you sure you want to reactivate this user?',
+      async () => {
+        try {
+          setUpdating(userId);
+          await authAPI.updateUserRole(userId, { status: 'active' as UserStatus });
+          await loadUsers();
+          showSuccess('User reactivated successfully');
+        } catch (error) {
+          console.error('Error reactivating user:', error);
+          alert('Error reactivating user. Please try again.');
+        } finally {
+          setUpdating(null);
+        }
+      }
+    );
   };
 
   const filteredUsers = users.filter(user =>
@@ -245,6 +284,19 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.role.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Get user status indicator
+  const getUserStatusIndicator = (user: Profile) => {
+    const isOnline = user.status === 'active';
+    return (
+      <div className="flex items-center space-x-2">
+        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-500'}`}></div>
+        <span className="text-xs text-gray-400">
+          {isOnline ? 'Online' : user.status}
+        </span>
+      </div>
+    );
+  };
 
   if (!isOpen) return null;
 
@@ -254,7 +306,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       <div className="fixed inset-0 z-50 overflow-y-auto">
         <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
           {/* Background overlay */}
-          <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={onClose}></div>
+          <div 
+            className="fixed inset-0 transition-opacity bg-black bg-opacity-75" 
+            onClick={onClose}
+          ></div>
 
           {/* Modal panel */}
           <div className="relative inline-block w-full max-w-6xl px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl sm:my-8 sm:align-middle sm:p-6">
@@ -308,8 +363,8 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     <thead>
                       <tr className="border-b border-gray-700">
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Joined</th>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                       </tr>
@@ -331,6 +386,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
+                            {getUserStatusIndicator(user)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">
                               <select
                                 value={user.role}
@@ -342,23 +400,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                                 <option value="moderator">Moderator</option>
                                 <option value="admin">Admin</option>
                                 <option value="controller">Controller</option>
-                              </select>
-                              {updating === user.id && (
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center space-x-2">
-                              <select
-                                value={user.status}
-                                onChange={(e) => handleStatusUpdate(user.id, e.target.value)}
-                                disabled={updating === user.id || user.id === currentUser.id}
-                                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                <option value="active">Active</option>
-                                <option value="pending">Pending</option>
-                                <option value="suspended">Suspended</option>
                               </select>
                               {updating === user.id && (
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
@@ -403,9 +444,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                                 >
                                   Suspend
                                 </button>
-                              )}
-                              {user.id === currentUser.id && (
-                                <span className="text-blue-400 text-xs font-medium">Current Session</span>
                               )}
                             </div>
                           </td>
@@ -475,7 +513,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       {isAddUserModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={() => setIsAddUserModalOpen(false)}></div>
+            <div 
+              className="fixed inset-0 transition-opacity bg-black bg-opacity-75" 
+              onClick={() => setIsAddUserModalOpen(false)}
+            ></div>
             
             <div className="relative inline-block w-full max-w-md px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl sm:my-8 sm:align-middle sm:p-6">
               <div className="flex items-center justify-between mb-6">
@@ -584,7 +625,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       {isEditUserModalOpen && selectedUser && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={() => setIsEditUserModalOpen(false)}></div>
+            <div 
+              className="fixed inset-0 transition-opacity bg-black bg-opacity-75" 
+              onClick={() => setIsEditUserModalOpen(false)}
+            ></div>
             
             <div className="relative inline-block w-full max-w-md px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl sm:my-8 sm:align-middle sm:p-6">
               <div className="flex items-center justify-between mb-6">
@@ -669,7 +713,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     placeholder="Leave blank to keep current password"
                     minLength={6}
                   />
-                  <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
+                  <p className="text-xs text-gray-500 mt-1">Minimum 6 characters - Leave empty to keep current password</p>
                 </div>
 
                 <div className="flex space-x-3 pt-4">
@@ -702,6 +746,34 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
           </div>
         </div>
       )}
+
+      {/* Success Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        title="Success"
+        message={successMessage}
+        type="success"
+        confirmText="OK"
+        showCancel={false}
+      />
+
+      {/* Confirmation Modal for Actions */}
+      <ConfirmationModal
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={() => {
+          if (confirmAction) {
+            confirmAction();
+          }
+          setShowConfirmModal(false);
+        }}
+        title="Confirm Action"
+        message={confirmMessage}
+        type="warning"
+        confirmText="Confirm"
+        cancelText="Cancel"
+      />
     </>
   );
 }
