@@ -513,6 +513,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                               <span className="font-semibold text-white text-lg truncate block">
                                 {display.primary}
                               </span>
+                              {/* Removed ob_number display since it doesn't exist */}
                             </div>
                             <span className={`px-3 py-1 text-xs rounded-full font-medium ${
                               report.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
