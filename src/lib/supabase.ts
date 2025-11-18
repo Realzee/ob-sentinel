@@ -46,7 +46,7 @@ export interface VehicleAlert {
   status: ReportStatus;
   created_at: string;
   updated_at: string;
-  ob_number?: string;
+  ob_number?: string; // Added missing property
 }
 
 export interface CrimeReport {
@@ -64,7 +64,7 @@ export interface CrimeReport {
   status: ReportStatus;
   created_at: string;
   updated_at: string;
-  ob_number?: string;
+  ob_number?: string; // Added missing property
 }
 
 // Auth API with proper typing
@@ -85,12 +85,7 @@ export const authAPI: AuthAPI = {
   async getCurrentUser() {
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
-      if (error || !user) {
-        console.log('❌ No user found or error:', error);
-        return null;
-      }
-
-      console.log('🔍 Auth user found:', { id: user.id, email: user.email });
+      if (error || !user) return null;
 
       // Check if profile exists with better error handling
       const { data: profile, error: profileError } = await supabase
@@ -100,74 +95,30 @@ export const authAPI: AuthAPI = {
         .single();
 
       // If profile doesn't exist, create it
-      if (profileError) {
-        console.log('📝 Profile error:', profileError);
-        
-        if (profileError.code === 'PGRST116' || profileError.message?.includes('No rows found')) {
-          console.log('📝 Creating new profile for user:', user.email);
-          return await this.createProfile(user.id, user.email!);
-        } else {
-          console.error('❌ Error fetching profile:', profileError);
-          // Return basic user with default values
-          return {
-            id: user.id,
-            email: user.email,
-            full_name: null,
-            role: 'user',
-            status: 'active',
-            profile: null
-          };
-        }
+      if (profileError && profileError.code === 'PGRST116') {
+        console.log('Creating new profile for user:', user.email);
+        return await this.createProfile(user.id, user.email!);
       }
 
-      console.log('✅ Profile found:', { 
-        full_name: profile.full_name, 
-        role: profile.role, 
-        status: profile.status 
-      });
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+        return { ...user, profile: null };
+      }
 
-      // FIXED: Return properly merged user object with profile data at top level
-      const mergedUser = {
-        // Auth user properties
-        id: user.id,
-        email: user.email,
-        created_at: user.created_at,
-        updated_at: user.updated_at,
-        
-        // Profile properties (these will be directly accessible)
-        full_name: profile.full_name,
-        phone_number: profile.phone_number,
-        role: profile.role,
-        status: profile.status,
-        department: profile.department,
-        badge_number: profile.badge_number,
-        profile_created_at: profile.created_at,
-        profile_updated_at: profile.updated_at,
-        
-        // Keep nested profile for backward compatibility
-        profile: profile
+      // Return merged user data with profile for easy access
+      return {
+        ...user, // Include all auth user properties first
+        ...profile, // Then include all profile properties (full_name, role, etc.)
+        profile: profile // Keep for backward compatibility
       };
-
-      console.log('🎯 Final merged user structure:', { 
-        id: mergedUser.id,
-        email: mergedUser.email,
-        full_name: mergedUser.full_name,
-        role: mergedUser.role,
-        status: mergedUser.status,
-        hasProfile: !!mergedUser.profile
-      });
-
-      return mergedUser;
     } catch (error) {
-      console.error('❌ Error getting current user:', error);
+      console.error('Error getting current user:', error);
       return null;
     }
   },
 
   async createProfile(userId: string, email: string) {
     try {
-      console.log('📝 Creating profile for:', { userId, email });
-      
       const { data: profile, error } = await supabase
         .from('user_profiles')
         .insert([{ 
@@ -180,49 +131,18 @@ export const authAPI: AuthAPI = {
         .single();
 
       if (error) {
-        console.error('❌ Error creating profile:', error);
-        // Return user with default values
-        return { 
-          id: userId,
-          email: email,
-          full_name: null,
-          role: 'user',
-          status: 'active',
-          profile: null
-        };
+        console.error('Error creating profile:', error);
+        // Return user without profile if creation fails
+        const { data: { user } } = await supabase.auth.getUser();
+        return user ? { ...user, profile: null } : null;
       }
 
-      // FIXED: Return properly merged user after profile creation
-      const mergedUser = {
-        id: userId,
-        email: email,
-        full_name: profile.full_name,
-        phone_number: profile.phone_number,
-        role: profile.role,
-        status: profile.status,
-        department: profile.department,
-        badge_number: profile.badge_number,
-        profile_created_at: profile.created_at,
-        profile_updated_at: profile.updated_at,
-        profile: profile
-      };
-      
-      console.log('✅ Profile created successfully:', { 
-        full_name: mergedUser.full_name, 
-        role: mergedUser.role 
-      });
-      
-      return mergedUser;
+      const { data: { user } } = await supabase.auth.getUser();
+      return user ? { ...user, ...profile, profile } : null;
     } catch (error) {
-      console.error('❌ Error in createProfile:', error);
-      return { 
-        id: userId,
-        email: email,
-        full_name: null,
-        role: 'user',
-        status: 'active',
-        profile: null
-      };
+      console.error('Error in createProfile:', error);
+      const { data: { user } } = await supabase.auth.getUser();
+      return user ? { ...user, profile: null } : null;
     }
   },
 
@@ -301,23 +221,13 @@ export const authAPI: AuthAPI = {
       // Get auth data for each user
       const usersWithAuth = await Promise.all(
         (profiles || []).map(async (profile) => {
-          try {
-            const { data: authData } = await supabase.auth.admin.getUserById(profile.id);
-            return {
-              ...profile,
-              last_sign_in: authData?.user?.last_sign_in_at,
-              email_confirmed: !!authData?.user?.email_confirmed_at,
-              banned: false
-            };
-          } catch (error) {
-            console.error('Error getting auth data for user:', profile.id, error);
-            return {
-              ...profile,
-              last_sign_in: null,
-              email_confirmed: false,
-              banned: false
-            };
-          }
+          const { data: authData } = await supabase.auth.admin.getUserById(profile.id);
+          return {
+            ...profile,
+            last_sign_in: authData?.user?.last_sign_in_at,
+            email_confirmed: !!authData?.user?.email_confirmed_at,
+            banned: false // Simplified - remove banned check to avoid TypeScript errors
+          };
         })
       );
 
@@ -397,7 +307,7 @@ export const authAPI: AuthAPI = {
   }
 };
 
-// Reports API (existing implementation)
+// Reports API
 export const reportsAPI = {
   async getVehicleAlerts() {
     try {
@@ -522,18 +432,21 @@ export const reportsAPI = {
       ).length || 0;
 
       return {
+        // Vehicle Stats
         totalVehicles: vehicles.count || 0,
         todayVehicles,
         activeVehicles: vehicles.data?.filter(v => v.status === 'pending' || v.status === 'under_review').length || 0,
         resolvedVehicles: vehicles.data?.filter(v => v.status === 'resolved').length || 0,
         vehiclesWithLocation: vehicles.data?.filter(v => v.last_seen_location).length || 0,
         
+        // Crime Stats
         totalCrimes: crimes.count || 0,
         todayCrimes,
         activeCrimes: crimes.data?.filter(c => c.status === 'pending' || c.status === 'under_review').length || 0,
         resolvedCrimes: crimes.data?.filter(c => c.status === 'resolved').length || 0,
         crimesWithLocation: crimes.data?.filter(c => c.location).length || 0,
 
+        // Combined Stats
         totalReports: (vehicles.count || 0) + (crimes.count || 0),
         todayReports: todayVehicles + todayCrimes,
         activeReports: (vehicles.data?.filter(v => v.status === 'pending' || v.status === 'under_review').length || 0) + 
@@ -542,24 +455,249 @@ export const reportsAPI = {
     } catch (error) {
       console.error('Error getting dashboard stats:', error);
       return {
+        // Vehicle Stats
         totalVehicles: 0,
         todayVehicles: 0,
         activeVehicles: 0,
         resolvedVehicles: 0,
         vehiclesWithLocation: 0,
         
+        // Crime Stats
         totalCrimes: 0,
         todayCrimes: 0,
         activeCrimes: 0,
         resolvedCrimes: 0,
         crimesWithLocation: 0,
 
+        // Combined Stats
         totalReports: 0,
         todayReports: 0,
         activeReports: 0,
       };
     }
+  },
+
+  // Search and Filter Methods
+  async searchVehicleAlerts(query: string) {
+    try {
+      const { data, error } = await supabase
+        .from('vehicle_alerts')
+        .select('*, user_profiles:reported_by(full_name, email)')
+        .or(`license_plate.ilike.%${query}%,vehicle_make.ilike.%${query}%,vehicle_model.ilike.%${query}%,last_seen_location.ilike.%${query}%`)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error searching vehicle alerts:', error);
+      return [];
+    }
+  },
+
+  async searchCrimeReports(query: string) {
+    try {
+      const { data, error } = await supabase
+        .from('crime_reports')
+        .select('*, user_profiles:reported_by(full_name, email)')
+        .or(`title.ilike.%${query}%,description.ilike.%${query}%,location.ilike.%${query}%,report_type.ilike.%${query}%`)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error searching crime reports:', error);
+      return [];
+    }
+  },
+
+  // Filter by status
+  async getVehicleAlertsByStatus(status: ReportStatus) {
+    try {
+      const { data, error } = await supabase
+        .from('vehicle_alerts')
+        .select('*, user_profiles:reported_by(full_name, email)')
+        .eq('status', status)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting vehicle alerts by status:', error);
+      return [];
+    }
+  },
+
+  async getCrimeReportsByStatus(status: ReportStatus) {
+    try {
+      const { data, error } = await supabase
+        .from('crime_reports')
+        .select('*, user_profiles:reported_by(full_name, email)')
+        .eq('status', status)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting crime reports by status:', error);
+      return [];
+    }
+  },
+
+  // Get reports by user
+  async getUserVehicleAlerts(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('vehicle_alerts')
+        .select('*, user_profiles:reported_by(full_name, email)')
+        .eq('reported_by', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting user vehicle alerts:', error);
+      return [];
+    }
+  },
+
+  async getUserCrimeReports(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('crime_reports')
+        .select('*, user_profiles:reported_by(full_name, email)')
+        .eq('reported_by', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting user crime reports:', error);
+      return [];
+    }
   }
+};
+
+// Dispatch functions
+export const dispatchAPI = {
+  async createDispatchLog(logData: any) {
+    try {
+      const { data, error } = await supabase
+        .from('dispatch_logs')
+        .insert([logData])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating dispatch log:', error);
+      throw error;
+    }
+  },
+
+  async getDispatchLogs() {
+    try {
+      const { data, error } = await supabase
+        .from('dispatch_logs')
+        .select('*, user_profiles:assigned_to(full_name, badge_number)')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting dispatch logs:', error);
+      return [];
+    }
+  },
+
+  async getDispatchLogsByIncident(incidentId: string, incidentType: string) {
+    try {
+      const { data, error } = await supabase
+        .from('dispatch_logs')
+        .select('*, user_profiles:assigned_to(full_name, badge_number)')
+        .eq('incident_id', incidentId)
+        .eq('incident_type', incidentType)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting dispatch logs by incident:', error);
+      return [];
+    }
+  }
+};
+
+// Utility functions
+export const utilsAPI = {
+  async getRecentActivity(limit: number = 10) {
+    try {
+      const [vehicles, crimes] = await Promise.all([
+        supabase
+          .from('vehicle_alerts')
+          .select('id, license_plate, status, severity, created_at, reported_by, user_profiles:reported_by(full_name)')
+          .order('created_at', { ascending: false })
+          .limit(limit),
+        supabase
+          .from('crime_reports')
+          .select('id, title, status, severity, created_at, reported_by, user_profiles:reported_by(full_name)')
+          .order('created_at', { ascending: false })
+          .limit(limit)
+      ]);
+
+      const combined = [
+        ...(vehicles.data?.map(v => ({ ...v, type: 'vehicle' as const })) || []),
+        ...(crimes.data?.map(c => ({ ...c, type: 'crime' as const })) || [])
+      ];
+
+      return combined
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, limit);
+    } catch (error) {
+      console.error('Error getting recent activity:', error);
+      return [];
+    }
+  },
+
+  async getSystemStats() {
+    try {
+      const [users, vehicles, crimes, dispatches] = await Promise.all([
+        supabase.from('user_profiles').select('*', { count: 'exact' }),
+        supabase.from('vehicle_alerts').select('*', { count: 'exact' }),
+        supabase.from('crime_reports').select('*', { count: 'exact' }),
+        supabase.from('dispatch_logs').select('*', { count: 'exact' })
+      ]);
+
+      return {
+        totalUsers: users.count || 0,
+        totalVehicles: vehicles.count || 0,
+        totalCrimes: crimes.count || 0,
+        totalDispatches: dispatches.count || 0,
+        activeUsers: users.data?.filter(u => u.status === 'active').length || 0,
+        pendingReports: (vehicles.data?.filter(v => v.status === 'pending').length || 0) + 
+                       (crimes.data?.filter(c => c.status === 'pending').length || 0)
+      };
+    } catch (error) {
+      console.error('Error getting system stats:', error);
+      return {
+        totalUsers: 0,
+        totalVehicles: 0,
+        totalCrimes: 0,
+        totalDispatches: 0,
+        activeUsers: 0,
+        pendingReports: 0
+      };
+    }
+  }
+};
+
+// Type guards
+export const isVehicleAlert = (report: any): report is VehicleAlert => {
+  return 'license_plate' in report;
+};
+
+export const isCrimeReport = (report: any): report is CrimeReport => {
+  return 'title' in report;
 };
 
 // Export individual functions for backward compatibility

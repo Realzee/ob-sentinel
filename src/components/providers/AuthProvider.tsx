@@ -22,21 +22,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const userData = await authAPI.getCurrentUser();
-        console.log('🔄 Initial user data:', userData); // Debug log
         setUser(userData);
         
         // Make zweli@msn.com admin - with proper null checks
-        if (session.user.email === 'zweli@msn.com' && userData?.id) {
+        if (session.user.email === 'zweli@msn.com' && userData?.profile && userData.id) {
           try {
             // Use type assertion to bypass TypeScript error
             await (authAPI as any).makeUserAdmin(userData.id);
-            console.log('✅ Admin rights set for zweli@msn.com');
-            
-            // Reload user data to get updated role
-            const updatedUserData = await authAPI.getCurrentUser();
-            setUser(updatedUserData);
+            console.log('Admin rights set for zweli@msn.com');
           } catch (error) {
-            console.log('⚠️ User might already be admin');
+            console.log('User might already be admin');
           }
         }
       }
@@ -47,24 +42,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🔄 Auth state changed:', event, session?.user?.email); // Debug log
         if (session?.user) {
           const userData = await authAPI.getCurrentUser();
-          console.log('🔄 Updated user data:', userData); // Debug log
           setUser(userData);
           
           // Make zweli@msn.com admin on sign in - with proper null checks
-          if (session.user.email === 'zweli@msn.com' && userData?.id) {
+          if (session.user.email === 'zweli@msn.com' && userData?.profile && userData.id) {
             try {
               // Use type assertion to bypass TypeScript error
               await (authAPI as any).makeUserAdmin(userData.id);
-              console.log('✅ Admin rights updated for zweli@msn.com');
-              
-              // Reload user data to get updated role
-              const updatedUserData = await authAPI.getCurrentUser();
-              setUser(updatedUserData);
+              console.log('Admin rights updated for zweli@msn.com');
             } catch (error) {
-              console.log('⚠️ Admin setup note - user might already be admin');
+              console.log('Admin setup note - user might already be admin');
             }
           }
         } else {
