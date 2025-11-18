@@ -81,6 +81,23 @@ export interface AuthAPI {
   activateUser(userId: string): Promise<any>;
 }
 
+export const debugAPI = {
+  testConnection: async () => {
+    try {
+      const { data, error } = await supabase.from('profiles').select('count').limit(1);
+      if (error) {
+        console.error('❌ Database connection error:', error);
+        return false;
+      }
+      console.log('✅ Database connection successful');
+      return true;
+    } catch (error) {
+      console.error('❌ Database connection failed:', error);
+      return false;
+    }
+  }
+};
+
 export const authAPI: AuthAPI = {
   async getCurrentUser() {
     try {

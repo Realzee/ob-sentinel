@@ -255,8 +255,10 @@ export default function VehicleReportModal({
     onClose();
   };
 
+  // FIX: Make sure to return null when not open
   if (!isOpen) return null;
 
+  // FIX: Return proper JSX
   return (
     <>
       <div className="fixed inset-0 z-50 overflow-y-auto">

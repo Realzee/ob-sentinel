@@ -22,16 +22,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
+          // Get user profile with role information
           const userData = await authAPI.getCurrentUser();
-          console.log('🔄 Initial user data loaded:', { 
-            email: userData?.email, 
-            role: userData?.role,
-            full_name: userData?.full_name 
-          });
-          setUser(userData);
+          console.log('🔄 Initial user data loaded:', userData);
+          
+          // Merge auth user with profile data
+          const mergedUser = {
+            ...session.user,
+            ...userData,
+            // Ensure role and status are properly set
+            role: userData?.role || 'user',
+            status: userData?.status || 'active',
+            full_name: userData?.full_name || session.user.email?.split('@')[0] || 'User'
+          };
+          
+          setUser(mergedUser);
         }
       } catch (error) {
         console.error('❌ Error initializing auth:', error);
+        // Set basic user data from session if profile fetch fails
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setUser({
+            ...session.user,
+            role: 'user',
+            status: 'active',
+            full_name: session.user.email?.split('@')[0] || 'User'
+          });
+        }
       } finally {
         setLoading(false);
       }
@@ -45,16 +63,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           if (session?.user) {
             const userData = await authAPI.getCurrentUser();
-            console.log('🔄 User data after auth change:', { 
-              email: userData?.email, 
-              role: userData?.role 
-            });
-            setUser(userData);
+            console.log('🔄 User profile data:', userData);
+            
+            // Merge auth user with profile data
+            const mergedUser = {
+              ...session.user,
+              ...userData,
+              role: userData?.role || 'user',
+              status: userData?.status || 'active',
+              full_name: userData?.full_name || session.user.email?.split('@')[0] || 'User'
+            };
+            
+            setUser(mergedUser);
           } else {
             setUser(null);
           }
         } catch (error) {
           console.error('❌ Error in auth state change:', error);
+          // Set basic user data from session if profile fetch fails
+          if (session?.user) {
+            setUser({
+              ...session.user,
+              role: 'user',
+              status: 'active',
+              full_name: session.user.email?.split('@')[0] || 'User'
+            });
+          }
         } finally {
           setLoading(false);
         }

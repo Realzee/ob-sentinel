@@ -175,6 +175,7 @@ export default function CrimeReportModal({
           evidence_images: allImageUrls
         });
       } else {
+        console.log('🔄 Creating new report...');
         result = await reportsAPI.createCrimeReport(reportData);
         // Upload images for new report
         if (images.length > 0) {
@@ -184,7 +185,7 @@ export default function CrimeReportModal({
           });
         }
       }
-
+      console.log('✅ Report saved successfully:', result);
       onReportCreated();
       onClose();
       

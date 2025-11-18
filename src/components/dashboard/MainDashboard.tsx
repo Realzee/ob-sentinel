@@ -70,42 +70,41 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     });
   }, [user]);
 
-  // FIXED: Simplified user role and status detection - now uses direct properties
-  const isAdmin = user?.role === 'admin';
-  const isModerator = user?.role === 'moderator';
-  
-  // Admin users have full access to user management
-  const canManageUsers = isAdmin;
-  const canDelete = isAdmin || isModerator;
+  // FIXED: Enhanced user role and status detection
+const isAdmin = user?.role === 'admin';
+const isModerator = user?.role === 'moderator';
+const isController = user?.role === 'controller';
 
-  // FIXED: Simplified user display information - uses direct properties
-  const getUserDisplayName = () => {
-    return user?.full_name || user?.email || 'User';
-  };
+// FIX: Add missing canDelete variable
+const canDelete = isAdmin || isModerator;
 
-  const getUserRole = () => {
-    return user?.role || 'user';
-  };
+// Admin users have full access to user management
+const canManageUsers = isAdmin;
 
-  const getUserStatus = () => {
-    return user?.status || 'active';
-  };
+// FIXED: Simplified user display information - uses direct properties
+const getUserDisplayName = () => {
+  return user?.full_name || user?.email || 'User';
+};
 
-  useEffect(() => {
-    loadData();
-    
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadData();
-      }
-    };
+const getUserRole = () => {
+  return user?.role || 'user';
+};
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+const getUserStatus = () => {
+  return user?.status || 'active';
+};
 
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
+// Debug user object on component mount
+useEffect(() => {
+  console.log('👤 Full User Object:', user);
+  console.log('👤 User Role Detection:', {
+    rawRole: user?.role,
+    metadataRole: user?.user_metadata?.role,
+    computedRole: getUserRole(),
+    isAdmin: isAdmin,
+    canManageUsers: canManageUsers
+  });
+}, [user]);
 
   const loadData = async () => {
     try {
