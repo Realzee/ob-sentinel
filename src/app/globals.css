@@ -184,3 +184,47 @@ body {
     0 0 50px rgba(118, 75, 162, 0.4),
     inset 0 0 25px rgba(107, 141, 214, 0.3);
 }
+
+/* Professional clean design enhancements */
+.backdrop-blur-sm {
+  backdrop-filter: blur(8px);
+}
+
+.backdrop-blur-md {
+  backdrop-filter: blur(12px);
+}
+
+/* Smooth transitions */
+* {
+  transition-property: color, background-color, border-color, transform, box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Enhanced shadows */
+.shadow-2xl {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* Quick Action Gradients - Updated for professional look */
+.quick-action-gradient-vehicle {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 50%, #991b1b 100%);
+}
+
+.quick-action-gradient-crime {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 50%, #1e3a8a 100%);
+}
+
+.quick-action-glow-vehicle {
+  box-shadow: 
+    0 0 20px rgba(220, 38, 38, 0.3),
+    0 0 40px rgba(185, 28, 28, 0.2),
+    inset 0 0 20px rgba(153, 27, 27, 0.1);
+}
+
+.quick-action-glow-crime {
+  box-shadow: 
+    0 0 20px rgba(29, 78, 216, 0.3),
+    0 0 40px rgba(30, 64, 175, 0.2),
+    inset 0 0 20px rgba(30, 58, 138, 0.1);
+}
