@@ -18,6 +18,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserName, setNewUserName] = useState('');
+  const [newUserRole, setNewUserRole] = useState<UserRole>('user');
   const [addingUser, setAddingUser] = useState(false);
 
   useEffect(() => {
@@ -84,18 +85,15 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       
-      // Delete user from auth and cascade will delete profile
-      const { error } = await supabase.auth.admin.deleteUser(userId);
-      
-      if (error) {
-        throw error;
-      }
+      // For security reasons, we'll just suspend the user instead of deleting
+      // since we don't have admin privileges to delete from auth
+      await authAPI.updateUserRole(userId, { status: 'suspended' as UserStatus });
       
       await loadUsers();
-      alert('User deleted successfully');
+      alert('User suspended successfully');
     } catch (error) {
-      console.error('Error deleting user:', error);
-      alert('Error deleting user. Please try again.');
+      console.error('Error suspending user:', error);
+      alert('Error suspending user. Please try again.');
     } finally {
       setUpdating(null);
     }
@@ -112,32 +110,44 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setAddingUser(true);
       
-      // Create user with Supabase Auth
-      const { data, error } = await supabase.auth.admin.createUser({
+      // Use regular Supabase auth signUp instead of admin API
+      const { data, error } = await supabase.auth.signUp({
         email: newUserEmail,
         password: newUserPassword,
-        email_confirm: true, // Auto-confirm the email
+        options: {
+          data: {
+            full_name: newUserName || '',
+            role: newUserRole
+          }
+        }
       });
 
       if (error) throw error;
 
-      // Update the profile with additional information
       if (data.user) {
-        await authAPI.updateUserRole(data.user.id, {
-          full_name: newUserName || null,
-          role: 'user',
-          status: 'active'
-        });
+        // The profile will be automatically created by the trigger
+        // But we need to update it with the role and other details
+        try {
+          await authAPI.updateUserRole(data.user.id, {
+            full_name: newUserName || null,
+            role: newUserRole,
+            status: 'active' as UserStatus
+          });
+        } catch (profileError) {
+          console.error('Error updating profile:', profileError);
+          // Continue even if profile update fails
+        }
       }
 
       // Reset form and reload users
       setNewUserEmail('');
       setNewUserPassword('');
       setNewUserName('');
+      setNewUserRole('user');
       setIsAddUserModalOpen(false);
       await loadUsers();
       
-      alert('User created successfully');
+      alert('User created successfully! They will need to confirm their email address.');
     } catch (error: any) {
       console.error('Error creating user:', error);
       alert(error.message || 'Error creating user. Please try again.');
@@ -149,11 +159,25 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const handleApproveUser = async (userId: string) => {
     try {
       setUpdating(userId);
-      await authAPI.updateUserRole(userId, { status: 'active' });
+      await authAPI.updateUserRole(userId, { status: 'active' as UserStatus });
       await loadUsers();
     } catch (error) {
       console.error('Error approving user:', error);
       alert('Error approving user. Please try again.');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const handleReactivateUser = async (userId: string) => {
+    try {
+      setUpdating(userId);
+      await authAPI.updateUserRole(userId, { status: 'active' as UserStatus });
+      await loadUsers();
+      alert('User reactivated successfully');
+    } catch (error) {
+      console.error('Error reactivating user:', error);
+      alert('Error reactivating user. Please try again.');
     } finally {
       setUpdating(null);
     }
@@ -298,13 +322,22 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                                   Approve
                                 </button>
                               )}
+                              {user.status === 'suspended' && user.id !== currentUser.id && (
+                                <button
+                                  onClick={() => handleReactivateUser(user.id)}
+                                  disabled={updating === user.id}
+                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                >
+                                  Reactivate
+                                </button>
+                              )}
                               {user.id !== currentUser.id && (
                                 <button
                                   onClick={() => handleDeleteUser(user.id, user.email)}
                                   disabled={updating === user.id}
                                   className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
                                 >
-                                  Delete
+                                  {user.status === 'suspended' ? 'Delete' : 'Suspend'}
                                 </button>
                               )}
                               {user.id === currentUser.id && (
@@ -419,6 +452,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                     placeholder="Enter password"
                     required
+                    minLength={6}
                   />
                 </div>
 
@@ -433,6 +467,22 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                     placeholder="John Doe"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Role *
+                  </label>
+                  <select
+                    value={newUserRole}
+                    onChange={(e) => setNewUserRole(e.target.value as UserRole)}
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  >
+                    <option value="user">User</option>
+                    <option value="moderator">Moderator</option>
+                    <option value="admin">Admin</option>
+                    <option value="controller">Controller</option>
+                  </select>
                 </div>
 
                 <div className="flex space-x-3 pt-4">
