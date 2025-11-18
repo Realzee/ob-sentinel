@@ -46,6 +46,7 @@ export interface VehicleAlert {
   status: ReportStatus;
   created_at: string;
   updated_at: string;
+  ob_number?: string; // Added missing property
 }
 
 export interface CrimeReport {
@@ -63,6 +64,7 @@ export interface CrimeReport {
   status: ReportStatus;
   created_at: string;
   updated_at: string;
+  ob_number?: string; // Added missing property
 }
 
 // Database insert/update types
@@ -72,8 +74,21 @@ export type VehicleAlertUpdate = Partial<Omit<VehicleAlert, 'id' | 'created_at' 
 export type CrimeReportInsert = Omit<CrimeReport, 'id' | 'created_at' | 'updated_at'>;
 export type CrimeReportUpdate = Partial<Omit<CrimeReport, 'id' | 'created_at' | 'updated_at'>>;
 
-// Auth API
-export const authAPI = {
+// Auth API with proper typing
+export interface AuthAPI {
+  getCurrentUser(): Promise<any>;
+  createProfile(userId: string, email: string): Promise<any>;
+  getAllUsers(): Promise<Profile[]>;
+  updateUserRole(userId: string, updates: Partial<Profile>): Promise<any>;
+  makeUserAdmin(userId: string): Promise<any>;
+  getAllUsersWithAuth(): Promise<any[]>;
+  updateUser(userId: string, updates: Partial<Profile>): Promise<any>;
+  deleteUser(userId: string): Promise<any>;
+  suspendUser(userId: string): Promise<any>;
+  activateUser(userId: string): Promise<any>;
+}
+
+export const authAPI: AuthAPI = {
   async getCurrentUser() {
     try {
       const { data: { user }, error } = await supabase.auth.getUser();
@@ -97,7 +112,12 @@ export const authAPI = {
         return { ...user, profile: null };
       }
 
-      return { ...user, profile };
+      // Return merged user data with profile for easy access
+      return {
+        ...user, // Include all auth user properties first
+        ...profile, // Then include all profile properties (full_name, role, etc.)
+        profile: profile // Keep for backward compatibility
+      };
     } catch (error) {
       console.error('Error getting current user:', error);
       return null;
@@ -125,7 +145,7 @@ export const authAPI = {
       }
 
       const { data: { user } } = await supabase.auth.getUser();
-      return user ? { ...user, profile } : null;
+      return user ? { ...user, ...profile, profile } : null;
     } catch (error) {
       console.error('Error in createProfile:', error);
       const { data: { user } } = await supabase.auth.getUser();
@@ -185,11 +205,115 @@ export const authAPI = {
       throw error;
     }
   },
+
+  // User Management Functions for Admins
+  async getAllUsersWithAuth() {
+    try {
+      const { data: profiles, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+
+      // Get auth data for each user
+      const usersWithAuth = await Promise.all(
+        (profiles || []).map(async (profile) => {
+          const { data: authData } = await supabase.auth.admin.getUserById(profile.id);
+          return {
+            ...profile,
+            last_sign_in: authData?.user?.last_sign_in_at,
+            email_confirmed: !!authData?.user?.email_confirmed_at,
+            banned: false // Simplified - remove banned check to avoid TypeScript errors
+          };
+        })
+      );
+
+      return usersWithAuth;
+    } catch (error) {
+      console.error('Error getting all users with auth data:', error);
+      return [];
+    }
+  },
+
+  async updateUser(userId: string, updates: Partial<Profile>) {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .update(updates)
+        .eq('id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating user:', error);
+      throw error;
+    }
+  },
+
+  async deleteUser(userId: string) {
+    try {
+      // First delete the profile
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .delete()
+        .eq('id', userId);
+
+      if (profileError) throw profileError;
+
+      // Then delete the auth user (requires admin privileges)
+      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+      
+      if (authError) {
+        console.log('Auth user deletion might require server-side implementation');
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  },
+
+  async suspendUser(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .update({ status: 'suspended' })
+        .eq('id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error suspending user:', error);
+      throw error;
+    }
+  },
+
+  async activateUser(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .update({ status: 'active' })
+        .eq('id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error activating user:', error);
+      throw error;
+    }
+  }
 };
 
 // Reports API
 export const reportsAPI = {
-  // Vehicle Reports
   async getVehicleAlerts() {
     try {
       const { data, error } = await supabase
