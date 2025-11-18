@@ -116,7 +116,7 @@ export const authAPI = {
       console.log('🔄 Fetching profile for user:', user.id);
       
       const { data: profile, error } = await supabase
-        .from('user_profiles')
+        .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
@@ -134,7 +134,7 @@ export const authAPI = {
           };
           
           const { data: newProfile, error: createError } = await supabase
-            .from('user_profiles')
+            .from('profiles')
             .insert([defaultProfile])
             .select()
             .single();
@@ -192,7 +192,7 @@ export const authAPI = {
       }
 
       const { data: profiles, error } = await supabase
-        .from('user_profiles')
+        .from('profiles')
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -218,7 +218,7 @@ export const authAPI = {
       };
 
       const { data: profile, error } = await supabase
-        .from('user_profiles')
+        .from('profiles')
         .update(updateData)
         .eq('id', userId)
         .select()
@@ -248,7 +248,7 @@ export const authAPI = {
       };
 
       const { data: profile, error } = await supabase
-        .from('user_profiles')
+        .from('profiles')
         .insert([profileData])
         .select()
         .single();
@@ -518,7 +518,7 @@ export const storageAPI = {
 export const debugAPI = {
   testConnection: async (): Promise<boolean> => {
     try {
-      const { data, error } = await supabase.from('user_profiles').select('count').limit(1);
+      const { data, error } = await supabase.from('profiles').select('count').limit(1);
       if (error) {
         console.error('❌ Database connection error:', error);
         return false;
@@ -532,7 +532,7 @@ export const debugAPI = {
   },
 
   checkTables: async (): Promise<{ [key: string]: boolean }> => {
-    const tables = ['user_profiles', 'vehicle_alerts', 'crime_reports'];
+    const tables = ['profiles', 'vehicle_alerts', 'crime_reports'];
     const results: { [key: string]: boolean } = {};
 
     for (const table of tables) {
