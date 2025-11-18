@@ -43,12 +43,12 @@ export default function AuthScreen() {
       {/* Centered Logo Section */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md mb-8">
         <div className="flex flex-col items-center justify-center text-center space-y-6">
-          <div className="w-24 h-24 rounded-2xl flex items-center justify-center bg-gradient-to-br from-red-600 via-red-700 to-red-800 shadow-2xl">
+          <div className="w-32 h-32 rounded-2xl flex items-center justify-center">
             <Image 
-              src="/rapid911-ireport-logo2.png" 
+              src="/rapid911-T.png" 
               alt="RAPID REPORT" 
-              width={56} 
-              height={56}
+              width={128} 
+              height={128}
               className="rounded-lg"
             />
           </div>

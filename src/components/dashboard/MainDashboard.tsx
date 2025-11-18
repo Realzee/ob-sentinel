@@ -150,12 +150,12 @@ export default function MainDashboard({ user }: MainDashboardProps) {
             {/* Logo Section */}
             <div className="flex items-center">
               <div className="flex-shrink-0 flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br from-red-600 to-red-800">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center">
                   <Image 
-                    src="/rapid911-ireport-logo2.png" 
+                    src="/rapid911-T.png" 
                     alt="RAPID REPORT" 
-                    width={32} 
-                    height={32}
+                    width={40} 
+                    height={40}
                     className="rounded-lg"
                   />
                 </div>
@@ -255,20 +255,20 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       </header>
 
       {/* Centered Logo Section */}
-      <div className="bg-gradient-to-b from-black to-gray-900 py-8 border-b border-gray-800">
+      <div className="bg-gradient-to-b from-black to-gray-900 py-12 border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col items-center justify-center text-center space-y-4">
-            <div className="w-20 h-20 rounded-2xl flex items-center justify-center bg-gradient-to-br from-red-600 via-red-700 to-red-800 shadow-2xl">
+          <div className="flex flex-col items-center justify-center text-center space-y-6">
+            <div className="w-32 h-32 rounded-2xl flex items-center justify-center">
               <Image 
-                src="/rapid911-ireport-logo2.png" 
+                src="/rapid911-T.png" 
                 alt="RAPID REPORT" 
-                width={48} 
-                height={48}
+                width={128} 
+                height={128}
                 className="rounded-lg"
               />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-white mb-2">RAPID REPORT</h1>
+              <h1 className="text-4xl font-bold text-white mb-3">RAPID REPORT</h1>
               <p className="text-gray-400 text-lg">Community Safety Reporting System</p>
             </div>
           </div>
