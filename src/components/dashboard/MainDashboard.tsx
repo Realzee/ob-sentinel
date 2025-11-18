@@ -57,26 +57,38 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const [quickActionsOpen, setQuickActionsOpen] = useState(true);
   const { signOut } = useAuth();
 
-  // FIXED: Proper user role and status detection
-  const isAdmin = user?.role === 'admin' || user?.profile?.role === 'admin';
-  const isModerator = user?.role === 'moderator' || user?.profile?.role === 'moderator';
-  const isController = user?.role === 'controller' || user?.profile?.role === 'controller';
+  // FIXED: Debug user object to see what's available
+  useEffect(() => {
+    console.log('👤 MainDashboard User Object:', user);
+    console.log('👤 User properties available:', {
+      id: user?.id,
+      email: user?.email,
+      full_name: user?.full_name,
+      role: user?.role,
+      status: user?.status,
+      profile: user?.profile
+    });
+  }, [user]);
+
+  // FIXED: Simplified user role and status detection - now uses direct properties
+  const isAdmin = user?.role === 'admin';
+  const isModerator = user?.role === 'moderator';
   
   // Admin users have full access to user management
   const canManageUsers = isAdmin;
   const canDelete = isAdmin || isModerator;
 
-  // FIXED: Get user display information properly
+  // FIXED: Simplified user display information - uses direct properties
   const getUserDisplayName = () => {
-    return user?.full_name || user?.profile?.full_name || user?.email || 'User';
+    return user?.full_name || user?.email || 'User';
   };
 
   const getUserRole = () => {
-    return user?.role || user?.profile?.role || 'user';
+    return user?.role || 'user';
   };
 
   const getUserStatus = () => {
-    return user?.status || user?.profile?.status || 'active';
+    return user?.status || 'active';
   };
 
   useEffect(() => {
@@ -180,21 +192,19 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   const currentReports = activeReportType === 'vehicles' ? vehicleReports : crimeReports;
 
-  // Helper function to get display text for reports - FIXED: removed ob_number reference
+  // Helper function to get display text for reports
   const getReportDisplayText = (report: AnyReport) => {
     if (isVehicleAlert(report)) {
       return {
         primary: report.license_plate,
         secondary: `${report.vehicle_make} ${report.vehicle_model} • ${report.vehicle_color}`,
         location: report.last_seen_location,
-        // Removed ob_number since it doesn't exist in the type
       };
     } else if (isCrimeReport(report)) {
       return {
         primary: report.title,
         secondary: report.description.substring(0, 100) + (report.description.length > 100 ? '...' : ''),
         location: report.location,
-        // Removed ob_number since it doesn't exist in the type
       };
     }
     return { primary: '', secondary: '', location: '' };
@@ -241,7 +251,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
             {/* User Info and Actions */}
             <div className="flex items-center space-x-4">
-              {/* User Info - FIXED: Properly display user information */}
+              {/* User Info - FIXED: Now uses direct properties */}
               <div className="hidden sm:block text-right">
                 <div className="text-sm font-medium text-white">
                   {getUserDisplayName()}
@@ -251,7 +261,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                 </div>
               </div>
 
-              {/* Admin Actions - FIXED: Only show for users who can manage users */}
+              {/* Admin Actions - FIXED: Now properly shows for admins */}
               {canManageUsers && (
                 <button
                   onClick={() => setIsUserManagementOpen(true)}
@@ -503,7 +513,6 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                               <span className="font-semibold text-white text-lg truncate block">
                                 {display.primary}
                               </span>
-                              {/* Removed ob_number display since it doesn't exist */}
                             </div>
                             <span className={`px-3 py-1 text-xs rounded-full font-medium ${
                               report.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :

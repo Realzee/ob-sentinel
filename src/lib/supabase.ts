@@ -67,13 +67,6 @@ export interface CrimeReport {
   ob_number?: string;
 }
 
-// Database insert/update types
-export type VehicleAlertInsert = Omit<VehicleAlert, 'id' | 'created_at' | 'updated_at'>;
-export type VehicleAlertUpdate = Partial<Omit<VehicleAlert, 'id' | 'created_at' | 'updated_at'>>;
-
-export type CrimeReportInsert = Omit<CrimeReport, 'id' | 'created_at' | 'updated_at'>;
-export type CrimeReportUpdate = Partial<Omit<CrimeReport, 'id' | 'created_at' | 'updated_at'>>;
-
 // Auth API with proper typing
 export interface AuthAPI {
   getCurrentUser(): Promise<any>;
@@ -99,7 +92,7 @@ export const authAPI: AuthAPI = {
 
       console.log('🔍 Auth user found:', { id: user.id, email: user.email });
 
-      // Check if profile exists
+      // Check if profile exists with better error handling
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('*')
@@ -107,20 +100,24 @@ export const authAPI: AuthAPI = {
         .single();
 
       // If profile doesn't exist, create it
-      if (profileError && profileError.code === 'PGRST116') {
-        console.log('📝 Creating new profile for user:', user.email);
-        return await this.createProfile(user.id, user.email!);
-      }
-
       if (profileError) {
-        console.error('❌ Error fetching profile:', profileError);
-        return { 
-          ...user, 
-          profile: null,
-          full_name: null,
-          role: 'user',
-          status: 'active'
-        };
+        console.log('📝 Profile error:', profileError);
+        
+        if (profileError.code === 'PGRST116' || profileError.message?.includes('No rows found')) {
+          console.log('📝 Creating new profile for user:', user.email);
+          return await this.createProfile(user.id, user.email!);
+        } else {
+          console.error('❌ Error fetching profile:', profileError);
+          // Return basic user with default values
+          return {
+            id: user.id,
+            email: user.email,
+            full_name: null,
+            role: 'user',
+            status: 'active',
+            profile: null
+          };
+        }
       }
 
       console.log('✅ Profile found:', { 
@@ -129,18 +126,35 @@ export const authAPI: AuthAPI = {
         status: profile.status 
       });
 
-      // Return merged user data with profile for easy access
+      // FIXED: Return properly merged user object with profile data at top level
       const mergedUser = {
-        ...user, // Include all auth user properties first
-        ...profile, // Then include all profile properties (full_name, role, etc.)
-        profile: profile // Keep for backward compatibility
+        // Auth user properties
+        id: user.id,
+        email: user.email,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+        
+        // Profile properties (these will be directly accessible)
+        full_name: profile.full_name,
+        phone_number: profile.phone_number,
+        role: profile.role,
+        status: profile.status,
+        department: profile.department,
+        badge_number: profile.badge_number,
+        profile_created_at: profile.created_at,
+        profile_updated_at: profile.updated_at,
+        
+        // Keep nested profile for backward compatibility
+        profile: profile
       };
 
-      console.log('🎯 Final merged user:', { 
-        full_name: mergedUser.full_name, 
-        role: mergedUser.role, 
+      console.log('🎯 Final merged user structure:', { 
+        id: mergedUser.id,
+        email: mergedUser.email,
+        full_name: mergedUser.full_name,
+        role: mergedUser.role,
         status: mergedUser.status,
-        email: mergedUser.email
+        hasProfile: !!mergedUser.profile
       });
 
       return mergedUser;
@@ -167,40 +181,48 @@ export const authAPI: AuthAPI = {
 
       if (error) {
         console.error('❌ Error creating profile:', error);
-        // Return user without profile if creation fails
-        const { data: { user } } = await supabase.auth.getUser();
-        return user ? { 
-          ...user, 
-          profile: null,
+        // Return user with default values
+        return { 
+          id: userId,
+          email: email,
           full_name: null,
           role: 'user',
-          status: 'active'
-        } : null;
+          status: 'active',
+          profile: null
+        };
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      const mergedUser = user ? { 
-        ...user, 
-        ...profile, 
-        profile 
-      } : null;
+      // FIXED: Return properly merged user after profile creation
+      const mergedUser = {
+        id: userId,
+        email: email,
+        full_name: profile.full_name,
+        phone_number: profile.phone_number,
+        role: profile.role,
+        status: profile.status,
+        department: profile.department,
+        badge_number: profile.badge_number,
+        profile_created_at: profile.created_at,
+        profile_updated_at: profile.updated_at,
+        profile: profile
+      };
       
       console.log('✅ Profile created successfully:', { 
-        full_name: mergedUser?.full_name, 
-        role: mergedUser?.role 
+        full_name: mergedUser.full_name, 
+        role: mergedUser.role 
       });
       
       return mergedUser;
     } catch (error) {
       console.error('❌ Error in createProfile:', error);
-      const { data: { user } } = await supabase.auth.getUser();
-      return user ? { 
-        ...user, 
-        profile: null,
+      return { 
+        id: userId,
+        email: email,
         full_name: null,
         role: 'user',
-        status: 'active'
-      } : null;
+        status: 'active',
+        profile: null
+      };
     }
   },
 
@@ -211,7 +233,10 @@ export const authAPI: AuthAPI = {
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error getting all users:', error);
+        return [];
+      }
       return data || [];
     } catch (error) {
       console.error('Error getting all users:', error);
@@ -249,7 +274,10 @@ export const authAPI: AuthAPI = {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error making user admin:', error);
+        throw error;
+      }
       return profile;
     } catch (error) {
       console.error('Error making user admin:', error);
@@ -265,18 +293,31 @@ export const authAPI: AuthAPI = {
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error getting all users:', error);
+        return [];
+      }
 
       // Get auth data for each user
       const usersWithAuth = await Promise.all(
         (profiles || []).map(async (profile) => {
-          const { data: authData } = await supabase.auth.admin.getUserById(profile.id);
-          return {
-            ...profile,
-            last_sign_in: authData?.user?.last_sign_in_at,
-            email_confirmed: !!authData?.user?.email_confirmed_at,
-            banned: false
-          };
+          try {
+            const { data: authData } = await supabase.auth.admin.getUserById(profile.id);
+            return {
+              ...profile,
+              last_sign_in: authData?.user?.last_sign_in_at,
+              email_confirmed: !!authData?.user?.email_confirmed_at,
+              banned: false
+            };
+          } catch (error) {
+            console.error('Error getting auth data for user:', profile.id, error);
+            return {
+              ...profile,
+              last_sign_in: null,
+              email_confirmed: false,
+              banned: false
+            };
+          }
         })
       );
 
@@ -313,13 +354,6 @@ export const authAPI: AuthAPI = {
         .eq('id', userId);
 
       if (profileError) throw profileError;
-
-      // Then delete the auth user (requires admin privileges)
-      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
-      
-      if (authError) {
-        console.log('Auth user deletion might require server-side implementation');
-      }
 
       return { success: true };
     } catch (error) {
@@ -383,7 +417,7 @@ export const reportsAPI = {
     }
   },
 
-  async createVehicleAlert(alertData: VehicleAlertInsert) {
+  async createVehicleAlert(alertData: any) {
     try {
       const { data, error } = await supabase
         .from('vehicle_alerts')
@@ -399,7 +433,7 @@ export const reportsAPI = {
     }
   },
 
-  async updateVehicleAlert(id: string, updates: VehicleAlertUpdate) {
+  async updateVehicleAlert(id: string, updates: any) {
     try {
       const { data, error } = await supabase
         .from('vehicle_alerts')
@@ -416,24 +450,6 @@ export const reportsAPI = {
     }
   },
 
-  async deleteVehicleAlert(id: string) {
-    try {
-      const { data, error } = await supabase
-        .from('vehicle_alerts')
-        .delete()
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('Error deleting vehicle alert:', error);
-      throw error;
-    }
-  },
-
-  // Crime Reports
   async getCrimeReports() {
     try {
       const { data, error } = await supabase
@@ -452,7 +468,7 @@ export const reportsAPI = {
     }
   },
 
-  async createCrimeReport(reportData: CrimeReportInsert) {
+  async createCrimeReport(reportData: any) {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
@@ -468,7 +484,7 @@ export const reportsAPI = {
     }
   },
 
-  async updateCrimeReport(id: string, updates: CrimeReportUpdate) {
+  async updateCrimeReport(id: string, updates: any) {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
@@ -485,32 +501,18 @@ export const reportsAPI = {
     }
   },
 
-  async deleteCrimeReport(id: string) {
-    try {
-      const { data, error } = await supabase
-        .from('crime_reports')
-        .delete()
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('Error deleting crime report:', error);
-      throw error;
-    }
-  },
-
-  // Dashboard Statistics
   async getDashboardStats() {
     try {
-      const [vehicles, crimes] = await Promise.all([
+      const [vehiclesResult, crimesResult] = await Promise.allSettled([
         supabase.from('vehicle_alerts').select('*', { count: 'exact' }),
         supabase.from('crime_reports').select('*', { count: 'exact' })
       ]);
 
+      const vehicles = vehiclesResult.status === 'fulfilled' ? vehiclesResult.value : { data: [], count: 0 };
+      const crimes = crimesResult.status === 'fulfilled' ? crimesResult.value : { data: [], count: 0 };
+
       const today = new Date().toISOString().split('T')[0];
+      
       const todayVehicles = vehicles.data?.filter(v => 
         v.created_at.split('T')[0] === today
       ).length || 0;
