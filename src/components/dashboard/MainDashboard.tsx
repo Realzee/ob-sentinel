@@ -57,8 +57,27 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const [quickActionsOpen, setQuickActionsOpen] = useState(true);
   const { signOut } = useAuth();
 
-  const isAdmin = user?.profile?.role === 'admin' || user?.profile?.role === 'moderator';
-  const canDelete = isAdmin;
+  // FIXED: Proper user role and status detection
+  const isAdmin = user?.role === 'admin' || user?.profile?.role === 'admin';
+  const isModerator = user?.role === 'moderator' || user?.profile?.role === 'moderator';
+  const isController = user?.role === 'controller' || user?.profile?.role === 'controller';
+  
+  // Admin users have full access to user management
+  const canManageUsers = isAdmin;
+  const canDelete = isAdmin || isModerator;
+
+  // FIXED: Get user display information properly
+  const getUserDisplayName = () => {
+    return user?.full_name || user?.profile?.full_name || user?.email || 'User';
+  };
+
+  const getUserRole = () => {
+    return user?.role || user?.profile?.role || 'user';
+  };
+
+  const getUserStatus = () => {
+    return user?.status || user?.profile?.status || 'active';
+  };
 
   useEffect(() => {
     loadData();
@@ -161,24 +180,24 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   const currentReports = activeReportType === 'vehicles' ? vehicleReports : crimeReports;
 
-  // Helper function to get display text for reports
+  // Helper function to get display text for reports - FIXED: removed ob_number reference
   const getReportDisplayText = (report: AnyReport) => {
     if (isVehicleAlert(report)) {
       return {
         primary: report.license_plate,
         secondary: `${report.vehicle_make} ${report.vehicle_model} • ${report.vehicle_color}`,
         location: report.last_seen_location,
-        obNumber: report.ob_number
+        // Removed ob_number since it doesn't exist in the type
       };
     } else if (isCrimeReport(report)) {
       return {
         primary: report.title,
         secondary: report.description.substring(0, 100) + (report.description.length > 100 ? '...' : ''),
         location: report.location,
-        obNumber: report.ob_number
+        // Removed ob_number since it doesn't exist in the type
       };
     }
-    return { primary: '', secondary: '', location: '', obNumber: '' };
+    return { primary: '', secondary: '', location: '' };
   };
 
   // Helper function to check if report has location
@@ -222,18 +241,18 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
             {/* User Info and Actions */}
             <div className="flex items-center space-x-4">
-              {/* User Info */}
+              {/* User Info - FIXED: Properly display user information */}
               <div className="hidden sm:block text-right">
                 <div className="text-sm font-medium text-white">
-                  {user.profile?.full_name || user.email}
+                  {getUserDisplayName()}
                 </div>
                 <div className="text-xs text-gray-400 capitalize">
-                  {user.profile?.role} • {user.profile?.status}
+                  {getUserRole()} • {getUserStatus()}
                 </div>
               </div>
 
-              {/* Admin Actions */}
-              {isAdmin && (
+              {/* Admin Actions - FIXED: Only show for users who can manage users */}
+              {canManageUsers && (
                 <button
                   onClick={() => setIsUserManagementOpen(true)}
                   className="hidden sm:flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
@@ -274,14 +293,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
               <div className="space-y-4">
                 <div className="text-center">
                   <div className="text-sm font-medium text-white">
-                    {user.profile?.full_name || user.email}
+                    {getUserDisplayName()}
                   </div>
                   <div className="text-xs text-gray-400 capitalize">
-                    {user.profile?.role} • {user.profile?.status}
+                    {getUserRole()} • {getUserStatus()}
                   </div>
                 </div>
                 
-                {isAdmin && (
+                {canManageUsers && (
                   <button
                     onClick={() => setIsUserManagementOpen(true)}
                     className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
@@ -336,7 +355,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         {/* Welcome Section */}
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-white mb-2">
-            Welcome back, {user.profile?.full_name?.split(' ')[0] || 'User'}!
+            Welcome back, {getUserDisplayName().split(' ')[0] || 'User'}!
           </h2>
           <p className="text-gray-400">Monitor and manage community safety reports</p>
         </div>
@@ -484,9 +503,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                               <span className="font-semibold text-white text-lg truncate block">
                                 {display.primary}
                               </span>
-                              <span className="text-sm text-blue-400 font-mono bg-blue-400/10 px-2 py-1 rounded inline-block mt-1">
-                                {display.obNumber}
-                              </span>
+                              {/* Removed ob_number display since it doesn't exist */}
                             </div>
                             <span className={`px-3 py-1 text-xs rounded-full font-medium ${
                               report.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
