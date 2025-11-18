@@ -40,21 +40,17 @@ export default function AuthScreen() {
         <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-blue-600/20 rounded-full filter blur-3xl"></div>
       </div>
 
-      {/* Centered Logo Section */}
+      {/* Centered Logo Section - Bigger without text */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md mb-8">
         <div className="flex flex-col items-center justify-center text-center space-y-6">
-          <div className="w-32 h-32 rounded-2xl flex items-center justify-center">
+          <div className="w-48 h-48 rounded-2xl flex items-center justify-center">
             <Image 
               src="/rapid911-T.png" 
               alt="RAPID REPORT" 
-              width={128} 
-              height={128}
+              width={192} 
+              height={192}
               className="rounded-lg"
             />
-          </div>
-          <div>
-            <h1 className="text-4xl font-bold text-white mb-3">RAPID REPORT</h1>
-            <p className="text-gray-400 text-lg">Community Safety Reporting System</p>
           </div>
         </div>
       </div>

@@ -15,11 +15,23 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [updating, setUpdating] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
+  
+  // Add user form state
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<UserRole>('user');
+  
+  // Edit user form state
+  const [editUserName, setEditUserName] = useState('');
+  const [editUserRole, setEditUserRole] = useState<UserRole>('user');
+  const [editUserStatus, setEditUserStatus] = useState<UserStatus>('active');
+  const [editUserPassword, setEditUserPassword] = useState('');
+  
   const [addingUser, setAddingUser] = useState(false);
+  const [editingUser, setEditingUser] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -78,17 +90,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   };
 
   const handleDeleteUser = async (userId: string, userEmail: string) => {
-    if (!window.confirm(`Are you sure you want to delete user ${userEmail}? This action cannot be undone.`)) {
+    if (!window.confirm(`Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`)) {
       return;
     }
 
     try {
       setUpdating(userId);
-      
-      // For security reasons, we'll just suspend the user instead of deleting
-      // since we don't have admin privileges to delete from auth
       await authAPI.updateUserRole(userId, { status: 'suspended' as UserStatus });
-      
       await loadUsers();
       alert('User suspended successfully');
     } catch (error) {
@@ -110,7 +118,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setAddingUser(true);
       
-      // Use regular Supabase auth signUp instead of admin API
       const { data, error } = await supabase.auth.signUp({
         email: newUserEmail,
         password: newUserPassword,
@@ -125,8 +132,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       if (error) throw error;
 
       if (data.user) {
-        // The profile will be automatically created by the trigger
-        // But we need to update it with the role and other details
         try {
           await authAPI.updateUserRole(data.user.id, {
             full_name: newUserName || null,
@@ -135,7 +140,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
           });
         } catch (profileError) {
           console.error('Error updating profile:', profileError);
-          // Continue even if profile update fails
         }
       }
 
@@ -153,6 +157,59 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       alert(error.message || 'Error creating user. Please try again.');
     } finally {
       setAddingUser(false);
+    }
+  };
+
+  const handleEditUser = (user: Profile) => {
+    setSelectedUser(user);
+    setEditUserName(user.full_name || '');
+    setEditUserRole(user.role);
+    setEditUserStatus(user.status);
+    setEditUserPassword('');
+    setIsEditUserModalOpen(true);
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedUser) return;
+
+    try {
+      setEditingUser(true);
+
+      // Update profile information
+      const updates: any = {
+        full_name: editUserName || null,
+        role: editUserRole,
+        status: editUserStatus
+      };
+
+      await authAPI.updateUserRole(selectedUser.id, updates);
+
+      // Update password if provided
+      if (editUserPassword) {
+        const { error } = await supabase.auth.updateUser({
+          password: editUserPassword
+        });
+
+        if (error) throw error;
+      }
+
+      // Reset form and reload users
+      setSelectedUser(null);
+      setEditUserName('');
+      setEditUserRole('user');
+      setEditUserStatus('active');
+      setEditUserPassword('');
+      setIsEditUserModalOpen(false);
+      await loadUsers();
+      
+      alert('User updated successfully!');
+    } catch (error: any) {
+      console.error('Error updating user:', error);
+      alert(error.message || 'Error updating user. Please try again.');
+    } finally {
+      setEditingUser(false);
     }
   };
 
@@ -313,6 +370,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => handleEditUser(user)}
+                                disabled={updating === user.id}
+                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                              >
+                                Edit
+                              </button>
                               {user.status === 'pending' && user.id !== currentUser.id && (
                                 <button
                                   onClick={() => handleApproveUser(user.id)}
@@ -326,18 +390,18 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                                 <button
                                   onClick={() => handleReactivateUser(user.id)}
                                   disabled={updating === user.id}
-                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                  className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
                                 >
                                   Reactivate
                                 </button>
                               )}
-                              {user.id !== currentUser.id && (
+                              {user.id !== currentUser.id && user.status !== 'suspended' && (
                                 <button
                                   onClick={() => handleDeleteUser(user.id, user.email)}
                                   disabled={updating === user.id}
                                   className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
                                 >
-                                  {user.status === 'suspended' ? 'Delete' : 'Suspend'}
+                                  Suspend
                                 </button>
                               )}
                               {user.id === currentUser.id && (
@@ -506,6 +570,129 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
                         <span>Create User</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {isEditUserModalOpen && selectedUser && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity bg-black bg-opacity-75" onClick={() => setIsEditUserModalOpen(false)}></div>
+            
+            <div className="relative inline-block w-full max-w-md px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl sm:my-8 sm:align-middle sm:p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">Edit User</h3>
+                <button
+                  onClick={() => setIsEditUserModalOpen(false)}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateUser} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={selectedUser.email}
+                    disabled
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-gray-400 cursor-not-allowed"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editUserName}
+                    onChange={(e) => setEditUserName(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                    placeholder="John Doe"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Role
+                  </label>
+                  <select
+                    value={editUserRole}
+                    onChange={(e) => setEditUserRole(e.target.value as UserRole)}
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  >
+                    <option value="user">User</option>
+                    <option value="moderator">Moderator</option>
+                    <option value="admin">Admin</option>
+                    <option value="controller">Controller</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Status
+                  </label>
+                  <select
+                    value={editUserStatus}
+                    onChange={(e) => setEditUserStatus(e.target.value as UserStatus)}
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  >
+                    <option value="active">Active</option>
+                    <option value="pending">Pending</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    New Password (Optional)
+                  </label>
+                  <input
+                    type="password"
+                    value={editUserPassword}
+                    onChange={(e) => setEditUserPassword(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                    placeholder="Leave blank to keep current password"
+                    minLength={6}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditUserModalOpen(false)}
+                    className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editingUser}
+                    className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
+                  >
+                    {editingUser ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Update User</span>
                       </>
                     )}
                   </button>

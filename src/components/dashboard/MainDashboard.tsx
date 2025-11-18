@@ -161,7 +161,6 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                 </div>
                 <div className="flex flex-col">
                   <h1 className="text-lg font-bold text-white">RAPID REPORT</h1>
-                  <span className="text-xs text-gray-400">Community Safety System</span>
                 </div>
               </div>
             </div>
@@ -258,18 +257,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       <div className="bg-gradient-to-b from-black to-gray-900 py-12 border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-center text-center space-y-6">
-            <div className="w-32 h-32 rounded-2xl flex items-center justify-center">
+            <div className="w-48 h-48 rounded-2xl flex items-center justify-center">
               <Image 
                 src="/rapid911-T.png" 
                 alt="RAPID REPORT" 
-                width={128} 
-                height={128}
+                width={192} 
+                height={192}
                 className="rounded-lg"
               />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold text-white mb-3">RAPID REPORT</h1>
-              <p className="text-gray-400 text-lg">Community Safety Reporting System</p>
             </div>
           </div>
         </div>
