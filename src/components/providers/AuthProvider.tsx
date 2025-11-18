@@ -19,47 +19,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const initializeAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const userData = await authAPI.getCurrentUser();
-        setUser(userData);
-        
-        // Make zweli@msn.com admin - with proper null checks
-        if (session.user.email === 'zweli@msn.com' && userData?.profile && userData.id) {
-          try {
-            // Use type assertion to bypass TypeScript error
-            await (authAPI as any).makeUserAdmin(userData.id);
-            console.log('Admin rights set for zweli@msn.com');
-          } catch (error) {
-            console.log('User might already be admin');
-          }
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const userData = await authAPI.getCurrentUser();
+          console.log('🔄 Initial user data loaded:', { 
+            email: userData?.email, 
+            role: userData?.role,
+            full_name: userData?.full_name 
+          });
+          setUser(userData);
         }
+      } catch (error) {
+        console.error('❌ Error initializing auth:', error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (session?.user) {
-          const userData = await authAPI.getCurrentUser();
-          setUser(userData);
-          
-          // Make zweli@msn.com admin on sign in - with proper null checks
-          if (session.user.email === 'zweli@msn.com' && userData?.profile && userData.id) {
-            try {
-              // Use type assertion to bypass TypeScript error
-              await (authAPI as any).makeUserAdmin(userData.id);
-              console.log('Admin rights updated for zweli@msn.com');
-            } catch (error) {
-              console.log('Admin setup note - user might already be admin');
-            }
+        console.log('🔄 Auth state changed:', event);
+        try {
+          if (session?.user) {
+            const userData = await authAPI.getCurrentUser();
+            console.log('🔄 User data after auth change:', { 
+              email: userData?.email, 
+              role: userData?.role 
+            });
+            setUser(userData);
+          } else {
+            setUser(null);
           }
-        } else {
-          setUser(null);
+        } catch (error) {
+          console.error('❌ Error in auth state change:', error);
+        } finally {
+          setLoading(false);
         }
-        setLoading(false);
       }
     );
 
