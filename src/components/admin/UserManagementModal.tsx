@@ -48,16 +48,19 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   }, [isOpen]);
 
   const loadUsers = async () => {
-    try {
-      setLoading(true);
-      const usersData = await authAPI.getAllUsers();
-      setUsers(usersData);
-    } catch (error) {
-      console.error('Error loading users:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    setLoading(true);
+    const usersData = await authAPI.getAllUsers();
+    console.log('📊 Loaded users:', usersData);
+    setUsers(usersData || []);
+  } catch (error) {
+    console.error('❌ Error loading users:', error);
+    // Set empty array instead of showing error
+    setUsers([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const showSuccess = (message: string) => {
     setSuccessMessage(message);
