@@ -228,3 +228,26 @@ body {
     0 0 40px rgba(30, 64, 175, 0.2),
     inset 0 0 20px rgba(30, 58, 138, 0.1);
 }
+
+/* Custom spacing for smaller logo */
+.logo-section {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+/* Quick action gradients */
+.quick-action-gradient-vehicle {
+  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+}
+
+.quick-action-gradient-crime {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+}
+
+.quick-action-glow-vehicle:hover {
+  box-shadow: 0 0 20px rgba(220, 38, 38, 0.3);
+}
+
+.quick-action-glow-crime:hover {
+  box-shadow: 0 0 20px rgba(37, 99, 235, 0.3);
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { reportsAPI, VehicleAlert, CrimeReport, authAPI } from '@/lib/supabase';
 import VehicleReportModal from '@/components/reports/VehicleReportModal';
@@ -18,10 +18,12 @@ interface MainDashboardProps {
 // Extend the types to include evidence_images for both report types
 interface VehicleAlertWithImages extends VehicleAlert {
   evidence_images?: string[];
+  reporter_profile?: any;
 }
 
 interface CrimeReportWithImages extends CrimeReport {
   evidence_images?: string[];
+  reporter_profile?: any;
 }
 
 type ReportType = 'vehicles' | 'crimes';
@@ -36,11 +38,19 @@ const isCrimeReport = (report: AnyReport): report is CrimeReportWithImages => {
   return 'title' in report;
 };
 
+// TEMPORARY FIX: Hardcoded admin detection
+const ADMIN_EMAILS = [
+  'zweli@msn.com',
+  'clint@rapid911.co.za', 
+  'zwell@msn.com'
+];
+
 export default function MainDashboard({ user }: MainDashboardProps) {
   const [vehicleReports, setVehicleReports] = useState<VehicleAlertWithImages[]>([]);
   const [crimeReports, setCrimeReports] = useState<CrimeReportWithImages[]>([]);
   const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [reportsLoading, setReportsLoading] = useState(true);
   const [activeReportType, setActiveReportType] = useState<ReportType>('vehicles');
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
   const [isCrimeModalOpen, setIsCrimeModalOpen] = useState(false);
@@ -57,73 +67,118 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const [quickActionsOpen, setQuickActionsOpen] = useState(true);
   const { signOut } = useAuth();
 
-  // FIXED: Debug user object to see what's available
+  // FIXED: Enhanced user role and status detection
+  const isAdmin = user?.role === 'admin' || ADMIN_EMAILS.includes(user?.email?.toLowerCase());
+  const isModerator = user?.role === 'moderator';
+  const isController = user?.role === 'controller';
+
+  // FIX: Add missing canDelete variable
+  const canDelete = isAdmin || isModerator;
+
+  // Admin users have full access to user management
+  const canManageUsers = isAdmin;
+
+  // FIXED: Simplified user display information - uses direct properties
+  const getUserDisplayName = () => {
+    return user?.full_name || user?.email || 'User';
+  };
+
+  const getUserRole = () => {
+    return user?.role || 'user';
+  };
+
+  const getUserStatus = () => {
+    return user?.status || 'active';
+  };
+
+  // Debug user detection
   useEffect(() => {
-    console.log('👤 MainDashboard User Object:', user);
-    console.log('👤 User properties available:', {
-      id: user?.id,
+    console.log('🔍 User Role Debug:', {
       email: user?.email,
-      full_name: user?.full_name,
       role: user?.role,
-      status: user?.status,
-      profile: user?.profile
+      isAdmin: isAdmin,
+      canManageUsers: canManageUsers,
+      inAdminList: ADMIN_EMAILS.includes(user?.email?.toLowerCase())
     });
   }, [user]);
 
-  // FIXED: Enhanced user role and status detection
-const isAdmin = user?.role === 'admin';
-const isModerator = user?.role === 'moderator';
-const isController = user?.role === 'controller';
+  // Load data immediately on component mount and when tab becomes visible
+  useEffect(() => {
+    loadData();
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    };
 
-// FIX: Add missing canDelete variable
-const canDelete = isAdmin || isModerator;
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-// Admin users have full access to user management
-const canManageUsers = isAdmin;
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
-// FIXED: Simplified user display information - uses direct properties
-const getUserDisplayName = () => {
-  return user?.full_name || user?.email || 'User';
-};
-
-const getUserRole = () => {
-  return user?.role || 'user';
-};
-
-const getUserStatus = () => {
-  return user?.status || 'active';
-};
-
-// Debug user object on component mount
-useEffect(() => {
-  console.log('👤 Full User Object:', user);
-  console.log('👤 User Role Detection:', {
-    rawRole: user?.role,
-    metadataRole: user?.user_metadata?.role,
-    computedRole: getUserRole(),
-    isAdmin: isAdmin,
-    canManageUsers: canManageUsers
-  });
-}, [user]);
-
-  const loadData = async () => {
+  // Optimized data loading with separate report loading
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [vehiclesData, crimesData, statsData] = await Promise.all([
-        reportsAPI.getVehicleAlerts(),
-        reportsAPI.getCrimeReports(),
+      const [statsData] = await Promise.all([
         reportsAPI.getDashboardStats()
       ]);
       
-      setVehicleReports(vehiclesData as VehicleAlertWithImages[]);
-      setCrimeReports(crimesData as CrimeReportWithImages[]);
       setStats(statsData);
+      
+      // Load reports separately for faster initial display
+      loadReports();
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const loadReports = useCallback(async () => {
+    try {
+      setReportsLoading(true);
+      const [vehiclesData, crimesData] = await Promise.all([
+        reportsAPI.getVehicleAlerts(),
+        reportsAPI.getCrimeReports()
+      ]);
+      
+      // Enhance reports with reporter information
+      const vehiclesWithReporters = vehiclesData.map(vehicle => ({
+        ...vehicle,
+        reporter_profile: user // Use current user as fallback
+      }));
+      
+      const crimesWithReporters = crimesData.map(crime => ({
+        ...crime,
+        reporter_profile: user // Use current user as fallback
+      }));
+      
+      setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
+      setCrimeReports(crimesWithReporters as CrimeReportWithImages[]);
+    } catch (error) {
+      console.error('Error loading reports:', error);
+    } finally {
+      setReportsLoading(false);
+    }
+  }, [user]);
+
+  // Refresh stats when reports change
+  useEffect(() => {
+    const updateStats = async () => {
+      try {
+        const statsData = await reportsAPI.getDashboardStats();
+        setStats(statsData);
+      } catch (error) {
+        console.error('Error updating stats:', error);
+      }
+    };
+
+    updateStats();
+  }, [vehicleReports.length, crimeReports.length]);
 
   const handleViewReport = (report: AnyReport) => {
     setSelectedReport(report);
@@ -144,7 +199,7 @@ useEffect(() => {
     let title = '';
     
     if (isVehicleAlert(report)) {
-      location = report.last_seen_location;
+      const isAdmin = user?.role === 'admin' || ADMIN_EMAILS.includes((user?.email?.toLowerCase() ?? ''));
       title = `Vehicle Location: ${report.license_plate}`;
     } else if (isCrimeReport(report)) {
       location = report.location;
@@ -189,6 +244,13 @@ useEffect(() => {
     setSelectedReport(null);
   };
 
+  const handleReportCreated = useCallback(async () => {
+    // Reload both reports and stats
+    await loadReports();
+    const statsData = await reportsAPI.getDashboardStats();
+    setStats(statsData);
+  }, [loadReports]);
+
   const currentReports = activeReportType === 'vehicles' ? vehicleReports : crimeReports;
 
   // Helper function to get display text for reports
@@ -207,6 +269,14 @@ useEffect(() => {
       };
     }
     return { primary: '', secondary: '', location: '' };
+  };
+
+  // Helper function to get reporter name
+  const getReporterName = (report: AnyReport) => {
+    if (report.reporter_profile) {
+      return report.reporter_profile.full_name || report.reporter_profile.email || 'Unknown';
+    }
+    return user?.full_name || user?.email || 'Unknown';
   };
 
   // Helper function to check if report has location
@@ -233,12 +303,12 @@ useEffect(() => {
             {/* Logo Section */}
             <div className="flex items-center">
               <div className="flex-shrink-0 flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center">
                   <Image 
                     src="/rapid911-T.png" 
                     alt="RAPID REPORT" 
-                    width={40} 
-                    height={40}
+                    width={32} 
+                    height={32}
                     className="rounded-lg"
                   />
                 </div>
@@ -336,16 +406,16 @@ useEffect(() => {
         </div>
       </header>
       
-      {/* Centered Logo Section - Bigger without text */}
-      <div className="bg-gradient-to-b from-black to-gray-900 py-12 border-b border-gray-800">
+      {/* Centered Logo Section - SMALLER as requested */}
+      <div className="bg-gradient-to-b from-black to-gray-900 py-6 border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col items-center justify-center text-center space-y-6">
-            <div className="w-48 h-48 rounded-2xl flex items-center justify-center">
+          <div className="flex flex-col items-center justify-center text-center space-y-4">
+            <div className="w-32 h-32 rounded-2xl flex items-center justify-center">
               <Image 
                 src="/rapid911-T.png" 
                 alt="RAPID REPORT" 
-                width={192} 
-                height={192}
+                width={128} 
+                height={128}
                 className="rounded-lg"
               />
             </div>
@@ -360,9 +430,9 @@ useEffect(() => {
       </div>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 relative z-10">
+      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Welcome Section */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h2 className="text-2xl font-bold text-white mb-2">
             Welcome back, {getUserDisplayName().split(' ')[0] || 'User'}!
           </h2>
@@ -370,7 +440,7 @@ useEffect(() => {
         </div>
 
         {/* Report Type Toggle */}
-        <div className="flex justify-center space-x-4 mb-8">
+        <div className="flex justify-center space-x-4 mb-6">
           <button
             onClick={() => setActiveReportType('vehicles')}
             className={`px-6 py-3 rounded-xl font-semibold transition-all ${
@@ -394,7 +464,7 @@ useEffect(() => {
         </div>
 
         {/* Quick Actions Toggle Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-semibold text-white">Quick Actions</h3>
           <button
             onClick={() => setQuickActionsOpen(!quickActionsOpen)}
@@ -406,7 +476,7 @@ useEffect(() => {
 
         {/* Quick Actions - Collapsible Section */}
         {quickActionsOpen && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <button
               onClick={() => setIsVehicleModalOpen(true)}
               className="quick-action-gradient-vehicle rounded-2xl p-6 text-white quick-action-glow-vehicle text-left hover:scale-105 transition-transform group"
@@ -438,15 +508,15 @@ useEffect(() => {
           </div>
         )}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {/* Stats Grid - Auto-updating */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {[
             { value: stats?.todayReports || 0, label: "Today's Reports", color: "bg-blue-600" },
             { value: stats?.activeReports || 0, label: "Active Reports", color: "bg-orange-600" },
             { value: (stats?.resolvedVehicles || 0) + (stats?.resolvedCrimes || 0), label: "Resolved", color: "bg-green-600" },
             { value: (stats?.vehiclesWithLocation || 0) + (stats?.crimesWithLocation || 0), label: "With Location", color: "bg-purple-600" }
           ].map((stat, index) => (
-            <div key={index} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+            <div key={index} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-white">{stat.value}</div>
@@ -459,15 +529,16 @@ useEffect(() => {
         </div>
 
         {/* Actions */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-8">
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <button
             onClick={loadData}
-            className="flex items-center justify-center space-x-2 px-6 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-medium transition-colors"
+            disabled={loading}
+            className="flex items-center justify-center space-x-2 px-6 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white font-medium transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            <span>Refresh Data</span>
+            <span>{loading ? 'Refreshing...' : 'Refresh Data'}</span>
           </button>
         </div>
 
@@ -482,13 +553,13 @@ useEffect(() => {
             </span>
           </div>
           <div className="p-6">
-            {loading ? (
-              <div className="text-center py-12">
+            {reportsLoading ? (
+              <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500 mx-auto"></div>
                 <p className="text-gray-400 mt-4">Loading reports...</p>
               </div>
             ) : currentReports.length === 0 ? (
-              <div className="text-center py-12">
+              <div className="text-center py-8">
                 <p className="text-gray-400 text-lg">No {activeReportType} reports found.</p>
                 <button
                   onClick={activeReportType === 'vehicles' ? () => setIsVehicleModalOpen(true) : () => setIsCrimeModalOpen(true)}
@@ -502,6 +573,7 @@ useEffect(() => {
                 {currentReports.slice(0, 10).map((report) => {
                   const display = getReportDisplayText(report);
                   const reportImages = report.evidence_images || [];
+                  const reporterName = getReporterName(report);
                   
                   return (
                     <div key={report.id} className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 hover:border-gray-600 transition-colors">
@@ -512,7 +584,12 @@ useEffect(() => {
                               <span className="font-semibold text-white text-lg truncate block">
                                 {display.primary}
                               </span>
-                              {/* Removed ob_number display since it doesn't exist */}
+                              {/* Reporter information */}
+                              <div className="flex items-center space-x-2 mt-1">
+                                <span className="text-sm text-gray-400">
+                                  Reported by: {reporterName}
+                                </span>
+                              </div>
                             </div>
                             <span className={`px-3 py-1 text-xs rounded-full font-medium ${
                               report.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
@@ -632,7 +709,7 @@ useEffect(() => {
       <VehicleReportModal 
         isOpen={isVehicleModalOpen}
         onClose={() => handleModalClose(setIsVehicleModalOpen)}
-        onReportCreated={loadData}
+        onReportCreated={handleReportCreated}
         user={user}
         editReport={selectedReport && isVehicleAlert(selectedReport) ? selectedReport : null}
       />
@@ -640,7 +717,7 @@ useEffect(() => {
       <CrimeReportModal 
         isOpen={isCrimeModalOpen}
         onClose={() => handleModalClose(setIsCrimeModalOpen)}
-        onReportCreated={loadData}
+        onReportCreated={handleReportCreated}
         user={user}
         editReport={selectedReport && isCrimeReport(selectedReport) ? selectedReport : null}
       />

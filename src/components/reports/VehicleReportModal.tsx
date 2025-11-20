@@ -175,35 +175,48 @@ export default function VehicleReportModal({
       };
 
       let result;
-      if (editReport) {
-        // Upload new images and combine with existing
-        const allImageUrls = await uploadImagesToStorage(editReport.id);
-        result = await reportsAPI.updateVehicleAlert(editReport.id, {
-          ...reportData,
-          evidence_images: allImageUrls
+    if (editReport) {
+      console.log('🔄 Updating existing report...');
+      const allImageUrls = await uploadImagesToStorage(editReport.id);
+      result = await reportsAPI.updateVehicleAlert(editReport.id, {
+        ...reportData,
+        evidence_images: allImageUrls
+      });
+    } else {
+      console.log('🔄 Creating new report...');
+      result = await reportsAPI.createVehicleAlert(reportData);
+      if (images.length > 0) {
+        const imageUrls = await uploadImagesToStorage(result.id);
+        await reportsAPI.updateVehicleAlert(result.id, {
+          evidence_images: imageUrls
         });
-      } else {
-        result = await reportsAPI.createVehicleAlert(reportData);
-        // Upload images for new report
-        if (images.length > 0) {
-          const imageUrls = await uploadImagesToStorage(result.id);
-          await reportsAPI.updateVehicleAlert(result.id, {
-            evidence_images: imageUrls
-          });
-        }
       }
-
-      onReportCreated();
-      onClose();
-      
-      showSuccess(editReport ? 'Vehicle report updated successfully!' : 'Vehicle report created successfully!');
-    } catch (error) {
-      console.error('Error saving vehicle report:', error);
-      alert('Error saving vehicle report. Please try again.');
-    } finally {
-      setLoading(false);
     }
-  };
+
+    console.log('✅ Report saved successfully:', result);
+    
+    // Close modal first for better UX
+    onClose();
+    
+    // Then show success message
+    showSuccess(editReport ? 'Vehicle report updated successfully!' : 'Vehicle report created successfully!');
+    
+    // Then trigger the refresh
+    onReportCreated();
+    
+  } catch (error: any) {
+    console.error('❌ Error saving vehicle report:', error);
+    
+    let errorMessage = 'Error saving vehicle report. Please try again.';
+    if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    alert(errorMessage);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

@@ -167,36 +167,48 @@ export default function CrimeReportModal({
       };
 
       let result;
-      if (editReport) {
-        // Upload new images and combine with existing
-        const allImageUrls = await uploadImagesToStorage(editReport.id);
-        result = await reportsAPI.updateCrimeReport(editReport.id, {
-          ...reportData,
-          evidence_images: allImageUrls
+    if (editReport) {
+      console.log('🔄 Updating existing report...');
+      const allImageUrls = await uploadImagesToStorage(editReport.id);
+      result = await reportsAPI.updateCrimeReport(editReport.id, {
+        ...reportData,
+        evidence_images: allImageUrls
+      });
+    } else {
+      console.log('🔄 Creating new report...');
+      result = await reportsAPI.createCrimeReport(reportData);
+      if (images.length > 0) {
+        const imageUrls = await uploadImagesToStorage(result.id);
+        await reportsAPI.updateCrimeReport(result.id, {
+          evidence_images: imageUrls
         });
-      } else {
-        console.log('🔄 Creating new report...');
-        result = await reportsAPI.createCrimeReport(reportData);
-        // Upload images for new report
-        if (images.length > 0) {
-          const imageUrls = await uploadImagesToStorage(result.id);
-          await reportsAPI.updateCrimeReport(result.id, {
-            evidence_images: imageUrls
-          });
-        }
       }
-      console.log('✅ Report saved successfully:', result);
-      onReportCreated();
-      onClose();
-      
-      showSuccess(editReport ? 'Crime report updated successfully!' : 'Crime report created successfully!');
-    } catch (error) {
-      console.error('Error saving crime report:', error);
-      alert('Error saving crime report. Please try again.');
-    } finally {
-      setLoading(false);
     }
-  };
+
+    console.log('✅ Report saved successfully:', result);
+    
+    // Close modal first for better UX
+    onClose();
+    
+    // Then show success message
+    showSuccess(editReport ? 'Crime report updated successfully!' : 'Crime report created successfully!');
+    
+    // Then trigger the refresh
+    onReportCreated();
+    
+  } catch (error: any) {
+    console.error('❌ Error saving crime report:', error);
+    
+    let errorMessage = 'Error saving crime report. Please try again.';
+    if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    alert(errorMessage);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;

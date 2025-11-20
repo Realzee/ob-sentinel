@@ -166,50 +166,97 @@ export const authAPI = {
   }
 };
 
-// Reports API with enhanced error handling
+// Enhanced Reports API with better error handling and performance
 export const reportsAPI = {
   createVehicleAlert: async (data: any): Promise<any> => {
     return safeApiCall(async () => {
       console.log('🔄 Creating vehicle alert:', data);
       
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+
+      // Prepare data with all required fields and proper formatting
+      const alertData = {
+        license_plate: data.license_plate?.toUpperCase() || 'UNKNOWN',
+        vehicle_make: data.vehicle_make || 'UNKNOWN',
+        vehicle_model: data.vehicle_model || 'UNKNOWN',
+        vehicle_color: data.vehicle_color || 'UNKNOWN',
+        year: data.year ? parseInt(data.year) : null,
+        reason: data.reason || 'No reason provided',
+        last_seen_location: data.last_seen_location || null,
+        last_seen_time: data.last_seen_time ? new Date(data.last_seen_time).toISOString() : null,
+        severity: data.severity || 'medium',
+        notes: data.notes || null,
+        evidence_images: data.evidence_images || [],
+        reported_by: user.id,
+        status: 'pending'
+      };
+
+      console.log('📤 Sending vehicle alert to database:', alertData);
+
       const { data: result, error } = await supabase
         .from('vehicle_alerts')
-        .insert([{
-          ...data,
-          // Ensure required fields have defaults
-          license_plate: data.license_plate || 'UNKNOWN',
-          vehicle_make: data.vehicle_make || 'UNKNOWN', 
-          vehicle_model: data.vehicle_model || 'UNKNOWN',
-          vehicle_color: data.vehicle_color || 'UNKNOWN',
-          reason: data.reason || 'No reason provided',
-          severity: data.severity || 'medium',
-          status: 'pending'
-        }])
+        .insert([alertData])
         .select()
         .single();
 
       if (error) {
-        console.error('❌ Vehicle alert creation error:', error);
-        // Return mock success for now to avoid breaking the UI
-        return {
-          id: `mock-${Date.now()}`,
-          ...data,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
+        console.error('❌ Vehicle alert creation FAILED:', error);
+        
+        // More specific error handling
+        if (error.code === '23505') {
+          throw new Error('A report with this license plate already exists.');
+        } else if (error.code === '42501') {
+          throw new Error('Permission denied. Please check your account permissions.');
+        } else {
+          throw new Error(error.message || 'Failed to create vehicle alert.');
+        }
       }
 
-      console.log('✅ Vehicle alert created:', result);
+      console.log('✅ Vehicle alert created successfully:', result);
       return result;
     }, 'createVehicleAlert');
   },
 
+  updateVehicleAlert: async (id: string, updates: any): Promise<any> => {
+    return safeApiCall(async () => {
+      console.log('🔄 Updating vehicle alert:', id, updates);
+      
+      const { data: alert, error } = await supabase
+        .from('vehicle_alerts')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error updating vehicle alert:', error);
+        
+        if (error.code === '42501') {
+          throw new Error('Permission denied. Please check your account permissions.');
+        } else {
+          throw new Error(error.message || 'Failed to update vehicle alert.');
+        }
+      }
+
+      console.log('✅ Vehicle alert updated successfully:', alert);
+      return alert;
+    }, 'updateVehicleAlert');
+  },
+
   getVehicleAlerts: async (): Promise<any[]> => {
     return safeApiCall(async () => {
+      // Use a faster query with only needed fields
       const { data: alerts, error } = await supabase
         .from('vehicle_alerts')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50); // Limit for performance
 
       if (error) {
         console.error('❌ Error getting vehicle alerts:', error);
@@ -220,57 +267,79 @@ export const reportsAPI = {
     }, 'getVehicleAlerts');
   },
 
-  updateVehicleAlert: async (id: string, updates: any): Promise<any> => {
+  createCrimeReport: async (data: any): Promise<any> => {
     return safeApiCall(async () => {
-      const { data: alert, error } = await supabase
-        .from('vehicle_alerts')
-        .update(updates)
+      console.log('🔄 Creating crime report:', data);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Not authenticated');
+      }
+
+      const reportData = {
+        title: data.title || 'Untitled Report',
+        description: data.description || 'No description provided',
+        location: data.location || 'Unknown location',
+        incident_time: data.incident_time ? new Date(data.incident_time).toISOString() : null,
+        report_type: data.report_type || 'other',
+        severity: data.severity || 'medium',
+        witness_info: data.witness_info || null,
+        evidence_images: data.evidence_images || [],
+        contact_allowed: Boolean(data.contact_allowed),
+        reported_by: user.id,
+        status: 'pending'
+      };
+
+      console.log('📤 Sending crime report to database:', reportData);
+
+      const { data: result, error } = await supabase
+        .from('crime_reports')
+        .insert([reportData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Crime report creation FAILED:', error);
+        
+        if (error.code === '42501') {
+          throw new Error('Permission denied. Please check your account permissions.');
+        } else {
+          throw new Error(error.message || 'Failed to create crime report.');
+        }
+      }
+
+      console.log('✅ Crime report created successfully:', result);
+      return result;
+    }, 'createCrimeReport');
+  },
+
+  updateCrimeReport: async (id: string, updates: any): Promise<any> => {
+    return safeApiCall(async () => {
+      console.log('🔄 Updating crime report:', id, updates);
+      
+      const { data: report, error } = await supabase
+        .from('crime_reports')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', id)
         .select()
         .single();
 
       if (error) {
-        console.error('❌ Error updating vehicle alert:', error);
-        return { id, ...updates };
+        console.error('❌ Error updating crime report:', error);
+        
+        if (error.code === '42501') {
+          throw new Error('Permission denied. Please check your account permissions.');
+        } else {
+          throw new Error(error.message || 'Failed to update crime report.');
+        }
       }
 
-      return alert;
-    }, 'updateVehicleAlert');
-  },
-
-  createCrimeReport: async (data: any): Promise<any> => {
-    return safeApiCall(async () => {
-      console.log('🔄 Creating crime report:', data);
-      
-      const { data: result, error } = await supabase
-        .from('crime_reports')
-        .insert([{
-          ...data,
-          // Ensure required fields have defaults
-          title: data.title || 'Untitled Report',
-          description: data.description || 'No description provided',
-          location: data.location || 'Unknown location',
-          report_type: data.report_type || 'other',
-          severity: data.severity || 'medium',
-          status: 'pending'
-        }])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Crime report creation error:', error);
-        // Return mock success for now
-        return {
-          id: `mock-crime-${Date.now()}`,
-          ...data,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-      }
-
-      console.log('✅ Crime report created:', result);
-      return result;
-    }, 'createCrimeReport');
+      console.log('✅ Crime report updated successfully:', report);
+      return report;
+    }, 'updateCrimeReport');
   },
 
   getCrimeReports: async (): Promise<any[]> => {
@@ -278,7 +347,8 @@ export const reportsAPI = {
       const { data: reports, error } = await supabase
         .from('crime_reports')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50); // Limit for performance
 
       if (error) {
         console.error('❌ Error getting crime reports:', error);
@@ -289,35 +359,54 @@ export const reportsAPI = {
     }, 'getCrimeReports');
   },
 
-  updateCrimeReport: async (id: string, updates: any): Promise<any> => {
-    return safeApiCall(async () => {
-      const { data: report, error } = await supabase
-        .from('crime_reports')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Error updating crime report:', error);
-        return { id, ...updates };
-      }
-
-      return report;
-    }, 'updateCrimeReport');
-  },
-
   getDashboardStats: async (): Promise<any> => {
     return safeApiCall(async () => {
-      // Return mock stats for now
-      return {
-        todayReports: 0,
-        activeReports: 0,
-        resolvedVehicles: 0,
-        resolvedCrimes: 0,
-        vehiclesWithLocation: 0,
-        crimesWithLocation: 0
-      };
+      try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayISO = today.toISOString();
+
+        // Use faster count queries instead of fetching all data
+        const [
+          vehiclesCount,
+          crimesCount,
+          activeVehiclesCount,
+          activeCrimesCount,
+          resolvedVehiclesCount,
+          resolvedCrimesCount
+        ] = await Promise.all([
+          // Today's reports
+          supabase.from('vehicle_alerts').select('id', { count: 'exact' }).gte('created_at', todayISO),
+          supabase.from('crime_reports').select('id', { count: 'exact' }).gte('created_at', todayISO),
+          
+          // Active reports
+          supabase.from('vehicle_alerts').select('id', { count: 'exact' }).eq('status', 'pending'),
+          supabase.from('crime_reports').select('id', { count: 'exact' }).eq('status', 'pending'),
+          
+          // Resolved reports
+          supabase.from('vehicle_alerts').select('id', { count: 'exact' }).eq('status', 'resolved'),
+          supabase.from('crime_reports').select('id', { count: 'exact' }).eq('status', 'resolved')
+        ]);
+
+        return {
+          todayReports: (vehiclesCount.count || 0) + (crimesCount.count || 0),
+          activeReports: (activeVehiclesCount.count || 0) + (activeCrimesCount.count || 0),
+          resolvedVehicles: resolvedVehiclesCount.count || 0,
+          resolvedCrimes: resolvedCrimesCount.count || 0,
+          vehiclesWithLocation: 0, // Simplified for performance
+          crimesWithLocation: 0    // Simplified for performance
+        };
+      } catch (error) {
+        console.error('❌ Error in getDashboardStats:', error);
+        return {
+          todayReports: 0,
+          activeReports: 0,
+          resolvedVehicles: 0,
+          resolvedCrimes: 0,
+          vehiclesWithLocation: 0,
+          crimesWithLocation: 0
+        };
+      }
     }, 'getDashboardStats');
   }
 };
@@ -348,6 +437,55 @@ export const storageAPI = {
 
       if (error) throw error;
     }, 'deleteImage');
+  }
+};
+
+// Debug and Utility Functions
+export const debugAPI = {
+  testConnection: async (): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase.from('profiles').select('count').limit(1);
+      if (error) {
+        console.error('❌ Database connection error:', error);
+        return false;
+      }
+      console.log('✅ Database connection successful');
+      return true;
+    } catch (error) {
+      console.error('❌ Database connection failed:', error);
+      return false;
+    }
+  },
+
+  checkTables: async (): Promise<{ [key: string]: boolean }> => {
+    const tables = ['profiles', 'vehicle_alerts', 'crime_reports'];
+    const results: { [key: string]: boolean } = {};
+
+    for (const table of tables) {
+      try {
+        const { error } = await supabase.from(table).select('id').limit(1);
+        results[table] = !error;
+      } catch (error) {
+        results[table] = false;
+      }
+    }
+
+    console.log('📊 Table check results:', results);
+    return results;
+  },
+
+  clearAuth: async (): Promise<void> => {
+    try {
+      await supabase.auth.signOut();
+      // Clear local storage
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('supabase.auth.token');
+        sessionStorage.clear();
+      }
+      console.log('✅ Auth cleared successfully');
+    } catch (error) {
+      console.error('❌ Error clearing auth:', error);
+    }
   }
 };
 
