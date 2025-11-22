@@ -35,6 +35,7 @@ export default function VehicleReportModal({
     last_seen_location: '',
     last_seen_time: '',
     severity: 'medium' as SeverityType,
+    status: 'active' as ReportStatus,
     notes: ''
   });
 
@@ -60,6 +61,7 @@ export default function VehicleReportModal({
         last_seen_location: editReport.last_seen_location || '',
         last_seen_time: editReport.last_seen_time ? editReport.last_seen_time.split('T')[0] : '',
         severity: editReport.severity || 'medium',
+        status: editReport.status || 'active',
         notes: editReport.notes || ''
       });
       // Load existing images if editing
@@ -77,6 +79,7 @@ export default function VehicleReportModal({
         last_seen_location: '',
         last_seen_time: '',
         severity: 'medium',
+        status: 'active',
         notes: ''
       });
       setUploadedImageUrls([]);
@@ -175,9 +178,9 @@ export default function VehicleReportModal({
         last_seen_location: formData.last_seen_location,
         last_seen_time: formData.last_seen_time ? new Date(formData.last_seen_time).toISOString() : undefined,
         severity: formData.severity,
+        status: formData.status,
         notes: formData.notes,
         reported_by: user.id,
-        status: 'active' as ReportStatus,
         evidence_images: uploadedImageUrls
       };
 
@@ -267,6 +270,7 @@ export default function VehicleReportModal({
       last_seen_location: '',
       last_seen_time: '',
       severity: 'medium',
+      status: 'active',
       notes: ''
     });
     setImages([]);
@@ -405,6 +409,26 @@ export default function VehicleReportModal({
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="critical">Critical</option>
+                  </select>
+                </div>
+
+                {/* Status Field */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Status *
+                  </label>
+                  <select
+                    name="status"
+                    value={formData.status}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                  >
+                    <option value="active">Active</option>
+                    <option value="recovered">Recovered</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="pending">Pending</option>
+                    <option value="rejected">Rejected</option>
                   </select>
                 </div>
               </div>

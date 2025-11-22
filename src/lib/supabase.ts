@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Types
+// Updated Types with proper statuses
 export type UserRole = 'admin' | 'moderator' | 'controller' | 'user';
 export type UserStatus = 'pending' | 'active' | 'suspended';
-export type ReportStatus = 'pending' | 'resolved' | 'rejected';
+export type ReportStatus = 'pending' | 'active' | 'resolved' | 'recovered' | 'rejected';
 export type SeverityType = 'low' | 'medium' | 'high' | 'critical';
 
 export interface Profile {
@@ -16,7 +16,6 @@ export interface Profile {
   updated_at: string;
 }
 
-// Add the missing VehicleAlert and CrimeReport interfaces
 export interface VehicleAlert {
   id: string;
   license_plate: string;
@@ -28,10 +27,10 @@ export interface VehicleAlert {
   last_seen_location: string;
   last_seen_time?: string;
   severity: SeverityType;
+  status: ReportStatus;
   notes?: string;
   evidence_images?: string[];
   reported_by: string;
-  status: ReportStatus;
   created_at: string;
   updated_at: string;
 }
@@ -44,11 +43,11 @@ export interface CrimeReport {
   incident_time?: string;
   report_type: string;
   severity: SeverityType;
+  status: ReportStatus;
   witness_info?: string;
   evidence_images?: string[];
   contact_allowed: boolean;
   reported_by: string;
-  status: ReportStatus;
   created_at: string;
   updated_at: string;
 }
@@ -202,10 +201,10 @@ export const reportsAPI = {
         last_seen_location: data.last_seen_location || null,
         last_seen_time: data.last_seen_time ? new Date(data.last_seen_time).toISOString() : null,
         severity: data.severity || 'medium',
+        status: data.status || 'active',
         notes: data.notes || null,
         evidence_images: data.evidence_images || [],
-        reported_by: user.id,
-        status: 'pending'
+        reported_by: user.id
       };
 
       console.log('📤 Sending vehicle alert to database:', alertData);
@@ -270,13 +269,14 @@ export const reportsAPI = {
         .from('vehicle_alerts')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50); // Limit for performance
+        .limit(100); // Increased limit
 
       if (error) {
         console.error('❌ Error getting vehicle alerts:', error);
         return [];
       }
 
+      console.log(`✅ Loaded ${alerts?.length || 0} vehicle alerts`);
       return alerts || [];
     }, 'getVehicleAlerts');
   },
@@ -297,11 +297,11 @@ export const reportsAPI = {
         incident_time: data.incident_time ? new Date(data.incident_time).toISOString() : null,
         report_type: data.report_type || 'other',
         severity: data.severity || 'medium',
+        status: data.status || 'active',
         witness_info: data.witness_info || null,
         evidence_images: data.evidence_images || [],
         contact_allowed: Boolean(data.contact_allowed),
-        reported_by: user.id,
-        status: 'pending'
+        reported_by: user.id
       };
 
       console.log('📤 Sending crime report to database:', reportData);
@@ -362,13 +362,14 @@ export const reportsAPI = {
         .from('crime_reports')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50); // Limit for performance
+        .limit(100); // Increased limit
 
       if (error) {
         console.error('❌ Error getting crime reports:', error);
         return [];
       }
 
+      console.log(`✅ Loaded ${reports?.length || 0} crime reports`);
       return reports || [];
     }, 'getCrimeReports');
   },
@@ -394,8 +395,8 @@ export const reportsAPI = {
           supabase.from('crime_reports').select('id', { count: 'exact' }).gte('created_at', todayISO),
           
           // Active reports
-          supabase.from('vehicle_alerts').select('id', { count: 'exact' }).eq('status', 'pending'),
-          supabase.from('crime_reports').select('id', { count: 'exact' }).eq('status', 'pending'),
+          supabase.from('vehicle_alerts').select('id', { count: 'exact' }).eq('status', 'active'),
+          supabase.from('crime_reports').select('id', { count: 'exact' }).eq('status', 'active'),
           
           // Resolved reports
           supabase.from('vehicle_alerts').select('id', { count: 'exact' }).eq('status', 'resolved'),

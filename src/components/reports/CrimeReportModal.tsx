@@ -32,6 +32,7 @@ export default function CrimeReportModal({
     incident_time: '',
     report_type: '',
     severity: 'medium' as SeverityType,
+    status: 'active' as ReportStatus,
     witness_info: '',
     contact_allowed: false
   });
@@ -55,6 +56,7 @@ export default function CrimeReportModal({
         incident_time: editReport.incident_time ? editReport.incident_time.split('T')[0] : '',
         report_type: editReport.report_type || '',
         severity: editReport.severity || 'medium',
+        status: editReport.status || 'active',
         witness_info: editReport.witness_info || '',
         contact_allowed: editReport.contact_allowed || false
       });
@@ -70,6 +72,7 @@ export default function CrimeReportModal({
         incident_time: '',
         report_type: '',
         severity: 'medium',
+        status: 'active',
         witness_info: '',
         contact_allowed: false
       });
@@ -166,11 +169,11 @@ export default function CrimeReportModal({
         incident_time: formData.incident_time ? new Date(formData.incident_time).toISOString() : undefined,
         report_type: formData.report_type,
         severity: formData.severity,
+        status: formData.status,
         witness_info: formData.witness_info,
         evidence_images: uploadedImageUrls,
         contact_allowed: Boolean(formData.contact_allowed),
-        reported_by: user.id,
-        status: 'active' as ReportStatus
+        reported_by: user.id
       };
 
       let result;
@@ -256,6 +259,7 @@ export default function CrimeReportModal({
       incident_time: '',
       report_type: '',
       severity: 'medium',
+      status: 'active',
       witness_info: '',
       contact_allowed: false
     });
@@ -355,6 +359,25 @@ export default function CrimeReportModal({
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="critical">Critical</option>
+                  </select>
+                </div>
+
+                {/* Status Field */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Status *
+                  </label>
+                  <select
+                    name="status"
+                    value={formData.status}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  >
+                    <option value="active">Active</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="pending">Pending</option>
+                    <option value="rejected">Rejected</option>
                   </select>
                 </div>
               </div>
