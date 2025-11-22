@@ -10,6 +10,10 @@
     "deploy": "npm run build && npm run export"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^5.18.0",
+    "@mui/material": "^5.18.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.81.1",
     "lucide-react": "^0.548.0",
@@ -19,8 +23,8 @@
     "react-hook-form": "^7.65.0"
   },
   "devDependencies": {
-    "@types/react": "18.2.0",
     "@types/node": "20.0.0",
+    "@types/react": "18.2.0",
     "autoprefixer": "^10.0.1",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.3.6",
