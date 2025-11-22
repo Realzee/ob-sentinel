@@ -16,6 +16,13 @@ interface CrimeReportModalProps {
 // Define severity type to match the expected union type
 type SeverityType = 'low' | 'medium' | 'high' | 'critical';
 
+// Generate unique OB number
+const generateOBNumber = () => {
+  const timestamp = new Date().getTime();
+  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `OB-${timestamp}-${random}`;
+};
+
 export default function CrimeReportModal({ 
   isOpen, 
   onClose, 
@@ -33,7 +40,8 @@ export default function CrimeReportModal({
     report_type: '',
     severity: 'medium' as SeverityType,
     witness_info: '',
-    contact_allowed: false
+    contact_allowed: false,
+    ob_number: ''
   });
 
   const [images, setImages] = useState<File[]>([]);
@@ -54,7 +62,8 @@ export default function CrimeReportModal({
         report_type: editReport.report_type || '',
         severity: editReport.severity || 'medium',
         witness_info: editReport.witness_info || '',
-        contact_allowed: editReport.contact_allowed || false
+        contact_allowed: editReport.contact_allowed || false,
+        ob_number: editReport.ob_number || generateOBNumber()
       });
       // Load existing images if editing
       if (editReport.evidence_images) {
@@ -69,7 +78,8 @@ export default function CrimeReportModal({
         report_type: '',
         severity: 'medium',
         witness_info: '',
-        contact_allowed: false
+        contact_allowed: false,
+        ob_number: generateOBNumber()
       });
       setUploadedImageUrls([]);
     }
@@ -162,6 +172,7 @@ export default function CrimeReportModal({
         witness_info: formData.witness_info,
         evidence_images: uploadedImageUrls,
         contact_allowed: Boolean(formData.contact_allowed),
+        ob_number: formData.ob_number,
         reported_by: user.id,
         status: 'pending' as ReportStatus
       };
@@ -250,7 +261,8 @@ export default function CrimeReportModal({
       report_type: '',
       severity: 'medium',
       witness_info: '',
-      contact_allowed: false
+      contact_allowed: false,
+      ob_number: generateOBNumber()
     });
     setImages([]);
     setImagePreviews([]);
@@ -293,6 +305,21 @@ export default function CrimeReportModal({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* OB Number */}
+              <div className="bg-blue-600/20 border border-blue-500/30 rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-blue-300">OB Number</h3>
+                    <p className="text-white font-mono text-lg">{formData.ob_number}</p>
+                  </div>
+                  <div className="text-blue-300">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
               {/* Incident Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">

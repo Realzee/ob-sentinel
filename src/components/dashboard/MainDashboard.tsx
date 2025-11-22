@@ -9,7 +9,9 @@ import ReportActionsModal from '@/components/reports/ReportActionsModal';
 import UserManagementModal from '@/components/admin/UserManagementModal';
 import LocationPreviewModal from '@/components/reports/LocationPreviewModal';
 import ImagePreviewModal from '@/components/reports/ImagePreviewModal';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import Image from 'next/image';
+import { Profile } from '@/types';
 
 interface MainDashboardProps {
   user: any;
@@ -19,11 +21,13 @@ interface MainDashboardProps {
 interface VehicleAlertWithImages extends VehicleAlert {
   evidence_images?: string[];
   reporter_profile?: any;
+  ob_number?: string;
 }
 
 interface CrimeReportWithImages extends CrimeReport {
   evidence_images?: string[];
   reporter_profile?: any;
+  ob_number?: string;
 }
 
 type ReportType = 'vehicles' | 'crimes';
@@ -65,6 +69,11 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(true);
+  
+  // Delete confirmation state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [reportToDelete, setReportToDelete] = useState<AnyReport | null>(null);
+  
   const { signOut } = useAuth();
 
   // FIXED: Enhanced user role and status detection
@@ -146,13 +155,17 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         reportsAPI.getCrimeReports()
       ]);
       
+      // Filter out rejected reports
+      const activeVehicles = vehiclesData.filter(vehicle => vehicle.status !== 'rejected');
+      const activeCrimes = crimesData.filter(crime => crime.status !== 'rejected');
+      
       // Enhance reports with reporter information
-      const vehiclesWithReporters = vehiclesData.map(vehicle => ({
+      const vehiclesWithReporters = activeVehicles.map(vehicle => ({
         ...vehicle,
         reporter_profile: user // Use current user as fallback
       }));
       
-      const crimesWithReporters = crimesData.map(crime => ({
+      const crimesWithReporters = activeCrimes.map(crime => ({
         ...crime,
         reporter_profile: user // Use current user as fallback
       }));
@@ -199,7 +212,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     let title = '';
     
     if (isVehicleAlert(report)) {
-      const isAdmin = user?.role === 'admin' || ADMIN_EMAILS.includes((user?.email?.toLowerCase() ?? ''));
+      const lastSignIn = user.last_sign_in_at || 'Never signed in';
       title = `Vehicle Location: ${report.license_plate}`;
     } else if (isCrimeReport(report)) {
       location = report.location;
@@ -223,16 +236,23 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   };
 
   const handleDeleteReport = async (report: AnyReport) => {
-    if (!window.confirm('Are you sure you want to delete this report?')) return;
+    setReportToDelete(report);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!reportToDelete) return;
 
     try {
-      if (activeReportType === 'vehicles' && isVehicleAlert(report)) {
-        await reportsAPI.updateVehicleAlert(report.id, { status: 'rejected' });
-      } else if (activeReportType === 'crimes' && isCrimeReport(report)) {
-        await reportsAPI.updateCrimeReport(report.id, { status: 'rejected' });
+      if (activeReportType === 'vehicles' && isVehicleAlert(reportToDelete)) {
+        await reportsAPI.updateVehicleAlert(reportToDelete.id, { status: 'rejected' });
+      } else if (activeReportType === 'crimes' && isCrimeReport(reportToDelete)) {
+        await reportsAPI.updateCrimeReport(reportToDelete.id, { status: 'rejected' });
       }
       await loadData();
       setIsActionsModalOpen(false);
+      setShowDeleteConfirm(false);
+      setReportToDelete(null);
     } catch (error) {
       console.error('Error deleting report:', error);
       alert('Error deleting report. Please try again.');
@@ -255,21 +275,23 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   // Helper function to get display text for reports
   const getReportDisplayText = (report: AnyReport) => {
-    if (isVehicleAlert(report)) {
-      return {
-        primary: report.license_plate,
-        secondary: `${report.vehicle_make} ${report.vehicle_model} • ${report.vehicle_color}`,
-        location: report.last_seen_location,
-      };
-    } else if (isCrimeReport(report)) {
-      return {
-        primary: report.title,
-        secondary: report.description.substring(0, 100) + (report.description.length > 100 ? '...' : ''),
-        location: report.location,
-      };
-    }
-    return { primary: '', secondary: '', location: '' };
-  };
+  if (isVehicleAlert(report)) {
+    return {
+      primary: report.license_plate,
+      secondary: `${report.vehicle_make} ${report.vehicle_model} • ${report.vehicle_color}`,
+      location: report.last_seen_location || '', // Add fallback for undefined
+      obNumber: report.ob_number || '' // Add fallback for undefined
+    };
+  } else if (isCrimeReport(report)) {
+    return {
+      primary: report.title,
+      secondary: report.description.substring(0, 100) + (report.description.length > 100 ? '...' : ''),
+      location: report.location || '', // Add fallback for undefined
+      obNumber: report.ob_number || '' // Add fallback for undefined
+    };
+  }
+  return { primary: '', secondary: '', location: '', obNumber: '' };
+};
 
   // Helper function to get reporter name
   const getReporterName = (report: AnyReport) => {
@@ -406,16 +428,16 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         </div>
       </header>
       
-      {/* Centered Logo Section - SMALLER as requested */}
+      {/* Centered Logo Section - BIGGER as requested */}
       <div className="bg-gradient-to-b from-black to-gray-900 py-6 border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-center text-center space-y-4">
-            <div className="w-32 h-32 rounded-2xl flex items-center justify-center">
+            <div className="w-40 h-40 rounded-2xl flex items-center justify-center"> {/* Increased from w-32 h-32 */}
               <Image 
                 src="/rapid911-T.png" 
                 alt="RAPID REPORT" 
-                width={128} 
-                height={128}
+                width={160} 
+                height={160}
                 className="rounded-lg"
               />
             </div>
@@ -581,9 +603,16 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 mb-3">
                             <div className="flex-1">
-                              <span className="font-semibold text-white text-lg truncate block">
-                                {display.primary}
-                              </span>
+                              <div className="flex items-center space-x-3">
+                                <span className="font-semibold text-white text-lg truncate block">
+                                  {display.primary}
+                                </span>
+                                {display.obNumber && (
+                                  <span className="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-full border border-blue-500/30 font-mono">
+                                    {display.obNumber}
+                                  </span>
+                                )}
+                              </div>
                               {/* Reporter information */}
                               <div className="flex items-center space-x-2 mt-1">
                                 <span className="text-sm text-gray-400">
@@ -733,11 +762,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         canDelete={canDelete}
       />
 
-      <UserManagementModal 
-        isOpen={isUserManagementOpen}
+      <UserManagementModal
+        open={isUserManagementOpen}
         onClose={() => setIsUserManagementOpen(false)}
-        currentUser={user}
-      />
+        users={user} onUpdateUser={function (userId: string, updates: Partial<Profile>): Promise<void> {
+          throw new Error('Function not implemented.');
+        } } onDeleteUser={function (userId: string): Promise<void> {
+          throw new Error('Function not implemented.');
+        } }      />
 
       <LocationPreviewModal
         isOpen={isLocationModalOpen}
@@ -752,6 +784,21 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         images={selectedImages}
         initialIndex={selectedImageIndex}
         title="Evidence Images"
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setReportToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Confirm Delete"
+        message="Are you sure you want to delete this report? This action cannot be undone."
+        type="warning"
+        confirmText="Delete"
+        cancelText="Cancel"
       />
 
       {/* Mobile Floating Action Button */}

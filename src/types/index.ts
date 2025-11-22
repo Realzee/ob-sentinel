@@ -1,4 +1,7 @@
 // types/index.ts
+export type UserRole = 'ADMIN' | 'USER' | 'OFFICER';
+export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+
 export interface AlertVehicle {
   id: string
   number_plate: string
@@ -56,4 +59,15 @@ export interface CrimeReport {
 export interface Alert {
   id: string;
   // Add other alert properties as needed
+}
+
+export interface Profile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: UserRole;
+  status: UserStatus;
+  created_at: string;
+  updated_at: string;
+  last_sign_in_at: string | null;
 }
