@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { reportsAPI, ReportStatus, supabase } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import Image from 'next/image';
-import { vehicleMakes, vehicleModels, vehicleColors, reportReasons } from '@/data/suggestions';
 
 interface VehicleReportModalProps {
   isOpen: boolean;
@@ -16,13 +15,6 @@ interface VehicleReportModalProps {
 
 // Define severity type to match the expected union type
 type SeverityType = 'low' | 'medium' | 'high' | 'critical';
-
-// Generate unique OB number
-const generateOBNumber = () => {
-  const timestamp = new Date().getTime();
-  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-  return `OB-${timestamp}-${random}`;
-};
 
 export default function VehicleReportModal({ 
   isOpen, 
@@ -43,8 +35,7 @@ export default function VehicleReportModal({
     last_seen_location: '',
     last_seen_time: '',
     severity: 'medium' as SeverityType,
-    notes: '',
-    ob_number: ''
+    notes: ''
   });
 
   const [images, setImages] = useState<File[]>([]);
@@ -54,14 +45,6 @@ export default function VehicleReportModal({
   // Confirmation modal state
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
-
-  // Suggestions
-  const [suggestions] = useState({
-    makes: vehicleMakes,
-    models: vehicleModels,
-    colors: vehicleColors,
-    reasons: reportReasons
-  });
 
   useEffect(() => {
     if (editReport) {
@@ -75,8 +58,7 @@ export default function VehicleReportModal({
         last_seen_location: editReport.last_seen_location || '',
         last_seen_time: editReport.last_seen_time ? editReport.last_seen_time.split('T')[0] : '',
         severity: editReport.severity || 'medium',
-        notes: editReport.notes || '',
-        ob_number: editReport.ob_number || generateOBNumber()
+        notes: editReport.notes || ''
       });
       // Load existing images if editing
       if (editReport.evidence_images) {
@@ -93,8 +75,7 @@ export default function VehicleReportModal({
         last_seen_location: '',
         last_seen_time: '',
         severity: 'medium',
-        notes: '',
-        ob_number: generateOBNumber()
+        notes: ''
       });
       setUploadedImageUrls([]);
     }
@@ -188,7 +169,6 @@ export default function VehicleReportModal({
         last_seen_time: formData.last_seen_time ? new Date(formData.last_seen_time).toISOString() : undefined,
         severity: formData.severity,
         notes: formData.notes,
-        ob_number: formData.ob_number,
         reported_by: user.id,
         status: 'pending' as ReportStatus,
         evidence_images: uploadedImageUrls
@@ -280,8 +260,7 @@ export default function VehicleReportModal({
       last_seen_location: '',
       last_seen_time: '',
       severity: 'medium',
-      notes: '',
-      ob_number: generateOBNumber()
+      notes: ''
     });
     setImages([]);
     setImagePreviews([]);
@@ -326,21 +305,6 @@ export default function VehicleReportModal({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* OB Number */}
-              <div className="bg-blue-600/20 border border-blue-500/30 rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-medium text-blue-300">OB Number</h3>
-                    <p className="text-white font-mono text-lg">{formData.ob_number}</p>
-                  </div>
-                  <div className="text-blue-300">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
               {/* Vehicle Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -367,16 +331,10 @@ export default function VehicleReportModal({
                     name="vehicle_make"
                     value={formData.vehicle_make}
                     onChange={handleChange}
-                    list="vehicle-makes"
                     required
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                     placeholder="Toyota"
                   />
-                  <datalist id="vehicle-makes">
-                    {suggestions.makes.map((make, index) => (
-                      <option key={index} value={make} />
-                    ))}
-                  </datalist>
                 </div>
 
                 <div>
@@ -388,16 +346,10 @@ export default function VehicleReportModal({
                     name="vehicle_model"
                     value={formData.vehicle_model}
                     onChange={handleChange}
-                    list="vehicle-models"
                     required
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                     placeholder="Corolla"
                   />
-                  <datalist id="vehicle-models">
-                    {suggestions.models.map((model, index) => (
-                      <option key={index} value={model} />
-                    ))}
-                  </datalist>
                 </div>
 
                 <div>
@@ -409,16 +361,10 @@ export default function VehicleReportModal({
                     name="vehicle_color"
                     value={formData.vehicle_color}
                     onChange={handleChange}
-                    list="vehicle-colors"
                     required
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
                     placeholder="Red"
                   />
-                  <datalist id="vehicle-colors">
-                    {suggestions.colors.map((color, index) => (
-                      <option key={index} value={color} />
-                    ))}
-                  </datalist>
                 </div>
 
                 <div>
@@ -500,28 +446,6 @@ export default function VehicleReportModal({
                 </div>
               </div>
 
-              {/* Reason for Report */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Reason for Report *
-                </label>
-                <input
-                  type="text"
-                  name="reason"
-                  value={formData.reason}
-                  onChange={handleChange}
-                  list="report-reasons"
-                  required
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
-                  placeholder="Stolen vehicle, Suspicious activity, etc."
-                />
-                <datalist id="report-reasons">
-                  {suggestions.reasons.map((reason, index) => (
-                    <option key={index} value={reason} />
-                  ))}
-                </datalist>
-              </div>
-
               {/* Image Upload */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -600,7 +524,22 @@ export default function VehicleReportModal({
                 )}
               </div>
 
-              {/* Notes */}
+              {/* Reason and Notes */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Reason for Report *
+                </label>
+                <input
+                  type="text"
+                  name="reason"
+                  value={formData.reason}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-colors"
+                  placeholder="Stolen vehicle, Suspicious activity, etc."
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Additional Notes

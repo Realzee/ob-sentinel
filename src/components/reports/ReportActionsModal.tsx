@@ -1,261 +1,322 @@
-import React, { useState } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Typography,
-  Box,
-  Chip,
-  Alert,
-  CircularProgress,
-} from '@mui/material';
-import {
-  CheckCircle as ResolveIcon,
-  Cancel as RejectIcon,
-  Delete as DeleteIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
-import { isVehicleAlert, isCrimeReport, isAlertVehicle } from '@/lib/supabase';
-import { AlertVehicle, CrimeReport } from '@/types';
+'use client';
+
+import { useState, useEffect } from 'react';
+import { VehicleAlert, CrimeReport, isVehicleAlert, isCrimeReport } from '@/lib/supabase';
+import Image from 'next/image';
 
 interface ReportActionsModalProps {
   open: boolean;
   onClose: () => void;
-  report: AlertVehicle | CrimeReport | null;
-  onResolve?: (id: string) => Promise<void>;
-  onReject?: (id: string) => Promise<void>;
-  onDelete?: (id: string) => Promise<void>;
-  loading?: boolean;
+  report: VehicleAlert | CrimeReport | null;
+  onEdit: () => void;
+  onViewLocation: () => void;
+  onDelete: () => void;
+  canDelete: boolean;
 }
 
-const ReportActionsModal: React.FC<ReportActionsModalProps> = ({
+export default function ReportActionsModal({
   open,
   onClose,
   report,
-  onResolve,
-  onReject,
+  onEdit,
+  onViewLocation,
   onDelete,
-  loading = false,
-}) => {
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  canDelete
+}: ReportActionsModalProps) {
+  const [imageError, setImageError] = useState(false);
 
-  if (!report) return null;
+  // Reset image error when report changes
+  useEffect(() => {
+    setImageError(false);
+  }, [report]);
 
-  const handleAction = async (action: 'resolve' | 'reject' | 'delete') => {
-    if (!report) return;
+  if (!open || !report) return null;
 
-    setActionLoading(action);
-    setError(null);
-
-    try {
-      switch (action) {
-        case 'resolve':
-          if (onResolve) await onResolve(report.id);
-          break;
-        case 'reject':
-          if (onReject) await onReject(report.id);
-          break;
-        case 'delete':
-          if (onDelete) await onDelete(report.id);
-          break;
-      }
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to perform action');
-    } finally {
-      setActionLoading(null);
-    }
+  // Helper functions to safely access report properties
+  const getVehicleDisplayInfo = (report: VehicleAlert) => {
+    return {
+      licensePlate: report.license_plate,
+      color: report.vehicle_color,
+      make: report.vehicle_make,
+      model: report.vehicle_model,
+      year: report.year,
+      location: report.last_seen_location,
+      time: report.last_seen_time,
+      reason: report.reason,
+      notes: report.notes,
+      severity: report.severity,
+      status: report.status,
+      images: report.evidence_images || []
+    };
   };
 
-  const handleResolve = () => handleAction('resolve');
-  const handleReject = () => handleAction('reject');
-  const handleDelete = () => handleAction('delete');
-
-  const isVehicle = isVehicleAlert(report);
-  const isCrime = isCrimeReport(report);
-
-  // Fix status comparison - use type-safe approach
-  const canReject = onReject && report.status !== 'RECOVERED';
-  const canResolve = onResolve && report.status !== 'RECOVERED';
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'ACTIVE':
-        return 'warning';
-      case 'RECOVERED':
-        return 'success';
-      default:
-        return 'default';
-    }
+  const getCrimeDisplayInfo = (report: CrimeReport) => {
+    return {
+      title: report.title,
+      description: report.description,
+      location: report.location,
+      time: report.incident_time,
+      type: report.report_type,
+      severity: report.severity,
+      status: report.status,
+      witnessInfo: report.witness_info,
+      contactAllowed: report.contact_allowed,
+      images: report.evidence_images || []
+    };
   };
 
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case 'ADMIN': return 'secondary';
-      case 'OFFICER': return 'primary';
-      case 'USER': return 'default';
-      default: return 'default';
+  const hasLocation = () => {
+    if (isVehicleAlert(report)) {
+      return !!report.last_seen_location;
+    } else if (isCrimeReport(report)) {
+      return !!report.location;
     }
+    return false;
   };
+
+  const hasImages = () => {
+    const images = isVehicleAlert(report) 
+      ? report.evidence_images 
+      : isCrimeReport(report) 
+        ? report.evidence_images 
+        : [];
+    return images && images.length > 0;
+  };
+
+  const getPrimaryImage = () => {
+    const images = isVehicleAlert(report) 
+      ? report.evidence_images 
+      : isCrimeReport(report) 
+        ? report.evidence_images 
+        : [];
+    return images && images.length > 0 ? images[0] : null;
+  };
+
+  const renderVehicleDetails = () => {
+    if (!isVehicleAlert(report)) return null;
+    const vehicleInfo = getVehicleDisplayInfo(report);
+
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span className="text-gray-400">License Plate:</span>
+            <div className="text-white font-medium">{vehicleInfo.licensePlate}</div>
+          </div>
+          <div>
+            <span className="text-gray-400">Color:</span>
+            <div className="text-white font-medium">{vehicleInfo.color}</div>
+          </div>
+          <div>
+            <span className="text-gray-400">Make:</span>
+            <div className="text-white font-medium">{vehicleInfo.make}</div>
+          </div>
+          <div>
+            <span className="text-gray-400">Model:</span>
+            <div className="text-white font-medium">{vehicleInfo.model}</div>
+          </div>
+          {vehicleInfo.year && (
+            <div>
+              <span className="text-gray-400">Year:</span>
+              <div className="text-white font-medium">{vehicleInfo.year}</div>
+            </div>
+          )}
+          <div>
+            <span className="text-gray-400">Severity:</span>
+            <div className="text-white font-medium capitalize">{vehicleInfo.severity}</div>
+          </div>
+        </div>
+        
+        {vehicleInfo.reason && (
+          <div>
+            <span className="text-gray-400">Reason:</span>
+            <div className="text-white mt-1">{vehicleInfo.reason}</div>
+          </div>
+        )}
+        
+        {vehicleInfo.notes && (
+          <div>
+            <span className="text-gray-400">Notes:</span>
+            <div className="text-white mt-1">{vehicleInfo.notes}</div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderCrimeDetails = () => {
+    if (!isCrimeReport(report)) return null;
+    const crimeInfo = getCrimeDisplayInfo(report);
+
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="col-span-2">
+            <span className="text-gray-400">Title:</span>
+            <div className="text-white font-medium">{crimeInfo.title}</div>
+          </div>
+          <div>
+            <span className="text-gray-400">Type:</span>
+            <div className="text-white font-medium capitalize">{crimeInfo.type?.replace('_', ' ')}</div>
+          </div>
+          <div>
+            <span className="text-gray-400">Severity:</span>
+            <div className="text-white font-medium capitalize">{crimeInfo.severity}</div>
+          </div>
+        </div>
+        
+        <div>
+          <span className="text-gray-400">Description:</span>
+          <div className="text-white mt-1">{crimeInfo.description}</div>
+        </div>
+        
+        {crimeInfo.witnessInfo && (
+          <div>
+            <span className="text-gray-400">Witness Info:</span>
+            <div className="text-white mt-1">{crimeInfo.witnessInfo}</div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const primaryImage = getPrimaryImage();
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Typography variant="h6">
-            {isVehicle ? 'Vehicle Alert' : 'Crime Report'} Actions
-          </Typography>
-          <Chip
-            label={report.status}
-            color={getStatusColor(report.status) as any}
-            size="small"
-          />
-        </Box>
-      </DialogTitle>
-
-      <DialogContent>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-
-        <Box mb={2}>
-          <Typography variant="subtitle2" color="text.secondary">
-            Report ID:
-          </Typography>
-          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-            {report.id}
-          </Typography>
-        </Box>
-
-        {isVehicle && isAlertVehicle(report) && (
-          <>
-            <Box mb={2}>
-              <Typography variant="subtitle2" color="text.secondary">
-                License Plate:
-              </Typography>
-              <Typography variant="body1" fontWeight="bold">
-                {report.number_plate}
-              </Typography>
-            </Box>
-            <Box mb={2}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Vehicle:
-              </Typography>
-              <Typography variant="body1">
-                {report.color} {report.make} {report.model}
-              </Typography>
-            </Box>
-            <Box mb={2}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Reason:
-              </Typography>
-              <Typography variant="body1">{report.reason}</Typography>
-            </Box>
-          </>
-        )}
-
-        {isCrime && (
-          <>
-            <Box mb={2}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Crime Type:
-              </Typography>
-              <Typography variant="body1" fontWeight="bold">
-                {report.crime_type}
-              </Typography>
-            </Box>
-            <Box mb={2}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Description:
-              </Typography>
-              <Typography variant="body1">{report.description}</Typography>
-            </Box>
-            <Box mb={2}>
-              <Typography variant="subtitle2" color="text.secondary">
-                Location:
-              </Typography>
-              <Typography variant="body1">{report.location}</Typography>
-            </Box>
-          </>
-        )}
-
-        <Box mb={2}>
-          <Typography variant="subtitle2" color="text.secondary">
-            Created:
-          </Typography>
-          <Typography variant="body2">
-            {new Date(report.created_at).toLocaleString()}
-          </Typography>
-        </Box>
-      </DialogContent>
-
-      <DialogActions>
-        <Button
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        {/* Background overlay */}
+        <div 
+          className="fixed inset-0 transition-opacity bg-black bg-opacity-75" 
           onClick={onClose}
-          startIcon={<CloseIcon />}
-          disabled={loading || actionLoading !== null}
-        >
-          Cancel
-        </Button>
+        ></div>
 
-        {onDelete && (
-          <Button
-            onClick={handleDelete}
-            startIcon={
-              actionLoading === 'delete' ? (
-                <CircularProgress size={16} />
-              ) : (
-                <DeleteIcon />
-              )
-            }
-            color="error"
-            disabled={loading || actionLoading !== null}
-          >
-            {actionLoading === 'delete' ? 'Deleting...' : 'Delete'}
-          </Button>
-        )}
+        {/* Modal panel */}
+        <div className="relative inline-block w-full max-w-2xl px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl sm:my-8 sm:align-middle sm:p-6">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-white">
+                Report Details
+              </h2>
+              <p className="text-gray-400 mt-1">
+                {isVehicleAlert(report) ? 'Vehicle Report' : 'Crime Report'}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
 
-        {canReject && (
-          <Button
-            onClick={handleReject}
-            startIcon={
-              actionLoading === 'reject' ? (
-                <CircularProgress size={16} />
-              ) : (
-                <RejectIcon />
-              )
-            }
-            color="warning"
-            disabled={loading || actionLoading !== null}
-          >
-            {actionLoading === 'reject' ? 'Rejecting...' : 'Reject'}
-          </Button>
-        )}
+          <div className="space-y-6">
+            {/* Image Preview */}
+            {primaryImage && !imageError && (
+              <div className="flex justify-center">
+                <div className="relative w-full max-w-xs h-48 rounded-lg overflow-hidden">
+                  <Image
+                    src={primaryImage}
+                    alt="Report evidence"
+                    fill
+                    className="object-cover"
+                    onError={() => setImageError(true)}
+                  />
+                </div>
+              </div>
+            )}
 
-        {canResolve && (
-          <Button
-            onClick={handleResolve}
-            startIcon={
-              actionLoading === 'resolve' ? (
-                <CircularProgress size={16} />
-              ) : (
-                <ResolveIcon />
-              )
-            }
-            color="success"
-            disabled={loading || actionLoading !== null}
-          >
-            {actionLoading === 'resolve' ? 'Resolving...' : 'Resolve'}
-          </Button>
-        )}
-      </DialogActions>
-    </Dialog>
+            {/* Status and Severity Badges */}
+            <div className="flex items-center space-x-4">
+              <span className={`px-3 py-1 text-sm rounded-full font-medium ${
+                report.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
+                report.status === 'resolved' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
+                report.status === 'rejected' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
+                'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+              }`}>
+                {report.status.replace('_', ' ')}
+              </span>
+              <span className={`px-3 py-1 text-sm rounded-full font-medium ${
+                report.severity === 'critical' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
+                report.severity === 'high' ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30' :
+                report.severity === 'medium' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
+                'bg-green-500/20 text-green-300 border border-green-500/30'
+              }`}>
+                {report.severity} severity
+              </span>
+            </div>
+
+            {/* Report Details */}
+            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+              <h3 className="text-lg font-semibold text-white mb-3">
+                {isVehicleAlert(report) ? 'Vehicle Information' : 'Incident Details'}
+              </h3>
+              {isVehicleAlert(report) ? renderVehicleDetails() : renderCrimeDetails()}
+            </div>
+
+            {/* Location Information */}
+            {hasLocation() && (
+              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                <h3 className="text-lg font-semibold text-white mb-2">Location</h3>
+                <p className="text-gray-300">
+                  {isVehicleAlert(report) ? report.last_seen_location : report.location}
+                </p>
+                {isVehicleAlert(report) && report.last_seen_time && (
+                  <p className="text-gray-400 text-sm mt-1">
+                    Last seen: {new Date(report.last_seen_time).toLocaleString()}
+                  </p>
+                )}
+                {isCrimeReport(report) && report.incident_time && (
+                  <p className="text-gray-400 text-sm mt-1">
+                    Incident time: {new Date(report.incident_time).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-700">
+              <button
+                onClick={onEdit}
+                className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                <span>Edit Report</span>
+              </button>
+              
+              {hasLocation() && (
+                <button
+                  onClick={onViewLocation}
+                  className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>View Location</span>
+                </button>
+              )}
+              
+              {canDelete && (
+                <button
+                  onClick={onDelete}
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span>Delete Report</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
-};
-
-export default ReportActionsModal;
+}
