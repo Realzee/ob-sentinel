@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
+// Remove the conflicting imports and use the ones from '@/types'
+import { AlertVehicle, CrimeReport } from '@/types';
 
-// Types
+// Types - remove the duplicate CrimeReport and VehicleAlert interfaces
 export type UserRole = 'admin' | 'moderator' | 'controller' | 'user';
 export type UserStatus = 'pending' | 'active' | 'suspended';
 export type ReportStatus = 'pending' | 'resolved' | 'rejected';
@@ -16,41 +18,7 @@ export interface Profile {
   updated_at: string;
 }
 
-export interface VehicleAlert {
-  id: string;
-  license_plate: string;
-  vehicle_make: string;
-  vehicle_model: string;
-  vehicle_color: string;
-  year?: number;
-  reason: string;
-  last_seen_location?: string;
-  last_seen_time?: string;
-  severity: SeverityType;
-  notes?: string;
-  evidence_images?: string[];
-  reported_by: string;
-  status: ReportStatus;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CrimeReport {
-  id: string;
-  title: string;
-  description: string;
-  location: string;
-  incident_time?: string;
-  report_type: string;
-  severity: SeverityType;
-  witness_info?: string;
-  evidence_images?: string[];
-  contact_allowed: boolean;
-  reported_by: string;
-  status: ReportStatus;
-  created_at: string;
-  updated_at: string;
-}
+// Remove duplicate VehicleAlert and CrimeReport interfaces since we're importing from '@/types'
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -64,6 +32,19 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     flowType: 'pkce'
   }
 });
+
+// Type guard functions for the missing exports
+export const isVehicleAlert = (item: any): item is AlertVehicle => {
+  return item && typeof item === 'object' && 'number_plate' in item && 'make' in item;
+};
+
+export const isCrimeReport = (item: any): item is CrimeReport => {
+  return item && typeof item === 'object' && 'crime_type' in item && 'description' in item;
+};
+
+export const isAlertVehicle = (item: any): item is AlertVehicle => {
+  return isVehicleAlert(item);
+};
 
 // Hardcoded admin users for immediate fallback
 const ADMIN_USERS = [
