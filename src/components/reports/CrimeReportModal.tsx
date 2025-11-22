@@ -40,9 +40,11 @@ export default function CrimeReportModal({
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
 
-  // Confirmation modal state
+  // Modal states
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (editReport) {
@@ -80,6 +82,11 @@ export default function CrimeReportModal({
   const showSuccess = (message: string) => {
     setSuccessMessage(message);
     setShowSuccessModal(true);
+  };
+
+  const showError = (message: string) => {
+    setErrorMessage(message);
+    setShowErrorModal(true);
   };
 
   const handleImageUpload = async (files: FileList) => {
@@ -163,52 +170,52 @@ export default function CrimeReportModal({
         evidence_images: uploadedImageUrls,
         contact_allowed: Boolean(formData.contact_allowed),
         reported_by: user.id,
-        status: 'pending' as ReportStatus
+        status: 'active' as ReportStatus
       };
 
       let result;
-    if (editReport) {
-      console.log('🔄 Updating existing report...');
-      const allImageUrls = await uploadImagesToStorage(editReport.id);
-      result = await reportsAPI.updateCrimeReport(editReport.id, {
-        ...reportData,
-        evidence_images: allImageUrls
-      });
-    } else {
-      console.log('🔄 Creating new report...');
-      result = await reportsAPI.createCrimeReport(reportData);
-      if (images.length > 0) {
-        const imageUrls = await uploadImagesToStorage(result.id);
-        await reportsAPI.updateCrimeReport(result.id, {
-          evidence_images: imageUrls
+      if (editReport) {
+        console.log('🔄 Updating existing report...');
+        const allImageUrls = await uploadImagesToStorage(editReport.id);
+        result = await reportsAPI.updateCrimeReport(editReport.id, {
+          ...reportData,
+          evidence_images: allImageUrls
         });
+      } else {
+        console.log('🔄 Creating new report...');
+        result = await reportsAPI.createCrimeReport(reportData);
+        if (images.length > 0) {
+          const imageUrls = await uploadImagesToStorage(result.id);
+          await reportsAPI.updateCrimeReport(result.id, {
+            evidence_images: imageUrls
+          });
+        }
       }
-    }
 
-    console.log('✅ Report saved successfully:', result);
-    
-    // Close modal first for better UX
-    onClose();
-    
-    // Then show success message
-    showSuccess(editReport ? 'Crime report updated successfully!' : 'Crime report created successfully!');
-    
-    // Then trigger the refresh
-    onReportCreated();
-    
-  } catch (error: any) {
-    console.error('❌ Error saving crime report:', error);
-    
-    let errorMessage = 'Error saving crime report. Please try again.';
-    if (error.message) {
-      errorMessage = error.message;
+      console.log('✅ Report saved successfully:', result);
+      
+      // Close modal first for better UX
+      onClose();
+      
+      // Then show success message
+      showSuccess(editReport ? 'Crime report updated successfully!' : 'Crime report created successfully!');
+      
+      // Then trigger the refresh
+      onReportCreated();
+      
+    } catch (error: any) {
+      console.error('❌ Error saving crime report:', error);
+      
+      let errorMessage = 'Error saving crime report. Please try again.';
+      if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      showError(errorMessage);
+    } finally {
+      setLoading(false);
     }
-    
-    alert(errorMessage);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -231,11 +238,11 @@ export default function CrimeReportModal({
         },
         (error) => {
           console.error('Error getting location:', error);
-          alert('Unable to get current location. Please enter manually.');
+          showError('Unable to get current location. Please enter manually.');
         }
       );
     } else {
-      alert('Geolocation is not supported by this browser.');
+      showError('Geolocation is not supported by this browser.');
     }
   };
 
@@ -558,6 +565,17 @@ export default function CrimeReportModal({
         title="Success"
         message={successMessage}
         type="success"
+        confirmText="OK"
+        showCancel={false}
+      />
+
+      {/* Error Modal */}
+      <ConfirmationModal
+        isOpen={showErrorModal}
+        onClose={() => setShowErrorModal(false)}
+        title="Error"
+        message={errorMessage}
+        type="error"
         confirmText="OK"
         showCancel={false}
       />

@@ -9,6 +9,7 @@ import ReportActionsModal from '@/components/reports/ReportActionsModal';
 import UserManagementModal from '@/components/admin/UserManagementModal';
 import LocationPreviewModal from '@/components/reports/LocationPreviewModal';
 import ImagePreviewModal from '@/components/reports/ImagePreviewModal';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import Image from 'next/image';
 
 interface MainDashboardProps {
@@ -65,6 +66,18 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(true);
+  
+  // Confirmation modals
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [reportToDelete, setReportToDelete] = useState<AnyReport | null>(null);
+  
+  // Cache busting
+  const [cacheBuster, setCacheBuster] = useState(0);
+  
   const { signOut } = useAuth();
 
   // FIXED: Enhanced user role and status detection
@@ -119,10 +132,21 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     };
   }, []);
 
-  // Optimized data loading with separate report loading
+  // Enhanced loadData function with cache clearing
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      
+      // Clear any cached data
+      if (typeof window !== 'undefined') {
+        // Clear session storage and local storage for reports
+        sessionStorage.removeItem('vehicleReports');
+        sessionStorage.removeItem('crimeReports');
+        sessionStorage.removeItem('dashboardStats');
+      }
+      
+      console.log('🔄 Loading fresh data with cache busting...');
+      
       const [statsData] = await Promise.all([
         reportsAPI.getDashboardStats()
       ]);
@@ -130,37 +154,58 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       setStats(statsData);
       
       // Load reports separately for faster initial display
-      loadReports();
+      await loadReports();
+      
+      // Increment cache buster to force re-renders
+      setCacheBuster(prev => prev + 1);
+      
     } catch (error) {
       console.error('Error loading data:', error);
+      showError('Failed to load data. Please try refreshing the page.');
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // Enhanced loadReports function with active status filtering
   const loadReports = useCallback(async () => {
     try {
       setReportsLoading(true);
+      console.log('🔄 Loading fresh reports data...');
+      
       const [vehiclesData, crimesData] = await Promise.all([
         reportsAPI.getVehicleAlerts(),
         reportsAPI.getCrimeReports()
       ]);
       
+      // Filter out rejected/deleted reports and only show active/resolved
+      const activeVehicles = vehiclesData.filter(vehicle => 
+        vehicle.status !== 'rejected'
+      );
+      
+      const activeCrimes = crimesData.filter(crime => 
+        crime.status !== 'rejected'
+      );
+      
       // Enhance reports with reporter information
-      const vehiclesWithReporters = vehiclesData.map(vehicle => ({
+      const vehiclesWithReporters = activeVehicles.map(vehicle => ({
         ...vehicle,
-        reporter_profile: user // Use current user as fallback
+        reporter_profile: user
       }));
       
-      const crimesWithReporters = crimesData.map(crime => ({
+      const crimesWithReporters = activeCrimes.map(crime => ({
         ...crime,
-        reporter_profile: user // Use current user as fallback
+        reporter_profile: user
       }));
       
       setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
       setCrimeReports(crimesWithReporters as CrimeReportWithImages[]);
+      
+      console.log(`✅ Loaded ${vehiclesWithReporters.length} vehicle reports and ${crimesWithReporters.length} crime reports`);
+      
     } catch (error) {
       console.error('Error loading reports:', error);
+      showError('Failed to load reports. Please try refreshing the page.');
     } finally {
       setReportsLoading(false);
     }
@@ -179,6 +224,17 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
     updateStats();
   }, [vehicleReports.length, crimeReports.length]);
+
+  // Modal helper functions
+  const showSuccess = (message: string) => {
+    setSuccessMessage(message);
+    setShowSuccessModal(true);
+  };
+
+  const showError = (message: string) => {
+    setErrorMessage(message);
+    setShowErrorModal(true);
+  };
 
   const handleViewReport = (report: AnyReport) => {
     setSelectedReport(report);
@@ -223,19 +279,47 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   };
 
   const handleDeleteReport = async (report: AnyReport) => {
-    if (!window.confirm('Are you sure you want to delete this report?')) return;
+    setReportToDelete(report);
+    setShowDeleteConfirmModal(true);
+  };
+
+  const confirmDeleteReport = async () => {
+    if (!reportToDelete) return;
 
     try {
-      if (activeReportType === 'vehicles' && isVehicleAlert(report)) {
-        await reportsAPI.updateVehicleAlert(report.id, { status: 'rejected' });
-      } else if (activeReportType === 'crimes' && isCrimeReport(report)) {
-        await reportsAPI.updateCrimeReport(report.id, { status: 'rejected' });
+      // Optimistically remove from UI immediately
+      if (activeReportType === 'vehicles' && isVehicleAlert(reportToDelete)) {
+        setVehicleReports(prev => prev.filter(r => r.id !== reportToDelete.id));
+      } else if (activeReportType === 'crimes' && isCrimeReport(reportToDelete)) {
+        setCrimeReports(prev => prev.filter(r => r.id !== reportToDelete.id));
       }
-      await loadData();
+      
+      // Close modals
       setIsActionsModalOpen(false);
+      setShowDeleteConfirmModal(false);
+      
+      // Update status in database
+      if (activeReportType === 'vehicles' && isVehicleAlert(reportToDelete)) {
+        await reportsAPI.updateVehicleAlert(reportToDelete.id, { status: 'rejected' });
+      } else if (activeReportType === 'crimes' && isCrimeReport(reportToDelete)) {
+        await reportsAPI.updateCrimeReport(reportToDelete.id, { status: 'rejected' });
+      }
+      
+      // Refresh stats to reflect the deletion
+      const statsData = await reportsAPI.getDashboardStats();
+      setStats(statsData);
+      
+      showSuccess('Report deleted successfully!');
+      
     } catch (error) {
       console.error('Error deleting report:', error);
-      alert('Error deleting report. Please try again.');
+      
+      // Revert optimistic update if there was an error
+      await loadReports();
+      
+      showError('Error deleting report. Please try again.');
+    } finally {
+      setReportToDelete(null);
     }
   };
 
@@ -245,11 +329,24 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   };
 
   const handleReportCreated = useCallback(async () => {
-    // Reload both reports and stats
+    console.log('🔄 Refreshing data after report creation...');
+    
+    // Force reload all data
     await loadReports();
     const statsData = await reportsAPI.getDashboardStats();
     setStats(statsData);
+    
+    // Force UI update
+    setCacheBuster(prev => prev + 1);
+    
+    showSuccess('Report created successfully!');
   }, [loadReports]);
+
+  // Add useEffect to handle cache busting
+  useEffect(() => {
+    // This will re-render the reports list when cacheBuster changes
+    console.log('🔄 Cache buster updated:', cacheBuster);
+  }, [cacheBuster]);
 
   const currentReports = activeReportType === 'vehicles' ? vehicleReports : crimeReports;
 
@@ -538,7 +635,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            <span>{loading ? 'Refreshing...' : 'Refresh Data'}</span>
+            <span>{loading ? 'Refreshing...' : 'Refresh & Clear Cache'}</span>
           </button>
         </div>
 
@@ -592,13 +689,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                               </div>
                             </div>
                             <span className={`px-3 py-1 text-xs rounded-full font-medium ${
-                              report.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
-                              report.status === 'resolved' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
-                              report.status === 'rejected' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
-                              'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                            }`}>
-                              {report.status.replace('_', ' ')}
-                            </span>
+  report.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
+  report.status === 'active' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
+  report.status === 'resolved' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
+  report.status === 'rejected' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
+  'bg-gray-500/20 text-gray-300 border border-gray-500/30'
+}`}>
+  {report.status.replace('_', ' ')}
+</span>
                           </div>
                           <p className="text-gray-300 mb-2">
                             {display.secondary}
@@ -723,14 +821,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       />
 
       <ReportActionsModal 
-  open={isActionsModalOpen}
-  onClose={() => handleModalClose(setIsActionsModalOpen)}
-  report={selectedReport}
-  onEdit={() => handleEditReport(selectedReport)}
-  onViewLocation={() => handleViewLocation(selectedReport)}
-  onDelete={() => handleDeleteReport(selectedReport)}
-  canDelete={canDelete}
-/>
+        open={isActionsModalOpen}
+        onClose={() => handleModalClose(setIsActionsModalOpen)}
+        report={selectedReport}
+        onEdit={() => handleEditReport(selectedReport)}
+        onViewLocation={() => handleViewLocation(selectedReport)}
+        onDelete={() => handleDeleteReport(selectedReport)}
+        canDelete={canDelete}
+      />
 
       <UserManagementModal 
         isOpen={isUserManagementOpen}
@@ -751,6 +849,41 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         images={selectedImages}
         initialIndex={selectedImageIndex}
         title="Evidence Images"
+      />
+
+      {/* Confirmation Modals */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirmModal}
+        onClose={() => {
+          setShowDeleteConfirmModal(false);
+          setReportToDelete(null);
+        }}
+        onConfirm={confirmDeleteReport}
+        title="Confirm Deletion"
+        message="Are you sure you want to delete this report? This action cannot be undone."
+        type="warning"
+        confirmText="Delete Report"
+        cancelText="Cancel"
+      />
+
+      <ConfirmationModal
+        isOpen={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        title="Success"
+        message={successMessage}
+        type="success"
+        confirmText="OK"
+        showCancel={false}
+      />
+
+      <ConfirmationModal
+        isOpen={showErrorModal}
+        onClose={() => setShowErrorModal(false)}
+        title="Error"
+        message={errorMessage}
+        type="error"
+        confirmText="OK"
+        showCancel={false}
       />
 
       {/* Mobile Floating Action Button */}
