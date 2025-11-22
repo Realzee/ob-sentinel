@@ -1,11 +1,38 @@
-// src/components/admin/UserManagementModal.tsx (No Material-UI version)
 import React, { useState, useEffect } from 'react';
+import {
+  Modal,
+  Box,
+  Typography,
+  Button,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  Alert,
+  CircularProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import {
+  Edit as EditIcon,
+  Save as SaveIcon,
+  Cancel as CancelIcon,
+  Delete as DeleteIcon,
+} from '@mui/icons-material';
 import { Profile, UserRole, UserStatus } from '@/types';
 
 interface UserManagementModalProps {
   open: boolean;
   onClose: () => void;
-  users: Profile[];
+  users: Profile[] | null | undefined;
   onUpdateUser: (userId: string, updates: Partial<Profile>) => Promise<void>;
   onDeleteUser: (userId: string) => Promise<void>;
   loading?: boolean;
@@ -26,6 +53,7 @@ const UserManagementModal: React.FC<UserManagementModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Reset states when modal opens/closes
   useEffect(() => {
     if (open) {
       setEditingUserId(null);
@@ -35,7 +63,8 @@ const UserManagementModal: React.FC<UserManagementModalProps> = ({
     }
   }, [open]);
 
-  if (!open) return null;
+  // Safe users array - always ensure we have an array
+  const safeUsers = Array.isArray(users) ? users : [];
 
   const handleEditClick = (user: Profile) => {
     setEditingUserId(user.id);
@@ -44,11 +73,14 @@ const UserManagementModal: React.FC<UserManagementModalProps> = ({
       role: user.role,
       status: user.status,
     });
+    setError(null);
+    setSuccess(null);
   };
 
   const handleCancelEdit = () => {
     setEditingUserId(null);
     setEditFormData({});
+    setError(null);
   };
 
   const handleSaveClick = async (userId: string) => {
@@ -73,7 +105,7 @@ const UserManagementModal: React.FC<UserManagementModalProps> = ({
   };
 
   const handleDeleteClick = async (userId: string) => {
-    if (!window.confirm('Are you sure you want to delete this user?')) {
+    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       return;
     }
 
@@ -97,133 +129,204 @@ const UserManagementModal: React.FC<UserManagementModalProps> = ({
     }));
   };
 
+  const handleRoleChange = (event: any) => {
+    handleInputChange('role', event.target.value as UserRole);
+  };
+
+  const handleStatusChange = (event: any) => {
+    handleInputChange('status', event.target.value as UserStatus);
+  };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Never signed in';
     return new Date(dateString).toLocaleString();
   };
 
-  return (
-    <div className="modal-overlay">
-      <div className="modal-content">
-        <div className="modal-header">
-          <h2>User Management</h2>
-          <button onClick={onClose} className="close-btn">Close</button>
-        </div>
+  const getStatusColor = (status: UserStatus) => {
+    switch (status) {
+      case 'ACTIVE': return 'success';
+      case 'INACTIVE': return 'warning';
+      case 'SUSPENDED': return 'error';
+      default: return 'default';
+    }
+  };
 
-        {error && <div className="alert error">{error}</div>}
-        {success && <div className="alert success">{success}</div>}
+  const getRoleColor = (role: UserRole) => {
+    switch (role) {
+      case 'ADMIN': return 'secondary';
+      case 'OFFICER': return 'primary';
+      case 'USER': return 'default';
+      default: return 'default';
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Box sx={{ width: '90%', maxWidth: 1200, maxHeight: '90vh', bgcolor: 'background.paper', borderRadius: 2, p: 3, overflow: 'auto' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h5" component="h2">
+            User Management
+          </Typography>
+          <Button onClick={onClose} variant="outlined">
+            Close
+          </Button>
+        </Box>
+
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
         {loading ? (
-          <div className="loading">Loading...</div>
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+            <CircularProgress />
+          </Box>
         ) : (
-          <div className="table-container">
-            <table className="users-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Last Sign In</th>
-                  <th>Created</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user.id}>
-                    <td>
-                      <div>
-                        <strong>{user.full_name || 'No name'}</strong>
-                        <div>{user.email}</div>
-                      </div>
-                    </td>
+          <TableContainer component={Paper}>
+            <Table sx={{ minWidth: 650 }} aria-label="user management table">
+              <TableHead>
+                <TableRow>
+                  <TableCell>User</TableCell>
+                  <TableCell>Role</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Last Sign In</TableCell>
+                  <TableCell>Created</TableCell>
+                  <TableCell align="center">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {safeUsers.map((user) => (
+                  <TableRow key={user.id} hover>
+                    <TableCell>
+                      <Box>
+                        <Typography variant="subtitle2">
+                          {user.full_name || 'No name'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {user.email}
+                        </Typography>
+                      </Box>
+                    </TableCell>
 
-                    <td>
+                    <TableCell>
                       {editingUserId === user.id ? (
-                        <select
-                          value={editFormData.role || ''}
-                          onChange={(e) => handleInputChange('role', e.target.value as UserRole)}
-                        >
-                          <option value="USER">User</option>
-                          <option value="OFFICER">Officer</option>
-                          <option value="ADMIN">Admin</option>
-                        </select>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Role</InputLabel>
+                          <Select
+                            value={editFormData.role || ''}
+                            label="Role"
+                            onChange={handleRoleChange}
+                          >
+                            <MenuItem value="USER">User</MenuItem>
+                            <MenuItem value="OFFICER">Officer</MenuItem>
+                            <MenuItem value="ADMIN">Admin</MenuItem>
+                          </Select>
+                        </FormControl>
                       ) : (
-                        <span className={`role-badge role-${user.role.toLowerCase()}`}>
-                          {user.role}
-                        </span>
+                        <Chip
+                          label={user.role}
+                          color={getRoleColor(user.role) as any}
+                          size="small"
+                        />
                       )}
-                    </td>
+                    </TableCell>
 
-                    <td>
+                    <TableCell>
                       {editingUserId === user.id ? (
-                        <select
-                          value={editFormData.status || ''}
-                          onChange={(e) => handleInputChange('status', e.target.value as UserStatus)}
-                        >
-                          <option value="ACTIVE">Active</option>
-                          <option value="INACTIVE">Inactive</option>
-                          <option value="SUSPENDED">Suspended</option>
-                        </select>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Status</InputLabel>
+                          <Select
+                            value={editFormData.status || ''}
+                            label="Status"
+                            onChange={handleStatusChange}
+                          >
+                            <MenuItem value="ACTIVE">Active</MenuItem>
+                            <MenuItem value="INACTIVE">Inactive</MenuItem>
+                            <MenuItem value="SUSPENDED">Suspended</MenuItem>
+                          </Select>
+                        </FormControl>
                       ) : (
-                        <span className={`status-badge status-${user.status.toLowerCase()}`}>
-                          {user.status}
-                        </span>
+                        <Chip
+                          label={user.status}
+                          color={getStatusColor(user.status) as any}
+                          size="small"
+                        />
                       )}
-                    </td>
+                    </TableCell>
 
-                    <td>
-                      {formatDate(user.last_sign_in_at)}
-                    </td>
+                    <TableCell>
+                      <Tooltip title={formatDate(user.last_sign_in_at)}>
+                        <Typography variant="body2">
+                          {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : 'Never'}
+                        </Typography>
+                      </Tooltip>
+                    </TableCell>
 
-                    <td>
+                    <TableCell>
                       {new Date(user.created_at).toLocaleDateString()}
-                    </td>
+                    </TableCell>
 
-                    <td>
+                    <TableCell align="center">
                       {editingUserId === user.id ? (
-                        <div className="action-buttons">
-                          <button
-                            onClick={() => handleSaveClick(user.id)}
-                            disabled={saveLoading === user.id}
-                            className="btn-save"
-                          >
-                            {saveLoading === user.id ? 'Saving...' : 'Save'}
-                          </button>
-                          <button onClick={handleCancelEdit} className="btn-cancel">
-                            Cancel
-                          </button>
-                        </div>
+                        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                          <Tooltip title="Save">
+                            <span>
+                              <IconButton
+                                onClick={() => handleSaveClick(user.id)}
+                                disabled={saveLoading === user.id}
+                                color="primary"
+                                size="small"
+                              >
+                                {saveLoading === user.id ? <CircularProgress size={20} /> : <SaveIcon />}
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Cancel">
+                            <IconButton onClick={handleCancelEdit} color="inherit" size="small">
+                              <CancelIcon />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
                       ) : (
-                        <div className="action-buttons">
-                          <button
-                            onClick={() => handleEditClick(user)}
-                            className="btn-edit"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClick(user.id)}
-                            disabled={deleteLoading === user.id}
-                            className="btn-delete"
-                          >
-                            {deleteLoading === user.id ? 'Deleting...' : 'Delete'}
-                          </button>
-                        </div>
+                        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                          <Tooltip title="Edit User">
+                            <IconButton
+                              onClick={() => handleEditClick(user)}
+                              color="primary"
+                              size="small"
+                            >
+                              <EditIcon />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete User">
+                            <span>
+                              <IconButton
+                                onClick={() => handleDeleteClick(user.id)}
+                                disabled={deleteLoading === user.id}
+                                color="error"
+                                size="small"
+                              >
+                                {deleteLoading === user.id ? <CircularProgress size={20} /> : <DeleteIcon />}
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Box>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          </TableContainer>
         )}
 
-        {users.length === 0 && !loading && (
-          <div className="no-users">No users found</div>
+        {safeUsers.length === 0 && !loading && (
+          <Box sx={{ textAlign: 'center', p: 3 }}>
+            <Typography variant="body1" color="text.secondary">
+              No users found
+            </Typography>
+          </Box>
         )}
-      </div>
-    </div>
+      </Box>
+    </Modal>
   );
 };
 

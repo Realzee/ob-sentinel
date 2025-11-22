@@ -35,11 +35,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 // Type guard functions for the missing exports
 export const isVehicleAlert = (item: any): item is AlertVehicle => {
-  return item && typeof item === 'object' && 'number_plate' in item && 'make' in item;
+  return item && typeof item === 'object' && 
+    ('number_plate' in item || 'license_plate' in item) && 
+    ('make' in item || 'vehicle_make' in item);
 };
 
 export const isCrimeReport = (item: any): item is CrimeReport => {
-  return item && typeof item === 'object' && 'crime_type' in item && 'description' in item;
+  return item && typeof item === 'object' && 
+    ('crime_type' in item || 'title' in item) && 
+    'description' in item;
 };
 
 export const isAlertVehicle = (item: any): item is AlertVehicle => {

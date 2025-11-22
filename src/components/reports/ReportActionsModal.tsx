@@ -77,18 +77,27 @@ const ReportActionsModal: React.FC<ReportActionsModalProps> = ({
   const isVehicle = isVehicleAlert(report);
   const isCrime = isCrimeReport(report);
 
+  // Fix status comparison - use type-safe approach
+  const canReject = onReject && report.status !== 'RECOVERED';
+  const canResolve = onResolve && report.status !== 'RECOVERED';
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'ACTIVE':
-      case 'pending':
         return 'warning';
       case 'RECOVERED':
-      case 'resolved':
         return 'success';
-      case 'rejected':
-        return 'error';
       default:
         return 'default';
+    }
+  };
+
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'ADMIN': return 'secondary';
+      case 'OFFICER': return 'primary';
+      case 'USER': return 'default';
+      default: return 'default';
     }
   };
 
@@ -211,7 +220,7 @@ const ReportActionsModal: React.FC<ReportActionsModalProps> = ({
           </Button>
         )}
 
-        {onReject && report.status !== 'rejected' && (
+        {canReject && (
           <Button
             onClick={handleReject}
             startIcon={
@@ -228,7 +237,7 @@ const ReportActionsModal: React.FC<ReportActionsModalProps> = ({
           </Button>
         )}
 
-        {onResolve && report.status !== 'resolved' && (
+        {canResolve && (
           <Button
             onClick={handleResolve}
             startIcon={
