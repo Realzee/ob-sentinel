@@ -286,6 +286,8 @@ export const authAPI = {
   }
 };
 
+
+
 // Enhanced Reports API with OB numbers and reporter profiles
 export const reportsAPI = {
   createVehicleAlert: async (data: any): Promise<any> => {
@@ -379,11 +381,9 @@ export const reportsAPI = {
     }, 'updateVehicleAlert');
   },
 
-  getVehicleAlerts: async (): Promise<any[]> => {
-    return safeApiCall(async () => {
-      console.log('🔄 Fetching vehicle alerts with reporter profiles...');
-      
-      const { data: alerts, error } = await supabase
+  getVehicleAlerts: async (): Promise<VehicleAlert[]> => {
+    try {
+      const { data, error } = await supabase
         .from('vehicle_alerts')
         .select(`
           *,
@@ -394,12 +394,15 @@ export const reportsAPI = {
 
       if (error) {
         console.error('❌ Error getting vehicle alerts:', error);
-        return [];
+        throw error;
       }
 
-      console.log(`✅ Loaded ${alerts?.length || 0} vehicle alerts with reporter profiles`);
-      return alerts || [];
-    }, 'getVehicleAlerts');
+      console.log('✅ Vehicle alerts loaded:', data?.length || 0);
+      return data || [];
+    } catch (error) {
+      console.error('❌ Error getting vehicle alerts:', error);
+      return [];
+    }
   },
 
   createCrimeReport: async (data: any): Promise<any> => {
@@ -487,11 +490,9 @@ export const reportsAPI = {
     }, 'updateCrimeReport');
   },
 
-  getCrimeReports: async (): Promise<any[]> => {
-    return safeApiCall(async () => {
-      console.log('🔄 Fetching crime reports with reporter profiles...');
-      
-      const { data: reports, error } = await supabase
+  getCrimeReports: async (): Promise<CrimeReport[]> => {
+    try {
+      const { data, error } = await supabase
         .from('crime_reports')
         .select(`
           *,
@@ -502,12 +503,15 @@ export const reportsAPI = {
 
       if (error) {
         console.error('❌ Error getting crime reports:', error);
-        return [];
+        throw error;
       }
 
-      console.log(`✅ Loaded ${reports?.length || 0} crime reports with reporter profiles`);
-      return reports || [];
-    }, 'getCrimeReports');
+      console.log('✅ Crime reports loaded:', data?.length || 0);
+      return data || [];
+    } catch (error) {
+      console.error('❌ Error getting crime reports:', error);
+      return [];
+    }
   },
 
   getDashboardStats: async (): Promise<any> => {
