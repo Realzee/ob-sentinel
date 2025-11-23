@@ -3,7 +3,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -11,15 +11,13 @@ interface AuthContextType {
   session: Session | null;
   signOut: () => Promise<void>;
   loading: boolean;
-  error: string | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
   signOut: async () => {},
-  loading: true,
-  error: null
+  loading: true
 });
 
 export const useAuth = () => {
@@ -34,81 +32,59 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
 
   // Enhanced sign out function
   const signOut = async () => {
     try {
-      console.log('🚪 Starting enhanced sign out process...');
+      console.log('🚪 Signing out...');
       
-      // Clear all local storage and session storage first
+      // Clear all storage first
       if (typeof window !== 'undefined') {
         localStorage.clear();
         sessionStorage.clear();
-        
-        // Clear specific app data
-        const keysToRemove = [
-          'supabase.auth.token',
-          'supabase.auth.refreshToken',
-          'vehicleReports',
-          'crimeReports',
-          'dashboardStats',
-          'userProfile'
-        ];
-        
-        keysToRemove.forEach(key => {
-          localStorage.removeItem(key);
-          sessionStorage.removeItem(key);
-        });
       }
       
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
-      
-      if (error) {
-        console.error('❌ Supabase sign out error:', error);
-        // Continue with redirect anyway
-      }
-      
-      console.log('✅ Sign out completed, redirecting...');
+      if (error) throw error;
       
       // Reset state
       setUser(null);
       setSession(null);
-      setError(null);
       
-      // Force full page reload to clear all React state and memory
-      window.location.href = '/';
+      console.log('✅ Signed out successfully');
+      
+      // Redirect to login
+      router.push('/');
       
     } catch (error) {
       console.error('❌ Error during sign out:', error);
-      // Force redirect anyway to ensure user is logged out
-      if (typeof window !== 'undefined') {
-        window.location.href = '/';
-      }
+      // Force redirect anyway
+      window.location.href = '/';
     }
   };
 
   useEffect(() => {
-    // Get initial session
+    // Get initial session - SIMPLIFIED VERSION
     const getInitialSession = async () => {
       try {
-        setLoading(true);
+        console.log('🔄 Getting initial session...');
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('❌ Error getting session:', error);
-          setError(error.message);
+          console.error('❌ Session error:', error);
+          setLoading(false);
           return;
         }
         
+        console.log('📋 Session data:', session);
         setSession(session);
         setUser(session?.user ?? null);
         
-      } catch (error: any) {
-        console.error('❌ Error in getInitialSession:', error);
-        setError(error.message);
+      } catch (error) {
+        console.error('❌ Error getting session:', error);
       } finally {
         setLoading(false);
       }
@@ -116,34 +92,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     getInitialSession();
 
-    // Listen for auth changes
+    // Listen for auth changes - SIMPLIFIED
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('🔐 Auth state changed:', event);
+      (event, session) => {
+        console.log('🔐 Auth state changed:', event, session?.user?.email);
         
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
-        
-        if (event === 'SIGNED_IN') {
-          // Redirect to dashboard after successful sign in
+
+        // Handle redirects based on auth state
+        if (event === 'SIGNED_IN' && pathname === '/') {
           router.push('/dashboard');
         } else if (event === 'SIGNED_OUT') {
-          // Redirect to login after sign out
           router.push('/');
         }
       }
     );
 
     return () => subscription.unsubscribe();
-  }, [router]);
+  }, [router, pathname]);
 
   const value: AuthContextType = {
     user,
     session,
     signOut,
-    loading,
-    error
+    loading
   };
 
   return (
