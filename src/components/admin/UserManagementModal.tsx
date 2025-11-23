@@ -16,9 +16,6 @@ interface User extends Profile {
   // Extend Profile to ensure compatibility
 }
 
-// In-memory cache for user management
-const userManagementCache = new Map();
-
 export default function UserManagementModal({ isOpen, onClose, currentUser }: UserManagementModalProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,8 +28,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   // Enhanced filtering
   const [filters, setFilters] = useState({
     role: '',
-    status: '',
-    online: ''
+    status: ''
   });
 
   // User selection for bulk operations
@@ -78,22 +74,24 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     return () => clearInterval(interval);
   }, [isOpen]);
 
+  // Get users directly from public.users table with admin access
   const loadUsers = async () => {
     try {
       setLoading(true);
-      // Admin users get access to all users
-      const usersData = await authAPI.getAllUsers();
-      console.log('📊 Loaded all users:', usersData);
       
-      // Cast to User[] to handle the type compatibility
-      const allUsers = usersData as User[] || [];
-      
-      // Ensure we have all users including offline ones
-      console.log(`👥 Total users loaded: ${allUsers.length}`);
-      console.log(`🟢 Online users: ${allUsers.filter(u => u.status === 'active').length}`);
-      console.log(`⚫ Offline users: ${allUsers.filter(u => u.status !== 'active').length}`);
-      
-      setUsers(allUsers);
+      // Direct query to public.users table - admin has full access
+      const { data: usersData, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error loading users from public.users:', error);
+        throw error;
+      }
+
+      console.log('📊 Loaded users from public.users:', usersData);
+      setUsers(usersData as User[] || []);
     } catch (error) {
       console.error('❌ Error loading users:', error);
       showError('Failed to load users. Please try again.');
@@ -120,27 +118,134 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setShowErrorModal(true);
   };
 
-  // Enhanced user status with timestamp and online/offline detection
+  // Update user role in public.users table
+  const handleRoleUpdate = async (userId: string, newRole: string) => {
+    const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
+    if (!validRoles.includes(newRole as UserRole)) {
+      console.error('Invalid role:', newRole);
+      return;
+    }
+
+    try {
+      setUpdating(userId);
+      
+      // Update in public.users table
+      const { error } = await supabase
+        .from('users')
+        .update({ 
+          role: newRole as UserRole,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      // Update local state
+      setUsers(prev => prev.map(u => 
+        u.id === userId 
+          ? { ...u, role: newRole as UserRole, updated_at: new Date().toISOString() }
+          : u
+      ));
+      
+      showSuccess('User role updated successfully!');
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      showError('Error updating user role. Please try again.');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  // Update user status in public.users table
+  const handleStatusUpdate = async (userId: string, newStatus: string) => {
+    const validStatuses: UserStatus[] = ['pending', 'active', 'suspended'];
+    if (!validStatuses.includes(newStatus as UserStatus)) {
+      console.error('Invalid status:', newStatus);
+      return;
+    }
+
+    try {
+      setUpdating(userId);
+      
+      // Update in public.users table
+      const { error } = await supabase
+        .from('users')
+        .update({ 
+          status: newStatus as UserStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      // Update local state
+      setUsers(prev => prev.map(u => 
+        u.id === userId 
+          ? { ...u, status: newStatus as UserStatus, updated_at: new Date().toISOString() }
+          : u
+      ));
+      
+      showSuccess(`User status updated to ${newStatus}!`);
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      showError('Error updating user status. Please try again.');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  // Suspend user by updating status in public.users table
+  const handleDeleteUser = async (userId: string, userEmail: string) => {
+    showConfirmation(
+      `Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`,
+      async () => {
+        try {
+          setUpdating(userId);
+          
+          // Update in public.users table
+          const { error } = await supabase
+            .from('users')
+            .update({ 
+              status: 'suspended' as UserStatus,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', userId);
+
+          if (error) throw error;
+
+          // Update local state
+          setUsers(prev => prev.map(u => 
+            u.id === userId 
+              ? { ...u, status: 'suspended' as UserStatus, updated_at: new Date().toISOString() }
+              : u
+          ));
+          
+          showSuccess('User suspended successfully');
+        } catch (error) {
+          console.error('Error suspending user:', error);
+          showError('Error suspending user. Please try again.');
+        } finally {
+          setUpdating(null);
+        }
+      }
+    );
+  };
+
+  // Enhanced user status with timestamp
   const getUserStatusWithTimestamp = (user: User) => {
     const isOnline = user.status === 'active';
     const lastSeen = user.last_seen_at ? new Date(user.last_seen_at) : null;
-    const now = new Date();
-    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
-    const isRecentlyActive = lastSeen && lastSeen > fiveMinutesAgo;
     
     return (
       <div className="flex items-center space-x-2">
-        <div 
-          className={`w-3 h-3 rounded-full ${
-            isOnline || isRecentlyActive 
-              ? 'bg-green-500 animate-pulse' 
-              : 'bg-gray-500'
-          }`}
-          title={isOnline || isRecentlyActive ? 'Online' : 'Offline'}
-        ></div>
+        <div className={`w-2 h-2 rounded-full ${
+          isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
+        }`}></div>
         <div className="text-xs">
           <div className="text-gray-400">
-            {isOnline || isRecentlyActive ? 'Online' : `Offline - ${user.status}`}
+            {user.status === 'active' ? 'Online' : 
+             user.status === 'pending' ? 'Pending Approval' :
+             user.status === 'suspended' ? 'Suspended' : 'Offline'}
           </div>
           {lastSeen && (
             <div className="text-gray-500">
@@ -152,18 +257,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     );
   };
 
-  // Check if user is currently online (active and recently seen)
-  const isUserOnline = (user: User): boolean => {
-    if (user.status === 'active') return true;
-    
-    const lastSeen = user.last_seen_at ? new Date(user.last_seen_at) : null;
-    const now = new Date();
-    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
-    
-    return lastSeen ? lastSeen > fiveMinutesAgo : false;
-  };
-
-  // Enhanced filtering with online/offline filter
+  // Enhanced filtering
   const filteredUsers = users.filter(user => {
     const matchesSearch = 
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -173,139 +267,25 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     const matchesRole = !filters.role || user.role === filters.role;
     const matchesStatus = !filters.status || user.status === filters.status;
     
-    const matchesOnlineFilter = !filters.online || 
-      (filters.online === 'online' && isUserOnline(user)) ||
-      (filters.online === 'offline' && !isUserOnline(user));
-    
-    return matchesSearch && matchesRole && matchesStatus && matchesOnlineFilter;
+    return matchesSearch && matchesRole && matchesStatus;
   });
 
-  // FIXED: Cache-only role update to avoid RLS recursion
-  const handleRoleUpdate = async (userId: string, newRole: string) => {
-    const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
-    if (!validRoles.includes(newRole as UserRole)) {
-      console.error('Invalid role:', newRole);
-      return;
-    }
-
-    try {
-      setUpdating(userId);
-      
-      // Update cached profile only (avoid RLS recursion)
-      const currentUserData = users.find(u => u.id === userId);
-      if (currentUserData) {
-        const updatedUser = {
-          ...currentUserData,
-          role: newRole as UserRole,
-          updated_at: new Date().toISOString()
-        };
-        
-        // Update local state
-        setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
-        
-        // Update cache
-        userManagementCache.set(userId, updatedUser);
-      }
-      
-      showSuccess('User role updated successfully! (Cache only)');
-    } catch (error) {
-      console.error('Error updating user role:', error);
-      showError('Error updating user role. Changes are cache-only.');
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  // FIXED: Cache-only status update to avoid RLS recursion
-  const handleStatusUpdate = async (userId: string, newStatus: string) => {
-    const validStatuses: UserStatus[] = ['pending', 'active', 'suspended'];
-    if (!validStatuses.includes(newStatus as UserStatus)) {
-      console.error('Invalid status:', newStatus);
-      return;
-    }
-
-    try {
-      setUpdating(userId);
-      
-      // Update cached profile only (avoid RLS recursion)
-      const currentUserData = users.find(u => u.id === userId);
-      if (currentUserData) {
-        const updatedUser = {
-          ...currentUserData,
-          status: newStatus as UserStatus,
-          updated_at: new Date().toISOString()
-        };
-        
-        // Update local state
-        setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
-        
-        // Update cache
-        userManagementCache.set(userId, updatedUser);
-      }
-      
-      showSuccess(`User status updated to ${newStatus}! (Cache only)`);
-    } catch (error) {
-      console.error('Error updating user status:', error);
-      showError('Error updating user status. Changes are cache-only.');
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  // FIXED: Cache-only delete/suspend user
-  const handleDeleteUser = async (userId: string, userEmail: string) => {
-    showConfirmation(
-      `Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`,
-      async () => {
-        try {
-          setUpdating(userId);
-          
-          // Update cached profile only (avoid RLS recursion)
-          const currentUserData = users.find(u => u.id === userId);
-          if (currentUserData) {
-            const updatedUser = {
-              ...currentUserData,
-              status: 'suspended' as UserStatus,
-              updated_at: new Date().toISOString()
-            };
-            
-            // Update local state
-            setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
-            
-            // Update cache
-            userManagementCache.set(userId, updatedUser);
-          }
-          
-          showSuccess('User suspended successfully (Cache only)');
-        } catch (error) {
-          console.error('Error suspending user:', error);
-          showError('Error suspending user. Changes are cache-only.');
-        } finally {
-          setUpdating(null);
-        }
-      }
-    );
-  };
-
-  // FIXED: Cache-only bulk operations
+  // Bulk role update in public.users table
   const handleBulkRoleUpdate = async (newRole: UserRole) => {
     if (selectedUsers.length === 0) return;
 
     try {
-      for (const userId of selectedUsers) {
-        const currentUserData = users.find(u => u.id === userId);
-        if (currentUserData) {
-          const updatedUser = {
-            ...currentUserData,
-            role: newRole,
-            updated_at: new Date().toISOString()
-          };
-          
-          // Update cache
-          userManagementCache.set(userId, updatedUser);
-        }
-      }
-      
+      // Update in public.users table
+      const { error } = await supabase
+        .from('users')
+        .update({ 
+          role: newRole,
+          updated_at: new Date().toISOString()
+        })
+        .in('id', selectedUsers);
+
+      if (error) throw error;
+
       // Update local state
       setUsers(prev => prev.map(u => 
         selectedUsers.includes(u.id) 
@@ -314,10 +294,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       ));
       
       setSelectedUsers([]);
-      showSuccess(`Updated ${selectedUsers.length} users to ${newRole} role (Cache only)`);
+      showSuccess(`Updated ${selectedUsers.length} users to ${newRole} role`);
     } catch (error) {
       console.error('Error in bulk role update:', error);
-      showError('Error updating users. Changes are cache-only.');
+      showError('Error updating users. Please try again.');
     }
   };
 
@@ -337,7 +317,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // FIXED: User creation with simplified profile handling
+  // Create user with profile in public.users table
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -349,6 +329,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setAddingUser(true);
       
+      // Create auth user
       const { data, error } = await supabase.auth.signUp({
         email: newUserEmail,
         password: newUserPassword,
@@ -363,23 +344,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       if (error) throw error;
 
       if (data.user) {
-        // Create cached user profile (avoid RLS recursion)
-        const newUser: User = {
-          id: data.user.id,
-          email: newUserEmail,
-          full_name: newUserName || null,
-          role: newUserRole,
-          status: 'active' as UserStatus,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          last_seen_at: new Date().toISOString()
-        };
-
-        // Add to local state
-        setUsers(prev => [...prev, newUser]);
-        
-        // Update cache
-        userManagementCache.set(data.user.id, newUser);
+        // The profile should be automatically created via database trigger
+        // But we'll manually refresh to ensure we have the latest data
+        await loadUsers();
       }
 
       // Reset form
@@ -407,7 +374,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setIsEditUserModalOpen(true);
   };
 
-  // FIXED: Cache-only user update
+  // Update user in public.users table
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -416,29 +383,30 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setEditingUser(true);
 
-      // Update cached user only (avoid RLS recursion)
-      const updatedUser: User = {
-        ...selectedUser,
-        full_name: editUserName || null,
-        role: editUserRole,
-        status: editUserStatus,
-        updated_at: new Date().toISOString()
-      };
+      // Update profile in public.users table
+      const { error: profileError } = await supabase
+        .from('users')
+        .update({
+          full_name: editUserName || null,
+          role: editUserRole,
+          status: editUserStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedUser.id);
 
-      // Update local state
-      setUsers(prev => prev.map(u => u.id === selectedUser.id ? updatedUser : u));
-      
-      // Update cache
-      userManagementCache.set(selectedUser.id, updatedUser);
+      if (profileError) throw profileError;
 
       // Update password only if provided and not empty
       if (editUserPassword && editUserPassword.trim() !== '') {
-        const { error } = await supabase.auth.updateUser({
+        const { error: passwordError } = await supabase.auth.updateUser({
           password: editUserPassword
         });
 
-        if (error) throw error;
+        if (passwordError) throw passwordError;
       }
+
+      // Refresh users to get updated data
+      await loadUsers();
 
       // Reset form
       setSelectedUser(null);
@@ -448,46 +416,48 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       setEditUserPassword('');
       setIsEditUserModalOpen(false);
       
-      showSuccess('User updated successfully! (Cache only)');
+      showSuccess('User updated successfully!');
     } catch (error: any) {
       console.error('Error updating user:', error);
-      showError(error.message || 'Error updating user. Profile changes are cache-only.');
+      showError(error.message || 'Error updating user. Please try again.');
     } finally {
       setEditingUser(false);
     }
   };
 
-  // FIXED: Cache-only user approval
+  // Approve user by updating status in public.users table
   const handleApproveUser = async (userId: string) => {
     try {
       setUpdating(userId);
       
-      // Update cached profile only (avoid RLS recursion)
-      const currentUserData = users.find(u => u.id === userId);
-      if (currentUserData) {
-        const updatedUser = {
-          ...currentUserData,
+      // Update in public.users table
+      const { error } = await supabase
+        .from('users')
+        .update({ 
           status: 'active' as UserStatus,
           updated_at: new Date().toISOString()
-        };
-        
-        // Update local state
-        setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
-        
-        // Update cache
-        userManagementCache.set(userId, updatedUser);
-      }
+        })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      // Update local state
+      setUsers(prev => prev.map(u => 
+        u.id === userId 
+          ? { ...u, status: 'active' as UserStatus, updated_at: new Date().toISOString() }
+          : u
+      ));
       
-      showSuccess('User approved successfully! (Cache only)');
+      showSuccess('User approved successfully!');
     } catch (error) {
       console.error('Error approving user:', error);
-      showError('Error approving user. Changes are cache-only.');
+      showError('Error approving user. Please try again.');
     } finally {
       setUpdating(null);
     }
   };
 
-  // FIXED: Cache-only user reactivation
+  // Reactivate user by updating status in public.users table
   const handleReactivateUser = async (userId: string) => {
     showConfirmation(
       'Are you sure you want to reactivate this user?',
@@ -495,36 +465,34 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           
-          // Update cached profile only (avoid RLS recursion)
-          const currentUserData = users.find(u => u.id === userId);
-          if (currentUserData) {
-            const updatedUser = {
-              ...currentUserData,
+          // Update in public.users table
+          const { error } = await supabase
+            .from('users')
+            .update({ 
               status: 'active' as UserStatus,
               updated_at: new Date().toISOString()
-            };
-            
-            // Update local state
-            setUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
-            
-            // Update cache
-            userManagementCache.set(userId, updatedUser);
-          }
+            })
+            .eq('id', userId);
+
+          if (error) throw error;
+
+          // Update local state
+          setUsers(prev => prev.map(u => 
+            u.id === userId 
+              ? { ...u, status: 'active' as UserStatus, updated_at: new Date().toISOString() }
+              : u
+          ));
           
-          showSuccess('User reactivated successfully (Cache only)');
+          showSuccess('User reactivated successfully');
         } catch (error) {
           console.error('Error reactivating user:', error);
-          showError('Error reactivating user. Changes are cache-only.');
+          showError('Error reactivating user. Please try again.');
         } finally {
           setUpdating(null);
         }
       }
     );
   };
-
-  // Get online users count
-  const onlineUsersCount = users.filter(user => isUserOnline(user)).length;
-  const offlineUsersCount = users.length - onlineUsersCount;
 
   if (!isOpen) return null;
 
@@ -545,12 +513,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-white">User Management</h2>
-                <p className="text-gray-400 mt-1">Manage all users - online and offline</p>
+                <p className="text-gray-400 mt-1">Manage user roles, status, and permissions</p>
                 <p className="text-green-500 text-sm mt-1">
-                  Admin Access: Viewing all {users.length} users in the system
-                </p>
-                <p className="text-yellow-500 text-sm mt-1">
-                  Note: User changes are cache-only to avoid database conflicts
+                  Admin Access: Viewing all users from public.users table
                 </p>
               </div>
               <div className="flex items-center space-x-3">
@@ -576,19 +541,17 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
             {/* Search and Filters */}
             <div className="mb-6 space-y-4">
-              {/* FIXED: Added name and id attributes */}
               <input
                 type="text"
                 id="user-search"
                 name="user-search"
-                placeholder="Search all users by email, name, or role..."
+                placeholder="Search users by email, name, or role..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
               />
               
               <div className="flex flex-wrap gap-4">
-                {/* FIXED: Added name and id attributes */}
                 <select
                   id="role-filter"
                   name="role-filter"
@@ -603,7 +566,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   <option value="user">User</option>
                 </select>
 
-                {/* FIXED: Added name and id attributes */}
                 <select
                   id="status-filter"
                   name="status-filter"
@@ -617,26 +579,12 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   <option value="suspended">Suspended</option>
                 </select>
 
-                {/* Online/Offline Filter */}
-                <select
-                  id="online-filter"
-                  name="online-filter"
-                  value={filters.online}
-                  onChange={(e) => setFilters(prev => ({ ...prev, online: e.target.value }))}
-                  className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">All Users</option>
-                  <option value="online">Online Only</option>
-                  <option value="offline">Offline Only</option>
-                </select>
-
                 {/* Bulk Actions */}
                 {selectedUsers.length > 0 && (
                   <div className="flex items-center space-x-2">
                     <span className="text-sm text-gray-400">
                       {selectedUsers.length} selected
                     </span>
-                    {/* FIXED: Added name and id attributes */}
                     <select
                       id="bulk-role-action"
                       name="bulk-role-action"
@@ -659,7 +607,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
               {loading ? (
                 <div className="flex justify-center items-center py-12">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                  <span className="ml-3 text-gray-400">Loading all users...</span>
                 </div>
               ) : (
                 <div className="overflow-hidden">
@@ -667,7 +614,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     <thead>
                       <tr className="border-b border-gray-700">
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                          {/* FIXED: Added name and id attributes */}
                           <input
                             type="checkbox"
                             id="select-all-users"
@@ -685,10 +631,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700">
-                      {filteredUsers.map((user, index) => (
+                      {filteredUsers.map((user) => (
                         <tr key={user.id} className="hover:bg-gray-800/30 transition-colors">
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {/* FIXED: Added name and id attributes */}
                             <input
                               type="checkbox"
                               id={`user-select-${user.id}`}
@@ -702,9 +647,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                             <div>
                               <div className="text-sm font-medium text-white">
                                 {user.full_name || 'No Name'}
-                                {!isUserOnline(user) && (
-                                  <span className="ml-2 text-xs text-gray-500">(Offline)</span>
-                                )}
                               </div>
                               <div className="text-sm text-gray-400">{user.email}</div>
                               {user.id === currentUser.id && (
@@ -719,7 +661,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">
-                              {/* FIXED: Added name and id attributes */}
                               <select
                                 id={`user-role-${user.id}`}
                                 name={`user-role-${user.id}`}
@@ -786,24 +727,15 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   
                   {filteredUsers.length === 0 && (
                     <div className="text-center py-12">
-                      <p className="text-gray-400">No users found matching your filters</p>
-                      <button
-                        onClick={() => {
-                          setSearchTerm('');
-                          setFilters({ role: '', status: '', online: '' });
-                        }}
-                        className="mt-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
-                      >
-                        Clear Filters
-                      </button>
+                      <p className="text-gray-400">No users found</p>
                     </div>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Enhanced Stats and Footer */}
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-5 gap-4 text-center">
+            {/* Stats and Footer */}
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
               <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                 <div className="text-2xl font-bold text-white">{users.filter(u => u.role === 'admin').length}</div>
                 <div className="text-sm text-gray-400">Admins</div>
@@ -812,13 +744,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 <div className="text-2xl font-bold text-white">{users.filter(u => u.role === 'moderator').length}</div>
                 <div className="text-sm text-gray-400">Moderators</div>
               </div>
-              <div className="bg-gray-800/50 rounded-lg p-4 border border-green-500/30">
-                <div className="text-2xl font-bold text-green-400">{onlineUsersCount}</div>
-                <div className="text-sm text-green-400">Online Users</div>
-              </div>
-              <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-500/30">
-                <div className="text-2xl font-bold text-gray-400">{offlineUsersCount}</div>
-                <div className="text-sm text-gray-400">Offline Users</div>
+              <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+                <div className="text-2xl font-bold text-white">{users.filter(u => u.status === 'active').length}</div>
+                <div className="text-sm text-gray-400">Active Users</div>
               </div>
               <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                 <div className="text-2xl font-bold text-white">{users.length}</div>
@@ -829,10 +757,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
             {/* Footer */}
             <div className="flex justify-between items-center mt-6">
               <div className="text-sm text-gray-400">
-                Showing {filteredUsers.length} of {users.length} users
-                {filters.online && ` • ${filters.online === 'online' ? 'Online' : 'Offline'} only`}
-                {filters.role && ` • ${filters.role} role`}
-                {filters.status && ` • ${filters.status} status`}
+                {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''} found
               </div>
               <div className="flex space-x-3">
                 <button
