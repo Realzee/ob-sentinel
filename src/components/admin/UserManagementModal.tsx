@@ -31,7 +31,8 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   // Enhanced filtering
   const [filters, setFilters] = useState({
     role: '',
-    status: ''
+    status: '',
+    online: ''
   });
 
   // User selection for bulk operations
@@ -80,12 +81,22 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const loadUsers = async () => {
     try {
       setLoading(true);
+      // Admin users get access to all users
       const usersData = await authAPI.getAllUsers();
-      console.log('📊 Loaded users:', usersData);
+      console.log('📊 Loaded all users:', usersData);
+      
       // Cast to User[] to handle the type compatibility
-      setUsers(usersData as User[] || []);
+      const allUsers = usersData as User[] || [];
+      
+      // Ensure we have all users including offline ones
+      console.log(`👥 Total users loaded: ${allUsers.length}`);
+      console.log(`🟢 Online users: ${allUsers.filter(u => u.status === 'active').length}`);
+      console.log(`⚫ Offline users: ${allUsers.filter(u => u.status !== 'active').length}`);
+      
+      setUsers(allUsers);
     } catch (error) {
       console.error('❌ Error loading users:', error);
+      showError('Failed to load users. Please try again.');
       setUsers([]);
     } finally {
       setLoading(false);
@@ -108,6 +119,66 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setErrorMessage(message);
     setShowErrorModal(true);
   };
+
+  // Enhanced user status with timestamp and online/offline detection
+  const getUserStatusWithTimestamp = (user: User) => {
+    const isOnline = user.status === 'active';
+    const lastSeen = user.last_seen_at ? new Date(user.last_seen_at) : null;
+    const now = new Date();
+    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+    const isRecentlyActive = lastSeen && lastSeen > fiveMinutesAgo;
+    
+    return (
+      <div className="flex items-center space-x-2">
+        <div 
+          className={`w-3 h-3 rounded-full ${
+            isOnline || isRecentlyActive 
+              ? 'bg-green-500 animate-pulse' 
+              : 'bg-gray-500'
+          }`}
+          title={isOnline || isRecentlyActive ? 'Online' : 'Offline'}
+        ></div>
+        <div className="text-xs">
+          <div className="text-gray-400">
+            {isOnline || isRecentlyActive ? 'Online' : `Offline - ${user.status}`}
+          </div>
+          {lastSeen && (
+            <div className="text-gray-500">
+              Last seen: {lastSeen.toLocaleDateString()} {lastSeen.toLocaleTimeString()}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Check if user is currently online (active and recently seen)
+  const isUserOnline = (user: User): boolean => {
+    if (user.status === 'active') return true;
+    
+    const lastSeen = user.last_seen_at ? new Date(user.last_seen_at) : null;
+    const now = new Date();
+    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+    
+    return lastSeen ? lastSeen > fiveMinutesAgo : false;
+  };
+
+  // Enhanced filtering with online/offline filter
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = 
+      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.role.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesRole = !filters.role || user.role === filters.role;
+    const matchesStatus = !filters.status || user.status === filters.status;
+    
+    const matchesOnlineFilter = !filters.online || 
+      (filters.online === 'online' && isUserOnline(user)) ||
+      (filters.online === 'offline' && !isUserOnline(user));
+    
+    return matchesSearch && matchesRole && matchesStatus && matchesOnlineFilter;
+  });
 
   // FIXED: Cache-only role update to avoid RLS recursion
   const handleRoleUpdate = async (userId: string, newRole: string) => {
@@ -215,43 +286,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       }
     );
   };
-
-  // Enhanced user status with timestamp
-  const getUserStatusWithTimestamp = (user: User) => {
-    const isOnline = user.status === 'active';
-    const lastSeen = user.last_seen_at ? new Date(user.last_seen_at) : null;
-    
-    return (
-      <div className="flex items-center space-x-2">
-        <div className={`w-2 h-2 rounded-full ${
-          isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
-        }`}></div>
-        <div className="text-xs">
-          <div className="text-gray-400">
-            {isOnline ? 'Online' : `Offline - ${user.status}`}
-          </div>
-          {lastSeen && (
-            <div className="text-gray-500">
-              Last seen: {lastSeen.toLocaleDateString()} {lastSeen.toLocaleTimeString()}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // Enhanced filtering
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = 
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.role.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesRole = !filters.role || user.role === filters.role;
-    const matchesStatus = !filters.status || user.status === filters.status;
-    
-    return matchesSearch && matchesRole && matchesStatus;
-  });
 
   // FIXED: Cache-only bulk operations
   const handleBulkRoleUpdate = async (newRole: UserRole) => {
@@ -488,6 +522,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     );
   };
 
+  // Get online users count
+  const onlineUsersCount = users.filter(user => isUserOnline(user)).length;
+  const offlineUsersCount = users.length - onlineUsersCount;
+
   if (!isOpen) return null;
 
   return (
@@ -507,7 +545,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-white">User Management</h2>
-                <p className="text-gray-400 mt-1">Manage user roles, status, and permissions</p>
+                <p className="text-gray-400 mt-1">Manage all users - online and offline</p>
+                <p className="text-green-500 text-sm mt-1">
+                  Admin Access: Viewing all {users.length} users in the system
+                </p>
                 <p className="text-yellow-500 text-sm mt-1">
                   Note: User changes are cache-only to avoid database conflicts
                 </p>
@@ -540,7 +581,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 type="text"
                 id="user-search"
                 name="user-search"
-                placeholder="Search users by email, name, or role..."
+                placeholder="Search all users by email, name, or role..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -576,6 +617,19 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   <option value="suspended">Suspended</option>
                 </select>
 
+                {/* Online/Offline Filter */}
+                <select
+                  id="online-filter"
+                  name="online-filter"
+                  value={filters.online}
+                  onChange={(e) => setFilters(prev => ({ ...prev, online: e.target.value }))}
+                  className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Users</option>
+                  <option value="online">Online Only</option>
+                  <option value="offline">Offline Only</option>
+                </select>
+
                 {/* Bulk Actions */}
                 {selectedUsers.length > 0 && (
                   <div className="flex items-center space-x-2">
@@ -605,6 +659,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
               {loading ? (
                 <div className="flex justify-center items-center py-12">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                  <span className="ml-3 text-gray-400">Loading all users...</span>
                 </div>
               ) : (
                 <div className="overflow-hidden">
@@ -647,6 +702,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                             <div>
                               <div className="text-sm font-medium text-white">
                                 {user.full_name || 'No Name'}
+                                {!isUserOnline(user) && (
+                                  <span className="ml-2 text-xs text-gray-500">(Offline)</span>
+                                )}
                               </div>
                               <div className="text-sm text-gray-400">{user.email}</div>
                               {user.id === currentUser.id && (
@@ -728,15 +786,24 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   
                   {filteredUsers.length === 0 && (
                     <div className="text-center py-12">
-                      <p className="text-gray-400">No users found</p>
+                      <p className="text-gray-400">No users found matching your filters</p>
+                      <button
+                        onClick={() => {
+                          setSearchTerm('');
+                          setFilters({ role: '', status: '', online: '' });
+                        }}
+                        className="mt-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
+                      >
+                        Clear Filters
+                      </button>
                     </div>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Stats and Footer */}
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
+            {/* Enhanced Stats and Footer */}
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-5 gap-4 text-center">
               <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                 <div className="text-2xl font-bold text-white">{users.filter(u => u.role === 'admin').length}</div>
                 <div className="text-sm text-gray-400">Admins</div>
@@ -745,9 +812,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 <div className="text-2xl font-bold text-white">{users.filter(u => u.role === 'moderator').length}</div>
                 <div className="text-sm text-gray-400">Moderators</div>
               </div>
-              <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <div className="text-2xl font-bold text-white">{users.filter(u => u.status === 'active').length}</div>
-                <div className="text-sm text-gray-400">Active Users</div>
+              <div className="bg-gray-800/50 rounded-lg p-4 border border-green-500/30">
+                <div className="text-2xl font-bold text-green-400">{onlineUsersCount}</div>
+                <div className="text-sm text-green-400">Online Users</div>
+              </div>
+              <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-500/30">
+                <div className="text-2xl font-bold text-gray-400">{offlineUsersCount}</div>
+                <div className="text-sm text-gray-400">Offline Users</div>
               </div>
               <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                 <div className="text-2xl font-bold text-white">{users.length}</div>
@@ -758,7 +829,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
             {/* Footer */}
             <div className="flex justify-between items-center mt-6">
               <div className="text-sm text-gray-400">
-                {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''} found
+                Showing {filteredUsers.length} of {users.length} users
+                {filters.online && ` • ${filters.online === 'online' ? 'Online' : 'Offline'} only`}
+                {filters.role && ` • ${filters.role} role`}
+                {filters.status && ` • ${filters.status} status`}
               </div>
               <div className="flex space-x-3">
                 <button
