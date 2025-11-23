@@ -178,22 +178,27 @@ export default function VehicleReportModal({
     setLoading(true);
 
     try {
+      console.log('🔄 Starting report submission...', { formData, user });
+
+      // Prepare report data with proper types
       const reportData = {
-        license_plate: formData.license_plate,
-        vehicle_make: formData.vehicle_make,
-        vehicle_model: formData.vehicle_model,
-        vehicle_color: formData.vehicle_color,
-        year: formData.year ? parseInt(formData.year) : undefined,
-        reason: formData.reason,
-        last_seen_location: formData.last_seen_location,
-        last_seen_time: formData.last_seen_time ? new Date(formData.last_seen_time).toISOString() : undefined,
+        license_plate: formData.license_plate.trim(),
+        vehicle_make: formData.vehicle_make.trim(),
+        vehicle_model: formData.vehicle_model.trim(),
+        vehicle_color: formData.vehicle_color.trim(),
+        year: formData.year ? parseInt(formData.year) : null,
+        reason: formData.reason.trim(),
+        last_seen_location: formData.last_seen_location.trim(),
+        last_seen_time: formData.last_seen_time ? new Date(formData.last_seen_time).toISOString() : null,
         severity: formData.severity,
         status: formData.status,
-        notes: formData.notes,
+        notes: formData.notes.trim(),
         ob_number: formData.ob_number,
         reported_by: user.id,
         evidence_images: uploadedImageUrls
       };
+
+      console.log('📤 Submitting report data:', reportData);
 
       let result;
       if (editReport) {
@@ -203,27 +208,33 @@ export default function VehicleReportModal({
           ...reportData,
           evidence_images: allImageUrls
         });
+        console.log('✅ Report updated:', result);
       } else {
         console.log('🔄 Creating new report...');
         result = await reportsAPI.createVehicleAlert(reportData);
-        if (images.length > 0) {
+        console.log('✅ Report created:', result);
+        
+        if (images.length > 0 && result && result.id) {
+          console.log('🔄 Uploading images for new report...');
           const imageUrls = await uploadImagesToStorage(result.id);
           await reportsAPI.updateVehicleAlert(result.id, {
             evidence_images: imageUrls
           });
+          console.log('✅ Images uploaded for report');
         }
       }
 
       console.log('✅ Report saved successfully:', result);
       
-      // Close modal first for better UX
-      onClose();
-      
-      // Then show success message
+      // Show success message first
       showSuccess(editReport ? 'Vehicle report updated successfully!' : 'Vehicle report created successfully!');
       
-      // Then trigger the refresh
-      onReportCreated();
+      // Then close modal after a short delay
+      setTimeout(() => {
+        handleModalClose();
+        // Then trigger the refresh
+        onReportCreated();
+      }, 1500);
       
     } catch (error: any) {
       console.error('❌ Error saving vehicle report:', error);
@@ -233,8 +244,8 @@ export default function VehicleReportModal({
         errorMessage = error.message;
       }
       
+      // Show error but don't close the modal
       showError(errorMessage);
-    } finally {
       setLoading(false);
     }
   };
@@ -646,7 +657,10 @@ export default function VehicleReportModal({
       {/* Success Confirmation Modal */}
       <ConfirmationModal
         isOpen={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
+        onClose={() => {
+          setShowSuccessModal(false);
+          setLoading(false);
+        }}
         title="Success"
         message={successMessage}
         type="success"
@@ -657,7 +671,10 @@ export default function VehicleReportModal({
       {/* Error Modal */}
       <ConfirmationModal
         isOpen={showErrorModal}
-        onClose={() => setShowErrorModal(false)}
+        onClose={() => {
+          setShowErrorModal(false);
+          setLoading(false);
+        }}
         title="Error"
         message={errorMessage}
         type="error"
