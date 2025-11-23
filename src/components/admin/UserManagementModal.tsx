@@ -534,8 +534,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
             {/* Search and Filters */}
             <div className="mb-6 space-y-4">
+              {/* FIXED: Added name and id attributes */}
               <input
                 type="text"
+                id="user-search"
+                name="user-search"
                 placeholder="Search users by email, name, or role..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -543,7 +546,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
               />
               
               <div className="flex flex-wrap gap-4">
+                {/* FIXED: Added name and id attributes */}
                 <select
+                  id="role-filter"
+                  name="role-filter"
                   value={filters.role}
                   onChange={(e) => setFilters(prev => ({ ...prev, role: e.target.value }))}
                   className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -555,7 +561,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   <option value="user">User</option>
                 </select>
 
+                {/* FIXED: Added name and id attributes */}
                 <select
+                  id="status-filter"
+                  name="status-filter"
                   value={filters.status}
                   onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
                   className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -572,7 +581,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     <span className="text-sm text-gray-400">
                       {selectedUsers.length} selected
                     </span>
+                    {/* FIXED: Added name and id attributes */}
                     <select
+                      id="bulk-role-action"
+                      name="bulk-role-action"
                       onChange={(e) => handleBulkRoleUpdate(e.target.value as UserRole)}
                       className="px-3 py-1 bg-blue-600 border border-blue-500 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
@@ -599,8 +611,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     <thead>
                       <tr className="border-b border-gray-700">
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                          {/* FIXED: Added name and id attributes */}
                           <input
                             type="checkbox"
+                            id="select-all-users"
+                            name="select-all-users"
                             checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
                             onChange={handleSelectAll}
                             className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
@@ -614,11 +629,14 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700">
-                      {filteredUsers.map((user) => (
+                      {filteredUsers.map((user, index) => (
                         <tr key={user.id} className="hover:bg-gray-800/30 transition-colors">
                           <td className="px-6 py-4 whitespace-nowrap">
+                            {/* FIXED: Added name and id attributes */}
                             <input
                               type="checkbox"
+                              id={`user-select-${user.id}`}
+                              name={`user-select-${user.id}`}
                               checked={selectedUsers.includes(user.id)}
                               onChange={() => handleUserSelection(user.id)}
                               className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
@@ -642,7 +660,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">
+                              {/* FIXED: Added name and id attributes */}
                               <select
+                                id={`user-role-${user.id}`}
+                                name={`user-role-${user.id}`}
                                 value={user.role}
                                 onChange={(e) => handleRoleUpdate(user.id, e.target.value)}
                                 disabled={updating === user.id || user.id === currentUser.id}
@@ -785,11 +806,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
               <form onSubmit={handleAddUser} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="new-user-email" className="block text-sm font-medium text-gray-300 mb-2">
                     Email Address *
                   </label>
                   <input
                     type="email"
+                    id="new-user-email"
+                    name="new-user-email"
                     value={newUserEmail}
                     onChange={(e) => setNewUserEmail(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -799,11 +822,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="new-user-password" className="block text-sm font-medium text-gray-300 mb-2">
                     Password *
                   </label>
                   <input
                     type="password"
+                    id="new-user-password"
+                    name="new-user-password"
                     value={newUserPassword}
                     onChange={(e) => setNewUserPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -814,11 +839,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="new-user-name" className="block text-sm font-medium text-gray-300 mb-2">
                     Full Name (Optional)
                   </label>
                   <input
                     type="text"
+                    id="new-user-name"
+                    name="new-user-name"
                     value={newUserName}
                     onChange={(e) => setNewUserName(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -827,10 +854,12 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="new-user-role" className="block text-sm font-medium text-gray-300 mb-2">
                     Role *
                   </label>
                   <select
+                    id="new-user-role"
+                    name="new-user-role"
                     value={newUserRole}
                     onChange={(e) => setNewUserRole(e.target.value as UserRole)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -897,11 +926,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
               <form onSubmit={handleUpdateUser} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="edit-user-email" className="block text-sm font-medium text-gray-300 mb-2">
                     Email Address
                   </label>
                   <input
                     type="email"
+                    id="edit-user-email"
+                    name="edit-user-email"
                     value={selectedUser.email}
                     disabled
                     className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-gray-400 cursor-not-allowed"
@@ -910,11 +941,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="edit-user-name" className="block text-sm font-medium text-gray-300 mb-2">
                     Full Name
                   </label>
                   <input
                     type="text"
+                    id="edit-user-name"
+                    name="edit-user-name"
                     value={editUserName}
                     onChange={(e) => setEditUserName(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -923,10 +956,12 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="edit-user-role" className="block text-sm font-medium text-gray-300 mb-2">
                     Role
                   </label>
                   <select
+                    id="edit-user-role"
+                    name="edit-user-role"
                     value={editUserRole}
                     onChange={(e) => setEditUserRole(e.target.value as UserRole)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -939,10 +974,12 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="edit-user-status" className="block text-sm font-medium text-gray-300 mb-2">
                     Status
                   </label>
                   <select
+                    id="edit-user-status"
+                    name="edit-user-status"
                     value={editUserStatus}
                     onChange={(e) => setEditUserStatus(e.target.value as UserStatus)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -954,11 +991,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="edit-user-password" className="block text-sm font-medium text-gray-300 mb-2">
                     New Password (Optional)
                   </label>
                   <input
                     type="password"
+                    id="edit-user-password"
+                    name="edit-user-password"
                     value={editUserPassword}
                     onChange={(e) => setEditUserPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
