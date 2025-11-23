@@ -1,3 +1,4 @@
+// lib/supabase.ts
 import { createClient } from '@supabase/supabase-js';
 
 // Updated Types with proper statuses
@@ -14,7 +15,7 @@ export interface Profile {
   status: UserStatus;
   created_at: string;
   updated_at: string;
-  last_seen_at?: string; // Added missing property
+  last_seen_at?: string;
 }
 
 export interface VehicleAlert {
@@ -34,6 +35,7 @@ export interface VehicleAlert {
   reported_by: string;
   created_at: string;
   updated_at: string;
+  ob_number?: string;
 }
 
 export interface CrimeReport {
@@ -51,6 +53,7 @@ export interface CrimeReport {
   reported_by: string;
   created_at: string;
   updated_at: string;
+  ob_number?: string;
 }
 
 // Initialize Supabase client
@@ -77,6 +80,20 @@ export const isCrimeReport = (item: any): item is CrimeReport => {
   return item && typeof item === 'object' && 
     'title' in item && 
     'description' in item;
+};
+
+// Date formatter helper
+export const formatDateForDateTimeLocal = (dateString: string | null): string => {
+  if (!dateString) return '';
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 16);
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return '';
+  }
 };
 
 // Hardcoded admin users for immediate fallback
@@ -130,7 +147,7 @@ export const authAPI = {
         status: 'active' as UserStatus,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        last_seen_at: new Date().toISOString() // Added last_seen_at
+        last_seen_at: new Date().toISOString()
       };
 
       // Cache the profile
@@ -153,7 +170,7 @@ export const authAPI = {
     role?: UserRole; 
     status?: UserStatus;
     full_name?: string | null;
-    last_seen_at?: string; // Added last_seen_at
+    last_seen_at?: string;
   }): Promise<Profile> => {
     return safeApiCall(async () => {
       // Update cached profile
@@ -177,7 +194,7 @@ export const authAPI = {
         status: updates.status || 'active',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        last_seen_at: updates.last_seen_at || new Date().toISOString() // Added last_seen_at
+        last_seen_at: updates.last_seen_at || new Date().toISOString()
       };
     }, 'updateUserRole');
   }
@@ -208,7 +225,8 @@ export const reportsAPI = {
         status: data.status || 'active',
         notes: data.notes || null,
         evidence_images: data.evidence_images || [],
-        reported_by: user.id
+        reported_by: user.id,
+        ob_number: data.ob_number || `OBV${Date.now().toString(36).toUpperCase()}`
       };
 
       console.log('📤 Sending vehicle alert to database:', alertData);
@@ -273,7 +291,7 @@ export const reportsAPI = {
         .from('vehicle_alerts')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(100); // Increased limit
+        .limit(100);
 
       if (error) {
         console.error('❌ Error getting vehicle alerts:', error);
@@ -305,7 +323,8 @@ export const reportsAPI = {
         witness_info: data.witness_info || null,
         evidence_images: data.evidence_images || [],
         contact_allowed: Boolean(data.contact_allowed),
-        reported_by: user.id
+        reported_by: user.id,
+        ob_number: data.ob_number || `OBC${Date.now().toString(36).toUpperCase()}`
       };
 
       console.log('📤 Sending crime report to database:', reportData);
@@ -366,7 +385,7 @@ export const reportsAPI = {
         .from('crime_reports')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(100); // Increased limit
+        .limit(100);
 
       if (error) {
         console.error('❌ Error getting crime reports:', error);
@@ -412,8 +431,8 @@ export const reportsAPI = {
           activeReports: (activeVehiclesCount.count || 0) + (activeCrimesCount.count || 0),
           resolvedVehicles: resolvedVehiclesCount.count || 0,
           resolvedCrimes: resolvedCrimesCount.count || 0,
-          vehiclesWithLocation: 0, // Simplified for performance
-          crimesWithLocation: 0    // Simplified for performance
+          vehiclesWithLocation: 0,
+          crimesWithLocation: 0
         };
       } catch (error) {
         console.error('❌ Error in getDashboardStats:', error);

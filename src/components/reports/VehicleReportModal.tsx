@@ -1,7 +1,8 @@
+// components/reports/VehicleReportModal.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
-import { reportsAPI, ReportStatus, supabase } from '@/lib/supabase';
+import { reportsAPI, ReportStatus, supabase, formatDateForDateTimeLocal } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import Image from 'next/image';
 
@@ -59,6 +60,12 @@ export default function VehicleReportModal({
 
   useEffect(() => {
     if (editReport) {
+      // Fix datetime-local format for last_seen_time
+      let formattedLastSeenTime = '';
+      if (editReport.last_seen_time) {
+        formattedLastSeenTime = formatDateForDateTimeLocal(editReport.last_seen_time);
+      }
+
       setFormData({
         license_plate: editReport.license_plate || '',
         vehicle_make: editReport.vehicle_make || '',
@@ -67,13 +74,13 @@ export default function VehicleReportModal({
         year: editReport.year || '',
         reason: editReport.reason || '',
         last_seen_location: editReport.last_seen_location || '',
-        last_seen_time: editReport.last_seen_time ? editReport.last_seen_time.split('T')[0] : '',
+        last_seen_time: formattedLastSeenTime,
         severity: editReport.severity || 'medium',
         status: editReport.status || 'active',
         notes: editReport.notes || '',
         ob_number: editReport.ob_number || generateShortOBNumber('V')
       });
-      // Load existing images if editing
+      
       if (editReport.evidence_images) {
         setUploadedImageUrls(editReport.evidence_images);
       }
@@ -305,7 +312,6 @@ export default function VehicleReportModal({
   // FIX: Make sure to return null when not open
   if (!isOpen) return null;
 
-  // FIX: Return proper JSX
   return (
     <>
       <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -357,11 +363,12 @@ export default function VehicleReportModal({
               {/* Vehicle Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="license_plate" className="block text-sm font-medium text-gray-300 mb-2">
                     License Plate *
                   </label>
                   <input
                     type="text"
+                    id="license_plate"
                     name="license_plate"
                     value={formData.license_plate}
                     onChange={handleChange}
@@ -372,11 +379,12 @@ export default function VehicleReportModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="vehicle_make" className="block text-sm font-medium text-gray-300 mb-2">
                     Vehicle Make *
                   </label>
                   <input
                     type="text"
+                    id="vehicle_make"
                     name="vehicle_make"
                     value={formData.vehicle_make}
                     onChange={handleChange}
@@ -387,11 +395,12 @@ export default function VehicleReportModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="vehicle_model" className="block text-sm font-medium text-gray-300 mb-2">
                     Vehicle Model *
                   </label>
                   <input
                     type="text"
+                    id="vehicle_model"
                     name="vehicle_model"
                     value={formData.vehicle_model}
                     onChange={handleChange}
@@ -402,11 +411,12 @@ export default function VehicleReportModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="vehicle_color" className="block text-sm font-medium text-gray-300 mb-2">
                     Vehicle Color *
                   </label>
                   <input
                     type="text"
+                    id="vehicle_color"
                     name="vehicle_color"
                     value={formData.vehicle_color}
                     onChange={handleChange}
@@ -417,11 +427,12 @@ export default function VehicleReportModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="year" className="block text-sm font-medium text-gray-300 mb-2">
                     Year
                   </label>
                   <input
                     type="number"
+                    id="year"
                     name="year"
                     value={formData.year}
                     onChange={handleChange}
@@ -433,10 +444,11 @@ export default function VehicleReportModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="severity" className="block text-sm font-medium text-gray-300 mb-2">
                     Severity *
                   </label>
                   <select
+                    id="severity"
                     name="severity"
                     value={formData.severity}
                     onChange={handleChange}
@@ -452,10 +464,11 @@ export default function VehicleReportModal({
 
                 {/* Status Field */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="status" className="block text-sm font-medium text-gray-300 mb-2">
                     Status *
                   </label>
                   <select
+                    id="status"
                     name="status"
                     value={formData.status}
                     onChange={handleChange}
@@ -474,12 +487,13 @@ export default function VehicleReportModal({
               {/* Location and Time */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="last_seen_location" className="block text-sm font-medium text-gray-300 mb-2">
                     Last Seen Location *
                   </label>
                   <div className="flex space-x-2">
                     <input
                       type="text"
+                      id="last_seen_location"
                       name="last_seen_location"
                       value={formData.last_seen_location}
                       onChange={handleChange}
@@ -502,11 +516,12 @@ export default function VehicleReportModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="last_seen_time" className="block text-sm font-medium text-gray-300 mb-2">
                     Last Seen Time
                   </label>
                   <input
                     type="datetime-local"
+                    id="last_seen_time"
                     name="last_seen_time"
                     value={formData.last_seen_time}
                     onChange={handleChange}
@@ -517,17 +532,17 @@ export default function VehicleReportModal({
 
               {/* Image Upload */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="image-upload" className="block text-sm font-medium text-gray-300 mb-2">
                   Evidence Images
                 </label>
                 <div className="border-2 border-dashed border-gray-600 rounded-xl p-6 text-center">
                   <input
                     type="file"
+                    id="image-upload"
                     multiple
                     accept="image/*"
                     onChange={(e) => e.target.files && handleImageUpload(e.target.files)}
                     className="hidden"
-                    id="image-upload"
                   />
                   <label
                     htmlFor="image-upload"
@@ -595,11 +610,12 @@ export default function VehicleReportModal({
 
               {/* Reason and Notes */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="reason" className="block text-sm font-medium text-gray-300 mb-2">
                   Reason for Report *
                 </label>
                 <input
                   type="text"
+                  id="reason"
                   name="reason"
                   value={formData.reason}
                   onChange={handleChange}
@@ -610,10 +626,11 @@ export default function VehicleReportModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="notes" className="block text-sm font-medium text-gray-300 mb-2">
                   Additional Notes
                 </label>
                 <textarea
+                  id="notes"
                   name="notes"
                   value={formData.notes}
                   onChange={handleChange}

@@ -1,7 +1,8 @@
+// components/reports/CrimeReportModal.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
-import { reportsAPI, ReportStatus, supabase } from '@/lib/supabase';
+import { reportsAPI, ReportStatus, supabase, formatDateForDateTimeLocal } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import Image from 'next/image';
 
@@ -57,11 +58,17 @@ export default function CrimeReportModal({
 
   useEffect(() => {
     if (editReport) {
+      // Fix datetime-local format for incident_time
+      let formattedIncidentTime = '';
+      if (editReport.incident_time) {
+        formattedIncidentTime = formatDateForDateTimeLocal(editReport.incident_time);
+      }
+
       setFormData({
         title: editReport.title || '',
         description: editReport.description || '',
         location: editReport.location || '',
-        incident_time: editReport.incident_time ? editReport.incident_time.split('T')[0] : '',
+        incident_time: formattedIncidentTime,
         report_type: editReport.report_type || '',
         severity: editReport.severity || 'medium',
         status: editReport.status || 'active',
@@ -69,7 +76,7 @@ export default function CrimeReportModal({
         contact_allowed: editReport.contact_allowed || false,
         ob_number: editReport.ob_number || generateShortOBNumber('C')
       });
-      // Load existing images if editing
+      
       if (editReport.evidence_images) {
         setUploadedImageUrls(editReport.evidence_images);
       }
@@ -198,7 +205,7 @@ export default function CrimeReportModal({
       } else {
         console.log('🔄 Creating new report...');
         result = await reportsAPI.createCrimeReport(reportData);
-        if (images.length > 0) {
+        if (images.length > 0 && result && result.id) {
           const imageUrls = await uploadImagesToStorage(result.id);
           await reportsAPI.updateCrimeReport(result.id, {
             evidence_images: imageUrls
@@ -334,11 +341,12 @@ export default function CrimeReportModal({
               {/* Incident Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="title" className="block text-sm font-medium text-gray-300 mb-2">
                     Incident Title *
                   </label>
                   <input
                     type="text"
+                    id="title"
                     name="title"
                     value={formData.title}
                     onChange={handleChange}
@@ -349,10 +357,11 @@ export default function CrimeReportModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="report_type" className="block text-sm font-medium text-gray-300 mb-2">
                     Report Type *
                   </label>
                   <select
+                    id="report_type"
                     name="report_type"
                     value={formData.report_type}
                     onChange={handleChange}
@@ -372,10 +381,11 @@ export default function CrimeReportModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="severity" className="block text-sm font-medium text-gray-300 mb-2">
                     Severity Level *
                   </label>
                   <select
+                    id="severity"
                     name="severity"
                     value={formData.severity}
                     onChange={handleChange}
@@ -391,10 +401,11 @@ export default function CrimeReportModal({
 
                 {/* Status Field */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="status" className="block text-sm font-medium text-gray-300 mb-2">
                     Status *
                   </label>
                   <select
+                    id="status"
                     name="status"
                     value={formData.status}
                     onChange={handleChange}
@@ -412,12 +423,13 @@ export default function CrimeReportModal({
               {/* Location and Time */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="location" className="block text-sm font-medium text-gray-300 mb-2">
                     Incident Location *
                   </label>
                   <div className="flex space-x-2">
                     <input
                       type="text"
+                      id="location"
                       name="location"
                       value={formData.location}
                       onChange={handleChange}
@@ -440,11 +452,12 @@ export default function CrimeReportModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="incident_time" className="block text-sm font-medium text-gray-300 mb-2">
                     Incident Date & Time
                   </label>
                   <input
                     type="datetime-local"
+                    id="incident_time"
                     name="incident_time"
                     value={formData.incident_time}
                     onChange={handleChange}
@@ -455,17 +468,17 @@ export default function CrimeReportModal({
 
               {/* Image Upload */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="image-upload" className="block text-sm font-medium text-gray-300 mb-2">
                   Evidence Images
                 </label>
                 <div className="border-2 border-dashed border-gray-600 rounded-xl p-6 text-center">
                   <input
                     type="file"
+                    id="image-upload"
                     multiple
                     accept="image/*"
                     onChange={(e) => e.target.files && handleImageUpload(e.target.files)}
                     className="hidden"
-                    id="image-upload"
                   />
                   <label
                     htmlFor="image-upload"
@@ -533,10 +546,11 @@ export default function CrimeReportModal({
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-2">
                   Detailed Description *
                 </label>
                 <textarea
+                  id="description"
                   name="description"
                   value={formData.description}
                   onChange={handleChange}
@@ -549,10 +563,11 @@ export default function CrimeReportModal({
 
               {/* Witness Information */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="witness_info" className="block text-sm font-medium text-gray-300 mb-2">
                   Witness Information
                 </label>
                 <textarea
+                  id="witness_info"
                   name="witness_info"
                   value={formData.witness_info}
                   onChange={handleChange}
@@ -566,8 +581,8 @@ export default function CrimeReportModal({
               <div className="flex items-center space-x-3 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
                 <input
                   type="checkbox"
-                  name="contact_allowed"
                   id="contact_allowed"
+                  name="contact_allowed"
                   checked={formData.contact_allowed}
                   onChange={handleChange}
                   className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
