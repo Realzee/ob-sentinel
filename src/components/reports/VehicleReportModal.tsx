@@ -153,50 +153,97 @@ export default function VehicleReportModal({
     const uploadedUrls: string[] = [...uploadedImageUrls];
 
     try {
-      for (const image of images) {
-        const fileExt = image.name.split('.').pop();
-        const fileName = `${reportId}/${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+      console.log(`🔄 Starting upload of ${images.length} images for report ${reportId}`);
 
-        console.log('🔄 Uploading image to vehicle-evidence bucket:', fileName);
+      for (let i = 0; i < images.length; i++) {
+        const image = images[i];
+        const fileExt = image.name.split('.').pop()?.toLowerCase() || 'jpg';
+        
+        // Create a unique filename with timestamp to avoid conflicts
+        const timestamp = Date.now();
+        const randomString = Math.random().toString(36).substring(2, 8);
+        const fileName = `${reportId}/${timestamp}-${randomString}.${fileExt}`;
 
-        const { error: uploadError } = await supabase.storage
+        console.log('🔄 Uploading image:', {
+          bucket: 'vehicle-evidence',
+          fileName,
+          size: image.size,
+          type: image.type
+        });
+
+        // Validate file size (5MB limit)
+        if (image.size > 5 * 1024 * 1024) {
+          throw new Error(`Image ${image.name} is too large. Maximum size is 5MB.`);
+        }
+
+        // Upload with error handling
+        const { error: uploadError, data } = await supabase.storage
           .from('vehicle-evidence')
-          .upload(fileName, image);
+          .upload(fileName, image, {
+            cacheControl: '3600',
+            upsert: false
+          });
 
         if (uploadError) {
           console.error('❌ Image upload error:', uploadError);
-          throw uploadError;
+          
+          // Handle specific errors
+          if (uploadError.message.includes('bucket')) {
+            throw new Error('Storage bucket not found. Please contact administrator.');
+          } else if (uploadError.message.includes('JWT')) {
+            throw new Error('Authentication error. Please sign in again.');
+          } else {
+            throw new Error(`Upload failed: ${uploadError.message}`);
+          }
         }
 
-        // Get public URL
+        // Get public URL with cache busting
         const { data: { publicUrl } } = supabase.storage
           .from('vehicle-evidence')
           .getPublicUrl(fileName);
 
-        console.log('✅ Image uploaded successfully:', publicUrl);
-        uploadedUrls.push(publicUrl);
+        const finalUrl = `${publicUrl}?t=${timestamp}`;
+        console.log('✅ Image uploaded successfully:', finalUrl);
+        uploadedUrls.push(finalUrl);
       }
+
+      console.log(`✅ All ${images.length} images uploaded successfully`);
+      return uploadedUrls;
+
     } catch (error) {
       console.error('❌ Error uploading images:', error);
+      
+      // Clean up any successfully uploaded images on failure
+      if (uploadedUrls.length > uploadedImageUrls.length) {
+        console.log('🧹 Cleaning up partially uploaded images...');
+        // Keep only the original uploaded images
+        return uploadedImageUrls;
+      }
+      
       throw error;
     } finally {
       setUploading(false);
     }
-
-    return uploadedUrls;
   };
 
   // FIXED: Enhanced submit handler with proper image upload timing
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate form before submission
+    if (!formData.license_plate.trim() || !formData.vehicle_make.trim()) {
+      showError('Please fill in all required fields (License Plate and Vehicle Make).');
+      return;
+    }
+
     setLoading(true);
 
     try {
       console.log('🔄 Starting report submission...', { formData, user });
 
-      // Prepare report data with proper types
+      // Prepare report data
       const reportData = {
-        license_plate: formData.license_plate.trim(),
+        license_plate: formData.license_plate.trim().toUpperCase(),
         vehicle_make: formData.vehicle_make.trim(),
         vehicle_model: formData.vehicle_model.trim(),
         vehicle_color: formData.vehicle_color.trim(),
@@ -231,8 +278,11 @@ export default function VehicleReportModal({
       } else {
         console.log('🔄 Creating new report...');
 
-        // Create report first (without images)
-        result = await reportsAPI.createVehicleAlert(reportData);
+        // Create report first (without images initially)
+        result = await reportsAPI.createVehicleAlert({
+          ...reportData,
+          evidence_images: [] // Start with empty array, update after image upload
+        });
         console.log('✅ Report created:', result);
 
         // Then upload images and update the report
@@ -250,15 +300,14 @@ export default function VehicleReportModal({
 
       console.log('✅ Report saved successfully:', result);
 
-      // Show success message first
+      // Show success message
       showSuccess(editReport ? 'Vehicle report updated successfully!' : 'Vehicle report created successfully!');
 
-      // Then close modal after a short delay
+      // Close modal and refresh after delay
       setTimeout(() => {
         handleModalClose();
-        // Then trigger the refresh
         onReportCreated();
-      }, 1500);
+      }, 2000);
 
     } catch (error: any) {
       console.error('❌ Error saving vehicle report:', error);
@@ -268,7 +317,6 @@ export default function VehicleReportModal({
         errorMessage = error.message;
       }
 
-      // Show error but don't close the modal
       showError(errorMessage);
       setLoading(false);
     }

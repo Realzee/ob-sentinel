@@ -114,6 +114,68 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     return user?.status || 'active';
   };
 
+  // Enhanced cache management
+  const clearAllCache = useCallback(() => {
+    console.log('🧹 Clearing all cache...');
+    
+    if (typeof window !== 'undefined') {
+      // Clear all storage
+      localStorage.removeItem('supabase.auth.token');
+      sessionStorage.clear();
+      
+      // Clear specific report caches
+      const cacheKeys = [
+        'vehicleReports',
+        'crimeReports', 
+        'dashboardStats',
+        'reportsCache',
+        'userProfile'
+      ];
+      
+      cacheKeys.forEach(key => {
+        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
+      });
+      
+      // Clear any service worker caches if present
+      if ('caches' in window) {
+        caches.keys().then(names => {
+          names.forEach(name => caches.delete(name));
+        });
+      }
+    }
+    
+    // Force state reset
+    setVehicleReports([]);
+    setCrimeReports([]);
+    setStats(null);
+    setCacheBuster(prev => prev + 1);
+  }, []);
+
+  // Enhanced sign out handler
+  const handleSignOut = async () => {
+    try {
+      console.log('🚪 Signing out...');
+      
+      // Clear all cache first
+      clearAllCache();
+      
+      // Then sign out
+      await signOut();
+      
+      // Force redirect to ensure clean state
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
+    } catch (error) {
+      console.error('❌ Error during sign out:', error);
+      // Force redirect anyway
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
+    }
+  };
+
   // Debug user detection
   useEffect(() => {
     console.log('🔍 User Role Debug:', {
@@ -131,50 +193,24 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
+        console.log('🔍 Page became visible, refreshing data...');
         loadData();
       }
     };
 
+    // Also handle page focus
+    const handleFocus = () => {
+      console.log('🔍 Page focused, refreshing data...');
+      loadData();
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, []);
-
-  // Enhanced loadData function with cache clearing
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      
-      // Clear any cached data
-      if (typeof window !== 'undefined') {
-        // Clear session storage and local storage for reports
-        sessionStorage.removeItem('vehicleReports');
-        sessionStorage.removeItem('crimeReports');
-        sessionStorage.removeItem('dashboardStats');
-      }
-      
-      console.log('🔄 Loading fresh data with cache busting...');
-      
-      const [statsData] = await Promise.all([
-        reportsAPI.getDashboardStats()
-      ]);
-      
-      setStats(statsData);
-      
-      // Load reports separately for faster initial display
-      await loadReports();
-      
-      // Increment cache buster to force re-renders
-      setCacheBuster(prev => prev + 1);
-      
-    } catch (error) {
-      console.error('Error loading data:', error);
-      showError('Failed to load data. Please try refreshing the page.');
-    } finally {
-      setLoading(false);
-    }
   }, []);
 
   // Helper function to get users by IDs
@@ -252,6 +288,41 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       setReportsLoading(false);
     }
   }, [user]);
+
+  // Enhanced loadData with better cache clearing
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Clear cache before loading fresh data
+      clearAllCache();
+      
+      console.log('🔄 Loading fresh data with cache busting...');
+      
+      const [statsData] = await Promise.all([
+        reportsAPI.getDashboardStats()
+      ]);
+      
+      setStats(statsData);
+      await loadReports();
+      
+      // Force re-render
+      setCacheBuster(prev => prev + 1);
+      
+    } catch (error) {
+      console.error('Error loading data:', error);
+      showError('Failed to load data. Please try refreshing the page.');
+    } finally {
+      setLoading(false);
+    }
+  }, [clearAllCache, loadReports]);
+
+  // Update the refresh button to use enhanced cache clearing
+  const handleRefresh = async () => {
+    setLoading(true);
+    await loadData();
+    showSuccess('Data refreshed and cache cleared!');
+  };
 
   // Refresh stats when reports change
   useEffect(() => {
@@ -504,7 +575,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
               {/* Desktop Sign Out */}
               <button
-                onClick={signOut}
+                onClick={handleSignOut}
                 className="hidden sm:flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -541,7 +612,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                 )}
 
                 <button
-                  onClick={signOut}
+                  onClick={handleSignOut}
                   className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -680,7 +751,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <button
-            onClick={loadData}
+            onClick={handleRefresh}
             disabled={loading}
             className="flex items-center justify-center space-x-2 px-6 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white font-medium transition-colors"
           >
