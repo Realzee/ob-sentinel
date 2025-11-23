@@ -59,6 +59,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [addingUser, setAddingUser] = useState(false);
   const [editingUser, setEditingUser] = useState(false);
 
+  // Error state
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showErrorModal, setShowErrorModal] = useState(false);
+
   // Real-time updates
   useEffect(() => {
     if (!isOpen) return;
@@ -97,6 +101,12 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setConfirmMessage(message);
     setConfirmAction(() => action);
     setShowConfirmModal(true);
+  };
+
+  // Helper function to show error messages
+  const showError = (message: string) => {
+    setErrorMessage(message);
+    setShowErrorModal(true);
   };
 
   // FIXED: Cache-only role update to avoid RLS recursion
@@ -477,15 +487,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       }
     );
   };
-
-  // Helper function to show error messages
-  const showError = (message: string) => {
-    setErrorMessage(message);
-    setShowErrorModal(true);
-  };
-
-  const [errorMessage, setErrorMessage] = useState('');
-  const [showErrorModal, setShowErrorModal] = useState(false);
 
   if (!isOpen) return null;
 

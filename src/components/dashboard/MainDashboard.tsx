@@ -11,6 +11,7 @@ import UserManagementModal from '@/components/admin/UserManagementModal';
 import LocationPreviewModal from '@/components/reports/LocationPreviewModal';
 import ImagePreviewModal from '@/components/reports/ImagePreviewModal';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
+import CustomButton from '@/components/ui/CustomButton';
 import Image from 'next/image';
 
 interface MainDashboardProps {
@@ -20,13 +21,13 @@ interface MainDashboardProps {
 // Extend the types to include evidence_images for both report types
 interface VehicleAlertWithImages extends VehicleAlert {
   evidence_images?: string[];
-  reporter_profile?: any;
+  reporter_profile?: Profile;
   ob_number?: string;
 }
 
 interface CrimeReportWithImages extends CrimeReport {
   evidence_images?: string[];
-  reporter_profile?: any;
+  reporter_profile?: Profile;
   ob_number?: string;
 }
 
@@ -101,9 +102,9 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   // Admin users have full access to user management
   const canManageUsers = isAdmin;
 
-  // FIXED: Simplified user display information - uses direct properties
+  // FIXED: Get username from full_name or email
   const getUserDisplayName = () => {
-    return user?.full_name || user?.email || 'User';
+    return user?.full_name || user?.email?.split('@')[0] || 'User';
   };
 
   const getUserRole = () => {
@@ -213,28 +214,16 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     };
   }, []);
 
-  // Helper function to get users by IDs
-  const getUsersByIds = async (userIds: string[]): Promise<Profile[]> => {
-    if (userIds.length === 0) return [];
-    
-    try {
-      const allUsers = await authAPI.getAllUsers();
-      return allUsers.filter(user => userIds.includes(user.id));
-    } catch (error) {
-      console.error('Error fetching users by IDs:', error);
-      return [];
-    }
-  };
-
   // Enhanced loadReports function with active status filtering
   const loadReports = useCallback(async () => {
     try {
       setReportsLoading(true);
       console.log('🔄 Loading fresh reports data...');
       
-      const [vehiclesData, crimesData] = await Promise.all([
+      const [vehiclesData, crimesData, allUsers] = await Promise.all([
         reportsAPI.getVehicleAlerts(),
-        reportsAPI.getCrimeReports()
+        reportsAPI.getCrimeReports(),
+        authAPI.getAllUsers() // Get all users for reporter info
       ]);
       
       // Filter out rejected/deleted reports and only show active/resolved
@@ -246,33 +235,38 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         crime.status !== 'rejected'
       );
       
-      // Get all reporter user data
-      const allReporterIds = Array.from(
-        new Set([
-          ...activeVehicles.map(v => v.reported_by),
-          ...activeCrimes.map(c => c.reported_by)
-        ])
-      );
-
-      let reporterProfiles: Record<string, Profile> = {};
-      if (allReporterIds.length > 0) {
-        const profiles = await getUsersByIds(allReporterIds);
-        reporterProfiles = profiles.reduce((acc: Record<string, Profile>, profile: Profile) => {
-          acc[profile.id] = profile;
-          return acc;
-        }, {} as Record<string, Profile>);
-      }
+      // Create a map of user profiles for quick lookup
+      const userProfilesMap = new Map();
+      allUsers.forEach((user: Profile) => {
+        userProfilesMap.set(user.id, user);
+      });
 
       // Enhance reports with reporter information
       const vehiclesWithReporters = activeVehicles.map(vehicle => ({
         ...vehicle,
-        reporter_profile: reporterProfiles[vehicle.reported_by] || user,
+        reporter_profile: userProfilesMap.get(vehicle.reported_by) || {
+          id: vehicle.reported_by,
+          email: 'unknown@example.com',
+          full_name: 'Unknown User',
+          role: 'user',
+          status: 'active',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
         ob_number: vehicle.ob_number || generateShortOBNumber('V')
       }));
       
       const crimesWithReporters = activeCrimes.map(crime => ({
         ...crime,
-        reporter_profile: reporterProfiles[crime.reported_by] || user,
+        reporter_profile: userProfilesMap.get(crime.reported_by) || {
+          id: crime.reported_by,
+          email: 'unknown@example.com',
+          full_name: 'Unknown User',
+          role: 'user',
+          status: 'active',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
         ob_number: crime.ob_number || generateShortOBNumber('C')
       }));
       
@@ -287,7 +281,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     } finally {
       setReportsLoading(false);
     }
-  }, [user]);
+  }, []);
 
   // Enhanced loadData with better cache clearing
   const loadData = useCallback(async () => {
@@ -485,8 +479,8 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   // Enhanced helper function to get reporter information
   const getReporterInfo = (report: AnyReport) => {
-    const reporter = report.reporter_profile || user;
-    const reporterName = reporter?.full_name || reporter?.email || 'Unknown';
+    const reporter = report.reporter_profile;
+    const reporterName = reporter?.full_name || reporter?.email?.split('@')[0] || 'Unknown User';
     const reporterRole = reporter?.role || 'user';
     const reporterStatus = reporter?.status || 'active';
     
@@ -540,7 +534,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
             {/* User Info and Actions */}
             <div className="flex items-center space-x-4">
-              {/* User Info - FIXED: Now uses direct properties */}
+              {/* User Info - FIXED: Now shows username instead of email */}
               <div className="hidden sm:block text-right">
                 <div className="text-sm font-medium text-white">
                   {getUserDisplayName()}
@@ -552,15 +546,17 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
               {/* Admin Actions - FIXED: Now properly shows for admins */}
               {canManageUsers && (
-                <button
+                <CustomButton
                   onClick={() => setIsUserManagementOpen(true)}
-                  className="hidden sm:flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                  variant="primary"
+                  size="sm"
+                  className="hidden sm:flex items-center space-x-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
                   </svg>
                   <span>Manage Users</span>
-                </button>
+                </CustomButton>
               )}
 
               {/* Mobile Menu Button */}
@@ -574,15 +570,17 @@ export default function MainDashboard({ user }: MainDashboardProps) {
               </button>
 
               {/* Desktop Sign Out */}
-              <button
-    onClick={handleSignOut}
-    className="hidden sm:flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium transition-colors"
-  >
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-    </svg>
-    <span>Sign Out</span>
-  </button>
+              <CustomButton
+                onClick={handleSignOut}
+                variant="secondary"
+                size="sm"
+                className="hidden sm:flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span>Sign Out</span>
+              </CustomButton>
             </div>
           </div>
 
@@ -600,26 +598,30 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                 </div>
                 
                 {canManageUsers && (
-                  <button
+                  <CustomButton
                     onClick={() => setIsUserManagementOpen(true)}
-                    className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                    variant="primary"
+                    size="md"
+                    className="w-full flex items-center justify-center space-x-2"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
                     </svg>
                     <span>Manage Users</span>
-                  </button>
+                  </CustomButton>
                 )}
 
-                <button
+                <CustomButton
                   onClick={handleSignOut}
-                  className="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium transition-colors"
+                  variant="secondary"
+                  size="md"
+                  className="w-full flex items-center justify-center space-x-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
                   <span>Sign Out</span>
-                </button>
+                </CustomButton>
               </div>
             </div>
           )}
@@ -654,44 +656,39 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         {/* Welcome Section */}
         <div className="text-center mb-6">
           <h2 className="text-2xl font-bold text-white mb-2">
-            Welcome back, {getUserDisplayName().split(' ')[0] || 'User'}!
+            Welcome back, {getUserDisplayName()}!
           </h2>
           <p className="text-gray-400">Monitor and manage community safety reports</p>
         </div>
 
         {/* Report Type Toggle */}
         <div className="flex justify-center space-x-4 mb-6">
-          <button
+          <CustomButton
             onClick={() => setActiveReportType('vehicles')}
-            className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-              activeReportType === 'vehicles' 
-                ? 'bg-red-600 text-white shadow-lg shadow-red-600/25' 
-                : 'bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700'
-            }`}
+            variant={activeReportType === 'vehicles' ? 'danger' : 'secondary'}
+            size="lg"
           >
             Vehicle Reports
-          </button>
-          <button
+          </CustomButton>
+          <CustomButton
             onClick={() => setActiveReportType('crimes')}
-            className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-              activeReportType === 'crimes' 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25' 
-                : 'bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700'
-            }`}
+            variant={activeReportType === 'crimes' ? 'primary' : 'secondary'}
+            size="lg"
           >
             Crime Reports
-          </button>
+          </CustomButton>
         </div>
 
         {/* Quick Actions Toggle Header */}
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-semibold text-white">Quick Actions</h3>
-          <button
+          <CustomButton
             onClick={() => setQuickActionsOpen(!quickActionsOpen)}
-            className="px-4 py-2 rounded-lg bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 text-sm font-medium transition-colors"
+            variant="secondary"
+            size="sm"
           >
             {quickActionsOpen ? 'Hide' : 'Show'} Actions
-          </button>
+          </CustomButton>
         </div>
 
         {/* Quick Actions - Collapsible Section */}
@@ -734,7 +731,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
             { value: stats?.todayReports || 0, label: "Today's Reports", color: "bg-blue-600" },
             { value: stats?.activeReports || 0, label: "Active Reports", color: "bg-orange-600" },
             { value: (stats?.resolvedVehicles || 0) + (stats?.resolvedCrimes || 0), label: "Resolved", color: "bg-green-600" },
-            { value: (stats?.vehiclesWithLocation || 0) + (stats?.crimesWithLocation || 0), label: "With Location", color: "bg-purple-600" }
+            { value: currentReports.filter(report => hasLocation(report)).length, label: "With Location", color: "bg-purple-600" }
           ].map((stat, index) => (
             <div key={index} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
               <div className="flex items-center justify-between">
@@ -750,16 +747,19 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <button
+          <CustomButton
             onClick={handleRefresh}
             disabled={loading}
-            className="flex items-center justify-center space-x-2 px-6 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white font-medium transition-colors"
+            variant="secondary"
+            size="md"
+            loading={loading}
+            className="flex items-center justify-center space-x-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             <span>{loading ? 'Refreshing...' : 'Refresh & Clear Cache'}</span>
-          </button>
+          </CustomButton>
         </div>
 
         {/* Reports List */}
@@ -781,12 +781,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
             ) : currentReports.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-gray-400 text-lg">No {activeReportType} reports found.</p>
-                <button
+                <CustomButton
                   onClick={activeReportType === 'vehicles' ? () => setIsVehicleModalOpen(true) : () => setIsCrimeModalOpen(true)}
-                  className="text-red-400 hover:text-red-300 font-medium mt-2 transition-colors"
+                  variant="danger"
+                  size="md"
+                  className="mt-2"
                 >
                   Create your first {activeReportType === 'vehicles' ? 'vehicle' : 'crime'} report
-                </button>
+                </CustomButton>
               </div>
             ) : (
               <div className="space-y-4">
@@ -892,41 +894,46 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                       
                       {/* Action Buttons */}
                       <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-700">
-                        <button
+                        <CustomButton
                           onClick={() => handleViewReport(report)}
-                          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                          variant="primary"
+                          size="sm"
                         >
                           View Details
-                        </button>
-                        <button
+                        </CustomButton>
+                        <CustomButton
                           onClick={() => handleEditReport(report)}
-                          className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition-colors"
+                          variant="secondary"
+                          size="sm"
                         >
                           Edit Report
-                        </button>
+                        </CustomButton>
                         {hasLocation(report) && (
-                          <button
+                          <CustomButton
                             onClick={() => handleViewLocation(report)}
-                            className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors"
+                            variant="success"
+                            size="sm"
                           >
                             View Location
-                          </button>
+                          </CustomButton>
                         )}
                         {hasImages(report) && (
-                          <button
+                          <CustomButton
                             onClick={() => handleViewImages(report)}
-                            className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors"
+                            variant="success"
+                            size="sm"
                           >
                             View Images
-                          </button>
+                          </CustomButton>
                         )}
                         {canDelete && (
-                          <button
+                          <CustomButton
                             onClick={() => handleDeleteReport(report)}
-                            className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors"
+                            variant="danger"
+                            size="sm"
                           >
                             Delete Report
-                          </button>
+                          </CustomButton>
                         )}
                       </div>
                     </div>
@@ -1023,12 +1030,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
       {/* Mobile Floating Action Button */}
       <div className="sm:hidden fixed bottom-6 right-6 z-50">
-        <button
+        <CustomButton
           onClick={activeReportType === 'vehicles' ? () => setIsVehicleModalOpen(true) : () => setIsCrimeModalOpen(true)}
-          className="w-14 h-14 bg-red-600 hover:bg-red-700 rounded-full shadow-lg shadow-red-600/25 flex items-center justify-center text-white font-bold text-xl transition-colors"
+          variant="danger"
+          size="lg"
+          className="w-14 h-14 rounded-full shadow-lg"
         >
           +
-        </button>
+        </CustomButton>
       </div>
     </div>
   );
