@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { reportsAPI, VehicleAlert, CrimeReport, authAPI } from '@/lib/supabase';
+import { reportsAPI, VehicleAlert, CrimeReport, authAPI, Profile } from '@/lib/supabase';
 import VehicleReportModal from '@/components/reports/VehicleReportModal';
 import CrimeReportModal from '@/components/reports/CrimeReportModal';
 import ReportActionsModal from '@/components/reports/ReportActionsModal';
@@ -47,6 +47,13 @@ const ADMIN_EMAILS = [
   'clint@rapid911.co.za', 
   'zwell@msn.com'
 ];
+
+// Generate short OB number
+const generateShortOBNumber = (type: 'V' | 'C') => {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 5).toUpperCase();
+  return `OB${type}${timestamp.slice(-4)}${random}`;
+};
 
 export default function MainDashboard({ user }: MainDashboardProps) {
   const [vehicleReports, setVehicleReports] = useState<VehicleAlertWithImages[]>([]);
@@ -169,6 +176,19 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     }
   }, []);
 
+  // Helper function to get users by IDs
+  const getUsersByIds = async (userIds: string[]): Promise<Profile[]> => {
+    if (userIds.length === 0) return [];
+    
+    try {
+      const allUsers = await authAPI.getAllUsers();
+      return allUsers.filter(user => userIds.includes(user.id));
+    } catch (error) {
+      console.error('Error fetching users by IDs:', error);
+      return [];
+    }
+  };
+
   // Enhanced loadReports function with active status filtering
   const loadReports = useCallback(async () => {
     try {
@@ -189,17 +209,34 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         crime.status !== 'rejected'
       );
       
+      // Get all reporter user data
+      const allReporterIds = Array.from(
+        new Set([
+          ...activeVehicles.map(v => v.reported_by),
+          ...activeCrimes.map(c => c.reported_by)
+        ])
+      );
+
+      let reporterProfiles: Record<string, Profile> = {};
+      if (allReporterIds.length > 0) {
+        const profiles = await getUsersByIds(allReporterIds);
+        reporterProfiles = profiles.reduce((acc: Record<string, Profile>, profile: Profile) => {
+          acc[profile.id] = profile;
+          return acc;
+        }, {} as Record<string, Profile>);
+      }
+
       // Enhance reports with reporter information
       const vehiclesWithReporters = activeVehicles.map(vehicle => ({
         ...vehicle,
-        reporter_profile: user,
-        ob_number: vehicle.ob_number || `OB-V-${vehicle.id.slice(-8).toUpperCase()}`
+        reporter_profile: reporterProfiles[vehicle.reported_by] || user,
+        ob_number: vehicle.ob_number || generateShortOBNumber('V')
       }));
       
       const crimesWithReporters = activeCrimes.map(crime => ({
         ...crime,
-        reporter_profile: user,
-        ob_number: crime.ob_number || `OB-C-${crime.id.slice(-8).toUpperCase()}`
+        reporter_profile: reporterProfiles[crime.reported_by] || user,
+        ob_number: crime.ob_number || generateShortOBNumber('C')
       }));
       
       setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
@@ -361,14 +398,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         primary: report.license_plate,
         secondary: `${report.vehicle_make} ${report.vehicle_model} • ${report.vehicle_color}`,
         location: report.last_seen_location,
-        obNumber: report.ob_number || `OB-V-${report.id.slice(-8).toUpperCase()}`
+        obNumber: report.ob_number || generateShortOBNumber('V')
       };
     } else if (isCrimeReport(report)) {
       return {
         primary: report.title,
         secondary: report.description.substring(0, 100) + (report.description.length > 100 ? '...' : ''),
         location: report.location,
-        obNumber: report.ob_number || `OB-C-${report.id.slice(-8).toUpperCase()}`
+        obNumber: report.ob_number || generateShortOBNumber('C')
       };
     }
     return { primary: '', secondary: '', location: '', obNumber: '' };

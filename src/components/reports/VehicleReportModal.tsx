@@ -16,6 +16,13 @@ interface VehicleReportModalProps {
 // Define severity type to match the expected union type
 type SeverityType = 'low' | 'medium' | 'high' | 'critical';
 
+// Generate short OB number
+const generateShortOBNumber = (type: 'V' | 'C') => {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 5).toUpperCase();
+  return `OB${type}${timestamp.slice(-4)}${random}`;
+};
+
 export default function VehicleReportModal({ 
   isOpen, 
   onClose, 
@@ -50,13 +57,6 @@ export default function VehicleReportModal({
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Generate OB number function
-  const generateOBNumber = () => {
-    const timestamp = new Date().getTime();
-    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-    return `OB-V-${timestamp}-${random}`;
-  };
-
   useEffect(() => {
     if (editReport) {
       setFormData({
@@ -71,7 +71,7 @@ export default function VehicleReportModal({
         severity: editReport.severity || 'medium',
         status: editReport.status || 'active',
         notes: editReport.notes || '',
-        ob_number: editReport.ob_number || generateOBNumber()
+        ob_number: editReport.ob_number || generateShortOBNumber('V')
       });
       // Load existing images if editing
       if (editReport.evidence_images) {
@@ -90,7 +90,7 @@ export default function VehicleReportModal({
         severity: 'medium',
         status: 'active',
         notes: '',
-        ob_number: generateOBNumber()
+        ob_number: generateShortOBNumber('V')
       });
       setUploadedImageUrls([]);
     }
@@ -283,7 +283,7 @@ export default function VehicleReportModal({
       severity: 'medium',
       status: 'active',
       notes: '',
-      ob_number: generateOBNumber()
+      ob_number: generateShortOBNumber('V')
     });
     setImages([]);
     setImagePreviews([]);

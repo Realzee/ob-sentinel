@@ -10,14 +10,28 @@ interface UserManagementModalProps {
   currentUser: any;
 }
 
+// Use Profile interface instead of creating a new User interface
+interface User extends Profile {
+  // Extend Profile to ensure compatibility
+}
+
 export default function UserManagementModal({ isOpen, onClose, currentUser }: UserManagementModalProps) {
-  const [users, setUsers] = useState<Profile[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  
+  // Enhanced filtering
+  const [filters, setFilters] = useState({
+    role: '',
+    status: ''
+  });
+
+  // User selection for bulk operations
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   
   // Confirmation modals
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -41,26 +55,45 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [addingUser, setAddingUser] = useState(false);
   const [editingUser, setEditingUser] = useState(false);
 
+  // Real-time updates
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+
+    loadUsers();
+
+    // Poll for user status updates every 30 seconds
+    const interval = setInterval(() => {
       loadUsers();
-    }
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [isOpen]);
 
   const loadUsers = async () => {
-  try {
-    setLoading(true);
-    const usersData = await authAPI.getAllUsers();
-    console.log('📊 Loaded users:', usersData);
-    setUsers(usersData || []);
-  } catch (error) {
-    console.error('❌ Error loading users:', error);
-    // Set empty array instead of showing error
-    setUsers([]);
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      setLoading(true);
+      const usersData = await authAPI.getAllUsers();
+      console.log('📊 Loaded users:', usersData);
+      // Cast to User[] to handle the type compatibility
+      setUsers(usersData as User[] || []);
+    } catch (error) {
+      console.error('❌ Error loading users:', error);
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update user last seen
+  const updateLastSeen = async (userId: string) => {
+    try {
+      await authAPI.updateUserRole(userId, { 
+        last_seen_at: new Date().toISOString() 
+      });
+    } catch (error) {
+      console.error('Error updating last seen:', error);
+    }
+  };
 
   const showSuccess = (message: string) => {
     setSuccessMessage(message);
@@ -83,6 +116,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       await authAPI.updateUserRole(userId, { role: newRole as UserRole });
+      await updateLastSeen(currentUser.id);
       await loadUsers();
       showSuccess('User role updated successfully!');
     } catch (error) {
@@ -103,6 +137,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       await authAPI.updateUserRole(userId, { status: newStatus as UserStatus });
+      await updateLastSeen(currentUser.id);
       await loadUsers();
       showSuccess(`User status updated to ${newStatus}!`);
     } catch (error) {
@@ -120,6 +155,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           await authAPI.updateUserRole(userId, { status: 'suspended' as UserStatus });
+          await updateLastSeen(currentUser.id);
           await loadUsers();
           showSuccess('User suspended successfully');
         } catch (error) {
@@ -130,6 +166,77 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         }
       }
     );
+  };
+
+  // Enhanced user status with timestamp
+  const getUserStatusWithTimestamp = (user: User) => {
+    const isOnline = user.status === 'active';
+    const lastSeen = user.last_seen_at ? new Date(user.last_seen_at) : null;
+    
+    return (
+      <div className="flex items-center space-x-2">
+        <div className={`w-2 h-2 rounded-full ${
+          isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
+        }`}></div>
+        <div className="text-xs">
+          <div className="text-gray-400">
+            {isOnline ? 'Online' : `Offline - ${user.status}`}
+          </div>
+          {lastSeen && (
+            <div className="text-gray-500">
+              Last seen: {lastSeen.toLocaleDateString()} {lastSeen.toLocaleTimeString()}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Enhanced filtering
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = 
+      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.role.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesRole = !filters.role || user.role === filters.role;
+    const matchesStatus = !filters.status || user.status === filters.status;
+    
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  // Bulk operations
+  const handleBulkRoleUpdate = async (newRole: UserRole) => {
+    if (selectedUsers.length === 0) return;
+
+    try {
+      for (const userId of selectedUsers) {
+        await authAPI.updateUserRole(userId, { role: newRole });
+      }
+      await updateLastSeen(currentUser.id);
+      await loadUsers();
+      setSelectedUsers([]);
+      showSuccess(`Updated ${selectedUsers.length} users to ${newRole} role`);
+    } catch (error) {
+      console.error('Error in bulk role update:', error);
+      alert('Error updating users. Please try again.');
+    }
+  };
+
+  const handleUserSelection = (userId: string) => {
+    setSelectedUsers(prev => 
+      prev.includes(userId) 
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedUsers.length === filteredUsers.length) {
+      setSelectedUsers([]);
+    } else {
+      setSelectedUsers(filteredUsers.map(user => user.id));
+    }
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -161,10 +268,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
           await authAPI.updateUserRole(data.user.id, {
             full_name: newUserName || null,
             role: newUserRole,
-            status: 'active' as UserStatus
+            status: 'active' as UserStatus,
+            last_seen_at: new Date().toISOString()
           });
         } catch (profileError) {
-          console.error('Error updating profile:', profileError);
+          console.error('Error updating user profile:', profileError);
         }
       }
 
@@ -174,6 +282,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       setNewUserName('');
       setNewUserRole('user');
       setIsAddUserModalOpen(false);
+      await updateLastSeen(currentUser.id);
       await loadUsers();
       
       showSuccess('User created successfully! They will need to confirm their email address.');
@@ -185,7 +294,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  const handleEditUser = (user: Profile) => {
+  const handleEditUser = (user: User) => {
     setSelectedUser(user);
     setEditUserName(user.full_name || '');
     setEditUserRole(user.role);
@@ -217,7 +326,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         updates.status = editUserStatus;
       }
 
-      // Only update if there are changes to profile data
+      // Only update if there are changes to user data
       if (Object.keys(updates).length > 0) {
         await authAPI.updateUserRole(selectedUser.id, updates);
       }
@@ -238,6 +347,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       setEditUserStatus('active');
       setEditUserPassword('');
       setIsEditUserModalOpen(false);
+      await updateLastSeen(currentUser.id);
       await loadUsers();
       
       showSuccess('User updated successfully!');
@@ -253,6 +363,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       await authAPI.updateUserRole(userId, { status: 'active' as UserStatus });
+      await updateLastSeen(currentUser.id);
       await loadUsers();
       showSuccess('User approved successfully!');
     } catch (error) {
@@ -270,6 +381,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           await authAPI.updateUserRole(userId, { status: 'active' as UserStatus });
+          await updateLastSeen(currentUser.id);
           await loadUsers();
           showSuccess('User reactivated successfully');
         } catch (error) {
@@ -279,25 +391,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
           setUpdating(null);
         }
       }
-    );
-  };
-
-  const filteredUsers = users.filter(user =>
-    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.role.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Get user status indicator
-  const getUserStatusIndicator = (user: Profile) => {
-    const isOnline = user.status === 'active';
-    return (
-      <div className="flex items-center space-x-2">
-        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-500'}`}></div>
-        <span className="text-xs text-gray-400">
-          {isOnline ? 'Online' : user.status}
-        </span>
-      </div>
     );
   };
 
@@ -344,7 +437,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
             </div>
 
             {/* Search and Filters */}
-            <div className="mb-6">
+            <div className="mb-6 space-y-4">
               <input
                 type="text"
                 placeholder="Search users by email, name, or role..."
@@ -352,6 +445,50 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
               />
+              
+              <div className="flex flex-wrap gap-4">
+                <select
+                  value={filters.role}
+                  onChange={(e) => setFilters(prev => ({ ...prev, role: e.target.value }))}
+                  className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Roles</option>
+                  <option value="admin">Admin</option>
+                  <option value="moderator">Moderator</option>
+                  <option value="controller">Controller</option>
+                  <option value="user">User</option>
+                </select>
+
+                <select
+                  value={filters.status}
+                  onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                  className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="pending">Pending</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+
+                {/* Bulk Actions */}
+                {selectedUsers.length > 0 && (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-400">
+                      {selectedUsers.length} selected
+                    </span>
+                    <select
+                      onChange={(e) => handleBulkRoleUpdate(e.target.value as UserRole)}
+                      className="px-3 py-1 bg-blue-600 border border-blue-500 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Bulk Role</option>
+                      <option value="admin">Admin</option>
+                      <option value="moderator">Moderator</option>
+                      <option value="controller">Controller</option>
+                      <option value="user">User</option>
+                    </select>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Users Table */}
@@ -365,6 +502,14 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-700">
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                          <input
+                            type="checkbox"
+                            checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
+                            onChange={handleSelectAll}
+                            className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                          />
+                        </th>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
@@ -375,6 +520,14 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     <tbody className="divide-y divide-gray-700">
                       {filteredUsers.map((user) => (
                         <tr key={user.id} className="hover:bg-gray-800/30 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={selectedUsers.includes(user.id)}
+                              onChange={() => handleUserSelection(user.id)}
+                              className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                            />
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
                               <div className="text-sm font-medium text-white">
@@ -389,7 +542,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {getUserStatusIndicator(user)}
+                            {getUserStatusWithTimestamp(user)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">

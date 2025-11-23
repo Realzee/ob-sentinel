@@ -16,6 +16,13 @@ interface CrimeReportModalProps {
 // Define severity type to match the expected union type
 type SeverityType = 'low' | 'medium' | 'high' | 'critical';
 
+// Generate short OB number
+const generateShortOBNumber = (type: 'V' | 'C') => {
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 5).toUpperCase();
+  return `OB${type}${timestamp.slice(-4)}${random}`;
+};
+
 export default function CrimeReportModal({ 
   isOpen, 
   onClose, 
@@ -48,13 +55,6 @@ export default function CrimeReportModal({
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Generate OB number function
-  const generateOBNumber = () => {
-    const timestamp = new Date().getTime();
-    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-    return `OB-C-${timestamp}-${random}`;
-  };
-
   useEffect(() => {
     if (editReport) {
       setFormData({
@@ -67,7 +67,7 @@ export default function CrimeReportModal({
         status: editReport.status || 'active',
         witness_info: editReport.witness_info || '',
         contact_allowed: editReport.contact_allowed || false,
-        ob_number: editReport.ob_number || generateOBNumber()
+        ob_number: editReport.ob_number || generateShortOBNumber('C')
       });
       // Load existing images if editing
       if (editReport.evidence_images) {
@@ -84,7 +84,7 @@ export default function CrimeReportModal({
         status: 'active',
         witness_info: '',
         contact_allowed: false,
-        ob_number: generateOBNumber()
+        ob_number: generateShortOBNumber('C')
       });
       setUploadedImageUrls([]);
     }
@@ -273,7 +273,7 @@ export default function CrimeReportModal({
       status: 'active',
       witness_info: '',
       contact_allowed: false,
-      ob_number: generateOBNumber()
+      ob_number: generateShortOBNumber('C')
     });
     setImages([]);
     setImagePreviews([]);
