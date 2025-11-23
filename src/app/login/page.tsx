@@ -1,253 +1,226 @@
 // app/login/page.tsx
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
-import { Eye, EyeOff, User, Lock, AlertCircle, CheckCircle } from 'lucide-react'
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/providers/AuthProvider';
+import Link from 'next/link';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  const router = useRouter()
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
-  // Check if user is already logged in
+  // Redirect if already authenticated
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        console.log('✅ User already logged in, redirecting to dashboard')
-        router.push('/')
-      }
+    if (user && !authLoading) {
+      router.push('/dashboard');
     }
-    checkAuth()
-  }, [router, supabase])
+  }, [user, authLoading, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    setSuccess('')
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setMessage(null);
 
     try {
+      console.log('🔐 Attempting login for:', email);
+
+      // Simple validation
+      if (!email || !password) {
+        throw new Error('Please enter both email and password');
+      }
+
+      // Sign in with Supabase
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
-        password: password
-      })
+        password: password.trim(),
+      });
 
       if (error) {
-        throw error
+        console.error('❌ Login error:', error);
+        throw new Error(error.message);
       }
 
       if (data.user) {
-        console.log('✅ Login successful, redirecting to dashboard')
-        setSuccess('Login successful! Redirecting...')
+        console.log('✅ Login successful:', data.user.email);
+        setMessage('Login successful! Redirecting...');
         
-        // Short delay to show success message
+        // The auth state change will handle the redirect
         setTimeout(() => {
-          router.push('/')
-          router.refresh() // Refresh to update auth state
-        }, 1000)
+          router.push('/dashboard');
+        }, 1000);
       }
+
     } catch (error: any) {
-      console.error('Login error:', error)
-      setError(error.message || 'Failed to sign in. Please check your credentials.')
+      console.error('❌ Login failed:', error);
+      setError(error.message || 'An error occurred during login');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const handleDemoLogin = async (demoType: 'user' | 'admin') => {
-    setLoading(true)
-    setError('')
-    setSuccess('')
-
-    const demoCredentials = {
-      user: { email: 'demo@rapid911.com', password: 'demo123' },
-      admin: { email: 'admin@rapid911.com', password: 'admin123' }
-    }
-
-    const credentials = demoCredentials[demoType]
+  const handleSignUp = async () => {
+    setLoading(true);
+    setError(null);
+    setMessage(null);
 
     try {
-      setEmail(credentials.email)
-      
-      const { data, error } = await supabase.auth.signInWithPassword(credentials)
+      console.log('📝 Attempting sign up for:', email);
+
+      if (!email || !password) {
+        throw new Error('Please enter both email and password');
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password.trim(),
+      });
 
       if (error) {
-        throw error
+        console.error('❌ Sign up error:', error);
+        throw new Error(error.message);
       }
 
       if (data.user) {
-        console.log(`✅ ${demoType} demo login successful, redirecting to dashboard`)
-        setSuccess(`${demoType === 'admin' ? 'Admin' : 'User'} demo login successful! Redirecting...`)
-        
-        setTimeout(() => {
-          router.push('../dashboard')
-          router.refresh()
-        }, 1000)
+        setMessage('Sign up successful! Please check your email for verification.');
       }
+
     } catch (error: any) {
-      console.error('Demo login error:', error)
-      setError(error.message || 'Demo login failed. Please try again.')
+      console.error('❌ Sign up failed:', error);
+      setError(error.message || 'An error occurred during sign up');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto"></div>
+          <p className="text-white mt-4">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-dark-gray flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <img
-            src="/rapid911-ireport-logo2.png"
-            alt="Rapid911 Logo"
-            className="w-30 h-auto"
-          />
+    <div className="min-h-screen bg-black flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        {/* Logo Section */}
+        <div className="text-center">
+          <div className="mx-auto w-32 h-32 rounded-2xl flex items-center justify-center">
+            <img 
+              src="/rapid911-T.png" 
+              alt="RAPID REPORT" 
+              width={128} 
+              height={128}
+              className="rounded-lg"
+            />
+          </div>
+          <h2 className="mt-6 text-3xl font-extrabold text-white">
+            RAPID REPORT
+          </h2>
+          <p className="mt-2 text-sm text-gray-400">
+            Sign in to your account
+          </p>
         </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-primary-white">
-          Sign in to your account
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-400">
-          Community Safety Reporting System
-        </p>
-      </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="card py-8 px-4 sm:px-10">
-          {error && (
-            <div className="mb-4 bg-red-900 border border-red-700 text-red-300 px-4 py-3 rounded flex items-center space-x-2">
-              <AlertCircle className="w-5 h-5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {success && (
-            <div className="mb-4 bg-green-900 border border-green-700 text-green-300 px-4 py-3 rounded flex items-center space-x-2">
-              <CheckCircle className="w-5 h-5" />
-              <span>{success}</span>
-            </div>
-          )}
-
-          <form className="space-y-6" onSubmit={handleLogin}>
+        {/* Login Form */}
+        <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+          <div className="rounded-md shadow-sm -space-y-px">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-300">
+              <label htmlFor="email" className="sr-only">
                 Email address
               </label>
-              <div className="mt-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="form-input pl-10"
-                  placeholder="Enter your email"
-                />
-              </div>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                className="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-700 bg-gray-800 placeholder-gray-500 text-white rounded-t-md focus:outline-none focus:ring-red-500 focus:border-red-500 focus:z-10 sm:text-sm"
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+              />
             </div>
-
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+              <label htmlFor="password" className="sr-only">
                 Password
               </label>
-              <div className="mt-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="form-input pl-10 pr-10"
-                  placeholder="Enter your password"
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5 text-gray-400" />
-                  ) : (
-                    <Eye className="h-5 w-5 text-gray-400" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                className="appearance-none rounded-none relative block w-full px-3 py-3 border border-gray-700 bg-gray-800 placeholder-gray-500 text-white rounded-b-md focus:outline-none focus:ring-red-500 focus:border-red-500 focus:z-10 sm:text-sm"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
-                className="w-full btn-primary flex justify-center items-center space-x-2 disabled:opacity-50"
-              >
-                {loading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                ) : null}
-                <span>{loading ? 'Signing in...' : 'Sign in'}</span>
-              </button>
-            </div>
-          </form>
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-600" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-dark-gray text-gray-400">Demo Accounts</span>
-              </div>
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('user')}
-                disabled={loading}
-                className="btn-primary flex justify-center items-center space-x-2 disabled:opacity-50"
-              >
-                <User className="w-4 h-4" />
-                <span>User Demo</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('admin')}
-                disabled={loading}
-                className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex justify-center items-center space-x-2 disabled:opacity-50"
-              >
-                <Lock className="w-4 h-4" />
-                <span>Admin Demo</span>
-              </button>
+              />
             </div>
           </div>
 
-          <div className="mt-6">
-            <div className="bg-blue-900 border border-blue-700 text-blue-300 p-3 rounded text-sm">
-              <p className="font-medium mb-1">⚠️ Important Security Notice</p>
-              <p>This is a demonstration system. Use the demo accounts above to explore features.</p>
+          {/* Messages */}
+          {error && (
+            <div className="rounded-md bg-red-500/10 border border-red-500/20 p-4">
+              <div className="text-sm text-red-300">{error}</div>
             </div>
+          )}
+
+          {message && (
+            <div className="rounded-md bg-green-500/10 border border-green-500/20 p-4">
+              <div className="text-sm text-green-300">{message}</div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex flex-col space-y-4">
+            <button
+              type="submit"
+              disabled={loading}
+              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              ) : (
+                'Sign in'
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSignUp}
+              disabled={loading}
+              className="group relative w-full flex justify-center py-3 px-4 border border-gray-700 text-sm font-medium rounded-md text-gray-300 bg-gray-800 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              ) : (
+                'Create account'
+              )}
+            </button>
           </div>
-        </div>
+
+          {/* Demo Info */}
+          <div className="text-center">
+            <p className="text-xs text-gray-500">
+              Use any email and password to create an account
+            </p>
+          </div>
+        </form>
       </div>
     </div>
-  )
+  );
 }

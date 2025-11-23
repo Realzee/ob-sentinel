@@ -2,20 +2,24 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { supabase, Profile } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { User } from '@supabase/supabase-js';
+import { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   signOut: () => Promise<void>;
   loading: boolean;
+  error: string | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  session: null,
   signOut: async () => {},
-  loading: true
+  loading: true,
+  error: null
 });
 
 export const useAuth = () => {
@@ -28,7 +32,9 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   // Enhanced sign out function
@@ -44,6 +50,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Clear specific app data
         const keysToRemove = [
           'supabase.auth.token',
+          'supabase.auth.refreshToken',
           'vehicleReports',
           'crimeReports',
           'dashboardStats',
@@ -66,6 +73,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       
       console.log('✅ Sign out completed, redirecting...');
       
+      // Reset state
+      setUser(null);
+      setSession(null);
+      setError(null);
+      
       // Force full page reload to clear all React state and memory
       window.location.href = '/';
       
@@ -81,9 +93,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setLoading(false);
+      try {
+        setLoading(true);
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('❌ Error getting session:', error);
+          setError(error.message);
+          return;
+        }
+        
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+      } catch (error: any) {
+        console.error('❌ Error in getInitialSession:', error);
+        setError(error.message);
+      } finally {
+        setLoading(false);
+      }
     };
 
     getInitialSession();
@@ -91,18 +119,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('🔐 Auth state changed:', event);
+        
+        setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+        
+        if (event === 'SIGNED_IN') {
+          // Redirect to dashboard after successful sign in
+          router.push('/dashboard');
+        } else if (event === 'SIGNED_OUT') {
+          // Redirect to login after sign out
+          router.push('/');
+        }
       }
     );
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [router]);
 
   const value: AuthContextType = {
     user,
+    session,
     signOut,
-    loading
+    loading,
+    error
   };
 
   return (
