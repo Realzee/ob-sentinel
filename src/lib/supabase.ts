@@ -160,44 +160,14 @@ export const authAPI = {
 
   getAllUsers: async (): Promise<Profile[]> => {
     return safeApiCall(async () => {
-      // Return current user only for now
+      // Return current user only for now (avoid RLS recursion)
       const currentUser = await authAPI.getCurrentUser();
       return currentUser ? [currentUser] : [];
     }, 'getAllUsers');
   },
 
-  updateUserRole: async (userId: string, updates: { 
-    role?: UserRole; 
-    status?: UserStatus;
-    full_name?: string | null;
-    last_seen_at?: string;
-  }): Promise<Profile> => {
-    return safeApiCall(async () => {
-      // Update cached profile
-      const currentProfile = profileCache.get(userId) || await authAPI.getCurrentUser();
-      if (currentProfile) {
-        const updatedProfile = {
-          ...currentProfile,
-          ...updates,
-          updated_at: new Date().toISOString()
-        };
-        profileCache.set(userId, updatedProfile);
-        return updatedProfile;
-      }
-      
-      // Fallback if no profile found
-      return {
-        id: userId,
-        email: 'unknown@example.com',
-        full_name: updates.full_name || null,
-        role: updates.role || 'user',
-        status: updates.status || 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        last_seen_at: updates.last_seen_at || new Date().toISOString()
-      };
-    }, 'updateUserRole');
-  }
+  // REMOVED: updateUserRole function to avoid RLS recursion
+  // All user management is handled through the cache only
 };
 
 // Enhanced Reports API with better error handling and performance
@@ -259,10 +229,15 @@ export const reportsAPI = {
     return safeApiCall(async () => {
       console.log('🔄 Updating vehicle alert:', id, updates);
       
+      // Remove any user-related updates to avoid RLS recursion
+      const safeUpdates = { ...updates };
+      delete safeUpdates.reported_by;
+      delete safeUpdates.reporter_profile;
+      
       const { data: alert, error } = await supabase
         .from('vehicle_alerts')
         .update({
-          ...updates,
+          ...safeUpdates,
           updated_at: new Date().toISOString()
         })
         .eq('id', id)
@@ -354,10 +329,15 @@ export const reportsAPI = {
     return safeApiCall(async () => {
       console.log('🔄 Updating crime report:', id, updates);
       
+      // Remove any user-related updates to avoid RLS recursion
+      const safeUpdates = { ...updates };
+      delete safeUpdates.reported_by;
+      delete safeUpdates.reporter_profile;
+      
       const { data: report, error } = await supabase
         .from('crime_reports')
         .update({
-          ...updates,
+          ...safeUpdates,
           updated_at: new Date().toISOString()
         })
         .eq('id', id)
@@ -482,7 +462,7 @@ export const storageAPI = {
 export const debugAPI = {
   testConnection: async (): Promise<boolean> => {
     try {
-      const { data, error } = await supabase.from('profiles').select('count').limit(1);
+      const { data, error } = await supabase.from('vehicle_alerts').select('count').limit(1);
       if (error) {
         console.error('❌ Database connection error:', error);
         return false;
@@ -496,7 +476,7 @@ export const debugAPI = {
   },
 
   checkTables: async (): Promise<{ [key: string]: boolean }> => {
-    const tables = ['profiles', 'vehicle_alerts', 'crime_reports'];
+    const tables = ['vehicle_alerts', 'crime_reports'];
     const results: { [key: string]: boolean } = {};
 
     for (const table of tables) {
