@@ -139,6 +139,7 @@ export default function CrimeReportModal({
     setUploadedImageUrls(prev => prev.filter((_, i) => i !== index));
   };
 
+  // FIXED: Enhanced image upload function for crime-evidence bucket
   const uploadImagesToStorage = async (reportId: string): Promise<string[]> => {
     if (images.length === 0) return uploadedImageUrls;
 
@@ -148,24 +149,29 @@ export default function CrimeReportModal({
     try {
       for (const image of images) {
         const fileExt = image.name.split('.').pop();
-        const fileName = `${reportId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const fileName = `${reportId}/${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+
+        console.log('🔄 Uploading image to crime-evidence bucket:', fileName);
 
         const { error: uploadError } = await supabase.storage
           .from('crime-evidence')
           .upload(fileName, image);
 
         if (uploadError) {
+          console.error('❌ Image upload error:', uploadError);
           throw uploadError;
         }
 
+        // Get public URL
         const { data: { publicUrl } } = supabase.storage
           .from('crime-evidence')
           .getPublicUrl(fileName);
 
+        console.log('✅ Image uploaded successfully:', publicUrl);
         uploadedUrls.push(publicUrl);
       }
     } catch (error) {
-      console.error('Error uploading images:', error);
+      console.error('❌ Error uploading images:', error);
       throw error;
     } finally {
       setUploading(false);
@@ -174,6 +180,7 @@ export default function CrimeReportModal({
     return uploadedUrls;
   };
 
+  // FIXED: Enhanced submit handler with proper image upload timing
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -188,32 +195,45 @@ export default function CrimeReportModal({
         severity: formData.severity,
         status: formData.status,
         witness_info: formData.witness_info,
-        evidence_images: uploadedImageUrls,
+        evidence_images: uploadedImageUrls, // Start with existing images
         contact_allowed: Boolean(formData.contact_allowed),
         ob_number: formData.ob_number,
         reported_by: user.id
       };
 
       let result;
+      
       if (editReport) {
-        console.log('🔄 Updating existing report...');
+        console.log('🔄 Updating existing crime report...');
+        
+        // Upload new images first
         const allImageUrls = await uploadImagesToStorage(editReport.id);
+        
+        // Update report with all images
         result = await reportsAPI.updateCrimeReport(editReport.id, {
           ...reportData,
           evidence_images: allImageUrls
         });
       } else {
-        console.log('🔄 Creating new report...');
+        console.log('🔄 Creating new crime report...');
+        
+        // Create report first (without images)
         result = await reportsAPI.createCrimeReport(reportData);
+        
+        // Then upload images and update the report
         if (images.length > 0 && result && result.id) {
+          console.log('🔄 Uploading images for new crime report...');
           const imageUrls = await uploadImagesToStorage(result.id);
+          
+          // Update the report with the image URLs
           await reportsAPI.updateCrimeReport(result.id, {
             evidence_images: imageUrls
           });
+          console.log('✅ Images uploaded and crime report updated');
         }
       }
 
-      console.log('✅ Report saved successfully:', result);
+      console.log('✅ Crime report saved successfully:', result);
       
       // Close modal first for better UX
       onClose();
@@ -475,6 +495,7 @@ export default function CrimeReportModal({
                   <input
                     type="file"
                     id="image-upload"
+                    name="image-upload"
                     multiple
                     accept="image/*"
                     onChange={(e) => e.target.files && handleImageUpload(e.target.files)}

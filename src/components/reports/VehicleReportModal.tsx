@@ -24,12 +24,12 @@ const generateShortOBNumber = (type: 'V' | 'C') => {
   return `OB${type}${timestamp.slice(-4)}${random}`;
 };
 
-export default function VehicleReportModal({ 
-  isOpen, 
-  onClose, 
-  onReportCreated, 
-  user, 
-  editReport 
+export default function VehicleReportModal({
+  isOpen,
+  onClose,
+  onReportCreated,
+  user,
+  editReport
 }: VehicleReportModalProps) {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -80,7 +80,7 @@ export default function VehicleReportModal({
         notes: editReport.notes || '',
         ob_number: editReport.ob_number || generateShortOBNumber('V')
       });
-      
+
       if (editReport.evidence_images) {
         setUploadedImageUrls(editReport.evidence_images);
       }
@@ -145,6 +145,7 @@ export default function VehicleReportModal({
     setUploadedImageUrls(prev => prev.filter((_, i) => i !== index));
   };
 
+  // FIXED: Enhanced image upload function for vehicle-evidence bucket
   const uploadImagesToStorage = async (reportId: string): Promise<string[]> => {
     if (images.length === 0) return uploadedImageUrls;
 
@@ -154,24 +155,29 @@ export default function VehicleReportModal({
     try {
       for (const image of images) {
         const fileExt = image.name.split('.').pop();
-        const fileName = `${reportId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const fileName = `${reportId}/${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+
+        console.log('🔄 Uploading image to vehicle-evidence bucket:', fileName);
 
         const { error: uploadError } = await supabase.storage
           .from('vehicle-evidence')
           .upload(fileName, image);
 
         if (uploadError) {
+          console.error('❌ Image upload error:', uploadError);
           throw uploadError;
         }
 
+        // Get public URL
         const { data: { publicUrl } } = supabase.storage
           .from('vehicle-evidence')
           .getPublicUrl(fileName);
 
+        console.log('✅ Image uploaded successfully:', publicUrl);
         uploadedUrls.push(publicUrl);
       }
     } catch (error) {
-      console.error('Error uploading images:', error);
+      console.error('❌ Error uploading images:', error);
       throw error;
     } finally {
       setUploading(false);
@@ -180,6 +186,7 @@ export default function VehicleReportModal({
     return uploadedUrls;
   };
 
+  // FIXED: Enhanced submit handler with proper image upload timing
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -202,15 +209,20 @@ export default function VehicleReportModal({
         notes: formData.notes.trim(),
         ob_number: formData.ob_number,
         reported_by: user.id,
-        evidence_images: uploadedImageUrls
+        evidence_images: uploadedImageUrls // Start with existing images
       };
 
       console.log('📤 Submitting report data:', reportData);
 
       let result;
+
       if (editReport) {
         console.log('🔄 Updating existing report...');
+
+        // Upload new images first
         const allImageUrls = await uploadImagesToStorage(editReport.id);
+
+        // Update report with all images
         result = await reportsAPI.updateVehicleAlert(editReport.id, {
           ...reportData,
           evidence_images: allImageUrls
@@ -218,39 +230,44 @@ export default function VehicleReportModal({
         console.log('✅ Report updated:', result);
       } else {
         console.log('🔄 Creating new report...');
+
+        // Create report first (without images)
         result = await reportsAPI.createVehicleAlert(reportData);
         console.log('✅ Report created:', result);
-        
+
+        // Then upload images and update the report
         if (images.length > 0 && result && result.id) {
           console.log('🔄 Uploading images for new report...');
           const imageUrls = await uploadImagesToStorage(result.id);
+
+          // Update the report with the image URLs
           await reportsAPI.updateVehicleAlert(result.id, {
             evidence_images: imageUrls
           });
-          console.log('✅ Images uploaded for report');
+          console.log('✅ Images uploaded and report updated');
         }
       }
 
       console.log('✅ Report saved successfully:', result);
-      
+
       // Show success message first
       showSuccess(editReport ? 'Vehicle report updated successfully!' : 'Vehicle report created successfully!');
-      
+
       // Then close modal after a short delay
       setTimeout(() => {
         handleModalClose();
         // Then trigger the refresh
         onReportCreated();
       }, 1500);
-      
+
     } catch (error: any) {
       console.error('❌ Error saving vehicle report:', error);
-      
+
       let errorMessage = 'Error saving vehicle report. Please try again.';
       if (error.message) {
         errorMessage = error.message;
       }
-      
+
       // Show error but don't close the modal
       showError(errorMessage);
       setLoading(false);
@@ -317,8 +334,8 @@ export default function VehicleReportModal({
       <div className="fixed inset-0 z-50 overflow-y-auto">
         <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
           {/* Background overlay */}
-          <div 
-            className="fixed inset-0 transition-opacity bg-black bg-opacity-75" 
+          <div
+            className="fixed inset-0 transition-opacity bg-black bg-opacity-75"
             onClick={handleModalClose}
           ></div>
 
@@ -539,6 +556,7 @@ export default function VehicleReportModal({
                   <input
                     type="file"
                     id="image-upload"
+                    name="image-upload"
                     multiple
                     accept="image/*"
                     onChange={(e) => e.target.files && handleImageUpload(e.target.files)}
