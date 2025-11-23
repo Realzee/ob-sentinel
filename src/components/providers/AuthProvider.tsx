@@ -1,182 +1,108 @@
+// components/providers/AuthProvider.tsx
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase, authAPI } from '@/lib/supabase';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { supabase, Profile } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+import { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
-  user: any;
-  loading: boolean;
-  signIn: (email: string, password: string) => Promise<any>;
-  signUp: (email: string, password: string) => Promise<any>;
+  user: User | null;
   signOut: () => Promise<void>;
+  loading: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  signOut: async () => {},
+  loading: true
+});
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any>(null);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  // Enhanced sign out function
+  const signOut = async () => {
+    try {
+      console.log('🚪 Starting enhanced sign out process...');
+      
+      // Clear all local storage and session storage first
+      if (typeof window !== 'undefined') {
+        localStorage.clear();
+        sessionStorage.clear();
+        
+        // Clear specific app data
+        const keysToRemove = [
+          'supabase.auth.token',
+          'vehicleReports',
+          'crimeReports',
+          'dashboardStats',
+          'userProfile'
+        ];
+        
+        keysToRemove.forEach(key => {
+          localStorage.removeItem(key);
+          sessionStorage.removeItem(key);
+        });
+      }
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('❌ Supabase sign out error:', error);
+        // Continue with redirect anyway
+      }
+      
+      console.log('✅ Sign out completed, redirecting...');
+      
+      // Force full page reload to clear all React state and memory
+      window.location.href = '/';
+      
+    } catch (error) {
+      console.error('❌ Error during sign out:', error);
+      // Force redirect anyway to ensure user is logged out
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
+    }
+  };
 
   useEffect(() => {
-    let mounted = true;
-
-    const initializeAuth = async () => {
-      try {
-        console.log('🔄 Initializing auth...');
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.error('❌ Session error:', sessionError);
-          throw sessionError;
-        }
-
-        if (session?.user && mounted) {
-          console.log('👤 Session user found:', session.user.email);
-          
-          try {
-            // Try to get user profile
-            const userData = await authAPI.getCurrentUser();
-            console.log('📊 User profile data:', userData);
-            
-            const mergedUser = {
-              ...session.user,
-              ...userData,
-              role: userData?.role || 'user',
-              status: userData?.status || 'active',
-              full_name: userData?.full_name || session.user.email?.split('@')[0] || 'User'
-            };
-            
-            if (mounted) {
-              setUser(mergedUser);
-            }
-          } catch (profileError) {
-            console.error('❌ Profile fetch error, using basic user data:', profileError);
-            // Use basic user data if profile fetch fails
-            const basicUser = {
-              ...session.user,
-              role: 'user',
-              status: 'active',
-              full_name: session.user.email?.split('@')[0] || 'User'
-            };
-            
-            if (mounted) {
-              setUser(basicUser);
-            }
-          }
-        } else if (mounted) {
-          console.log('👤 No session found');
-          setUser(null);
-        }
-      } catch (error) {
-        console.error('❌ Error initializing auth:', error);
-        if (mounted) {
-          setUser(null);
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
+    // Get initial session
+    const getInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      setLoading(false);
     };
 
-    initializeAuth();
+    getInitialSession();
 
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🔄 Auth state changed:', event);
-        
-        if (!mounted) return;
-
-        try {
-          if (session?.user) {
-            console.log('👤 Auth user found:', session.user.email);
-            
-            try {
-              const userData = await authAPI.getCurrentUser();
-              console.log('📊 User profile data after auth change:', userData);
-              
-              const mergedUser = {
-                ...session.user,
-                ...userData,
-                role: userData?.role || 'user',
-                status: userData?.status || 'active',
-                full_name: userData?.full_name || session.user.email?.split('@')[0] || 'User'
-              };
-              
-              setUser(mergedUser);
-            } catch (profileError) {
-              console.error('❌ Profile fetch error in auth change:', profileError);
-              // Use basic user data
-              const basicUser = {
-                ...session.user,
-                role: 'user',
-                status: 'active',
-                full_name: session.user.email?.split('@')[0] || 'User'
-              };
-              setUser(basicUser);
-            }
-          } else {
-            console.log('👤 No user in auth change');
-            setUser(null);
-          }
-        } catch (error) {
-          console.error('❌ Error in auth state change:', error);
-          setUser(null);
-        } finally {
-          setLoading(false);
-        }
+        setUser(session?.user ?? null);
+        setLoading(false);
       }
     );
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string) => {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) {
-        console.error('❌ Sign in error:', error);
-        throw error;
-      }
-      
-      console.log('✅ Sign in successful:', data.user?.email);
-      return { data, error: null };
-    } catch (error) {
-      console.error('❌ Sign in failed:', error);
-      return { data: null, error };
-    }
-  };
-
-  const signUp = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-    return { data, error };
-  };
-
-  const signOut = async () => {
-    try {
-      await supabase.auth.signOut();
-      console.log('✅ Signed out successfully');
-    } catch (error) {
-      console.error('❌ Sign out error:', error);
-    }
-  };
-
-  const value = {
+  const value: AuthContextType = {
     user,
-    loading,
-    signIn,
-    signUp,
     signOut,
+    loading
   };
 
   return (
@@ -184,12 +110,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
+};
