@@ -2,8 +2,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { authAPI, Profile, UserRole, UserStatus, supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
+
+// Create admin client with service role key (bypasses RLS)
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY!
+);
 
 interface UserManagementModalProps {
   isOpen: boolean;
@@ -11,9 +17,18 @@ interface UserManagementModalProps {
   currentUser: any;
 }
 
-// Use Profile interface instead of creating a new User interface
-interface User extends Profile {
-  // Extend Profile to ensure compatibility
+type UserRole = 'admin' | 'moderator' | 'controller' | 'user';
+type UserStatus = 'pending' | 'active' | 'suspended';
+
+interface User {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: UserRole;
+  status: UserStatus;
+  created_at: string;
+  updated_at: string;
+  last_seen_at: string | null;
 }
 
 export default function UserManagementModal({ isOpen, onClose, currentUser }: UserManagementModalProps) {
@@ -25,29 +40,23 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   
-  // Enhanced filtering
   const [filters, setFilters] = useState({
     role: '',
     status: ''
   });
 
-  // User selection for bulk operations
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-  
-  // Confirmation modals
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
   const [confirmMessage, setConfirmMessage] = useState('');
   
-  // Add user form state
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<UserRole>('user');
   
-  // Edit user form state
   const [editUserName, setEditUserName] = useState('');
   const [editUserRole, setEditUserRole] = useState<UserRole>('user');
   const [editUserStatus, setEditUserStatus] = useState<UserStatus>('active');
@@ -55,18 +64,14 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   
   const [addingUser, setAddingUser] = useState(false);
   const [editingUser, setEditingUser] = useState(false);
-
-  // Error state
   const [errorMessage, setErrorMessage] = useState('');
   const [showErrorModal, setShowErrorModal] = useState(false);
 
-  // Real-time updates
   useEffect(() => {
     if (!isOpen) return;
 
     loadUsers();
 
-    // Poll for user status updates every 30 seconds
     const interval = setInterval(() => {
       loadUsers();
     }, 30000);
@@ -74,27 +79,39 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     return () => clearInterval(interval);
   }, [isOpen]);
 
-  // Get users directly from public.users table with admin access
   const loadUsers = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Loading users with service role...');
       
-      // Direct query to public.users table - admin has full access
-      const { data: usersData, error } = await supabase
+      const { data: usersData, error } = await supabaseAdmin
         .from('users')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('❌ Error loading users from public.users:', error);
+        console.error('❌ Error loading users:', error);
         throw error;
       }
 
-      console.log('📊 Loaded users from public.users:', usersData);
-      setUsers(usersData as User[] || []);
-    } catch (error) {
+      console.log('📊 Successfully loaded users:', usersData?.length || 0);
+      
+      // Transform and validate the data
+      const validatedUsers = (usersData || []).map(user => ({
+        id: user.id || '',
+        email: user.email || '',
+        full_name: user.full_name || null,
+        role: (user.role as UserRole) || 'user',
+        status: (user.status as UserStatus) || 'active',
+        created_at: user.created_at || new Date().toISOString(),
+        updated_at: user.updated_at || new Date().toISOString(),
+        last_seen_at: user.last_seen_at || null
+      }));
+
+      setUsers(validatedUsers);
+    } catch (error: any) {
       console.error('❌ Error loading users:', error);
-      showError('Failed to load users. Please try again.');
+      showError(`Failed to load users: ${error.message || 'Unknown error'}`);
       setUsers([]);
     } finally {
       setLoading(false);
@@ -112,13 +129,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setShowConfirmModal(true);
   };
 
-  // Helper function to show error messages
   const showError = (message: string) => {
     setErrorMessage(message);
     setShowErrorModal(true);
   };
 
-  // Update user role in public.users table
   const handleRoleUpdate = async (userId: string, newRole: string) => {
     const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
     if (!validRoles.includes(newRole as UserRole)) {
@@ -129,8 +144,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       
-      // Update in public.users table
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('users')
         .update({ 
           role: newRole as UserRole,
@@ -140,7 +154,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
       if (error) throw error;
 
-      // Update local state
       setUsers(prev => prev.map(u => 
         u.id === userId 
           ? { ...u, role: newRole as UserRole, updated_at: new Date().toISOString() }
@@ -148,15 +161,14 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       ));
       
       showSuccess('User role updated successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating user role:', error);
-      showError('Error updating user role. Please try again.');
+      showError(`Error updating user role: ${error.message}`);
     } finally {
       setUpdating(null);
     }
   };
 
-  // Update user status in public.users table
   const handleStatusUpdate = async (userId: string, newStatus: string) => {
     const validStatuses: UserStatus[] = ['pending', 'active', 'suspended'];
     if (!validStatuses.includes(newStatus as UserStatus)) {
@@ -167,8 +179,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       
-      // Update in public.users table
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('users')
         .update({ 
           status: newStatus as UserStatus,
@@ -178,7 +189,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
       if (error) throw error;
 
-      // Update local state
       setUsers(prev => prev.map(u => 
         u.id === userId 
           ? { ...u, status: newStatus as UserStatus, updated_at: new Date().toISOString() }
@@ -186,15 +196,14 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       ));
       
       showSuccess(`User status updated to ${newStatus}!`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating user status:', error);
-      showError('Error updating user status. Please try again.');
+      showError(`Error updating user status: ${error.message}`);
     } finally {
       setUpdating(null);
     }
   };
 
-  // Suspend user by updating status in public.users table
   const handleDeleteUser = async (userId: string, userEmail: string) => {
     showConfirmation(
       `Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`,
@@ -202,8 +211,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           
-          // Update in public.users table
-          const { error } = await supabase
+          const { error } = await supabaseAdmin
             .from('users')
             .update({ 
               status: 'suspended' as UserStatus,
@@ -213,7 +221,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
           if (error) throw error;
 
-          // Update local state
           setUsers(prev => prev.map(u => 
             u.id === userId 
               ? { ...u, status: 'suspended' as UserStatus, updated_at: new Date().toISOString() }
@@ -221,9 +228,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
           ));
           
           showSuccess('User suspended successfully');
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error suspending user:', error);
-          showError('Error suspending user. Please try again.');
+          showError(`Error suspending user: ${error.message}`);
         } finally {
           setUpdating(null);
         }
@@ -231,7 +238,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     );
   };
 
-  // Enhanced user status with timestamp
   const getUserStatusWithTimestamp = (user: User) => {
     const isOnline = user.status === 'active';
     const lastSeen = user.last_seen_at ? new Date(user.last_seen_at) : null;
@@ -257,7 +263,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     );
   };
 
-  // Enhanced filtering
   const filteredUsers = users.filter(user => {
     const matchesSearch = 
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -270,13 +275,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  // Bulk role update in public.users table
   const handleBulkRoleUpdate = async (newRole: UserRole) => {
     if (selectedUsers.length === 0) return;
 
     try {
-      // Update in public.users table
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('users')
         .update({ 
           role: newRole,
@@ -286,7 +289,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
       if (error) throw error;
 
-      // Update local state
       setUsers(prev => prev.map(u => 
         selectedUsers.includes(u.id) 
           ? { ...u, role: newRole, updated_at: new Date().toISOString() }
@@ -295,9 +297,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       
       setSelectedUsers([]);
       showSuccess(`Updated ${selectedUsers.length} users to ${newRole} role`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in bulk role update:', error);
-      showError('Error updating users. Please try again.');
+      showError(`Error updating users: ${error.message}`);
     }
   };
 
@@ -317,7 +319,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Create user with profile in public.users table
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -329,34 +330,29 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setAddingUser(true);
       
-      // Create auth user
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
         email: newUserEmail,
         password: newUserPassword,
-        options: {
-          data: {
-            full_name: newUserName || '',
-            role: newUserRole
-          }
+        email_confirm: true,
+        user_metadata: {
+          full_name: newUserName || '',
+          role: newUserRole
         }
       });
 
       if (error) throw error;
 
-      if (data.user) {
-        // The profile should be automatically created via database trigger
-        // But we'll manually refresh to ensure we have the latest data
-        await loadUsers();
-      }
+      // The user profile should be created automatically via trigger
+      // Refresh the list to show the new user
+      await loadUsers();
 
-      // Reset form
       setNewUserEmail('');
       setNewUserPassword('');
       setNewUserName('');
       setNewUserRole('user');
       setIsAddUserModalOpen(false);
       
-      showSuccess('User created successfully! They will need to confirm their email address.');
+      showSuccess('User created successfully!');
     } catch (error: any) {
       console.error('Error creating user:', error);
       showError(error.message || 'Error creating user. Please try again.');
@@ -374,7 +370,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setIsEditUserModalOpen(true);
   };
 
-  // Update user in public.users table
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -383,32 +378,31 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setEditingUser(true);
 
-      // Update profile in public.users table
-      const { error: profileError } = await supabase
+      const updateData: any = {
+        full_name: editUserName || null,
+        role: editUserRole,
+        status: editUserStatus,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: profileError } = await supabaseAdmin
         .from('users')
-        .update({
-          full_name: editUserName || null,
-          role: editUserRole,
-          status: editUserStatus,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', selectedUser.id);
 
       if (profileError) throw profileError;
 
-      // Update password only if provided and not empty
       if (editUserPassword && editUserPassword.trim() !== '') {
-        const { error: passwordError } = await supabase.auth.updateUser({
-          password: editUserPassword
-        });
+        const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(
+          selectedUser.id,
+          { password: editUserPassword }
+        );
 
         if (passwordError) throw passwordError;
       }
 
-      // Refresh users to get updated data
       await loadUsers();
 
-      // Reset form
       setSelectedUser(null);
       setEditUserName('');
       setEditUserRole('user');
@@ -425,13 +419,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Approve user by updating status in public.users table
   const handleApproveUser = async (userId: string) => {
     try {
       setUpdating(userId);
       
-      // Update in public.users table
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('users')
         .update({ 
           status: 'active' as UserStatus,
@@ -441,7 +433,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
       if (error) throw error;
 
-      // Update local state
       setUsers(prev => prev.map(u => 
         u.id === userId 
           ? { ...u, status: 'active' as UserStatus, updated_at: new Date().toISOString() }
@@ -449,15 +440,14 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       ));
       
       showSuccess('User approved successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error approving user:', error);
-      showError('Error approving user. Please try again.');
+      showError(`Error approving user: ${error.message}`);
     } finally {
       setUpdating(null);
     }
   };
 
-  // Reactivate user by updating status in public.users table
   const handleReactivateUser = async (userId: string) => {
     showConfirmation(
       'Are you sure you want to reactivate this user?',
@@ -465,8 +455,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           
-          // Update in public.users table
-          const { error } = await supabase
+          const { error } = await supabaseAdmin
             .from('users')
             .update({ 
               status: 'active' as UserStatus,
@@ -476,7 +465,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
           if (error) throw error;
 
-          // Update local state
           setUsers(prev => prev.map(u => 
             u.id === userId 
               ? { ...u, status: 'active' as UserStatus, updated_at: new Date().toISOString() }
@@ -484,9 +472,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
           ));
           
           showSuccess('User reactivated successfully');
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error reactivating user:', error);
-          showError('Error reactivating user. Please try again.');
+          showError(`Error reactivating user: ${error.message}`);
         } finally {
           setUpdating(null);
         }
@@ -501,13 +489,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       {/* Main User Management Modal */}
       <div className="fixed inset-0 z-50 overflow-y-auto">
         <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-          {/* Background overlay */}
           <div 
             className="fixed inset-0 transition-opacity bg-black bg-opacity-75" 
             onClick={onClose}
           ></div>
 
-          {/* Modal panel */}
           <div className="relative inline-block w-full max-w-6xl px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl sm:my-8 sm:align-middle sm:p-6">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
@@ -515,7 +501,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 <h2 className="text-2xl font-bold text-white">User Management</h2>
                 <p className="text-gray-400 mt-1">Manage user roles, status, and permissions</p>
                 <p className="text-green-500 text-sm mt-1">
-                  Admin Access: Viewing all users from public.users table
+                  Admin Access: Full database access with service role
                 </p>
               </div>
               <div className="flex items-center space-x-3">
@@ -543,8 +529,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
             <div className="mb-6 space-y-4">
               <input
                 type="text"
-                id="user-search"
-                name="user-search"
                 placeholder="Search users by email, name, or role..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -553,8 +537,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
               
               <div className="flex flex-wrap gap-4">
                 <select
-                  id="role-filter"
-                  name="role-filter"
                   value={filters.role}
                   onChange={(e) => setFilters(prev => ({ ...prev, role: e.target.value }))}
                   className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -567,8 +549,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </select>
 
                 <select
-                  id="status-filter"
-                  name="status-filter"
                   value={filters.status}
                   onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
                   className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -579,15 +559,12 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   <option value="suspended">Suspended</option>
                 </select>
 
-                {/* Bulk Actions */}
                 {selectedUsers.length > 0 && (
                   <div className="flex items-center space-x-2">
                     <span className="text-sm text-gray-400">
                       {selectedUsers.length} selected
                     </span>
                     <select
-                      id="bulk-role-action"
-                      name="bulk-role-action"
                       onChange={(e) => handleBulkRoleUpdate(e.target.value as UserRole)}
                       className="px-3 py-1 bg-blue-600 border border-blue-500 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
@@ -607,6 +584,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
               {loading ? (
                 <div className="flex justify-center items-center py-12">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                  <span className="ml-2 text-gray-400">Loading users...</span>
                 </div>
               ) : (
                 <div className="overflow-hidden">
@@ -616,8 +594,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                           <input
                             type="checkbox"
-                            id="select-all-users"
-                            name="select-all-users"
                             checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
                             onChange={handleSelectAll}
                             className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
@@ -636,8 +612,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                           <td className="px-6 py-4 whitespace-nowrap">
                             <input
                               type="checkbox"
-                              id={`user-select-${user.id}`}
-                              name={`user-select-${user.id}`}
                               checked={selectedUsers.includes(user.id)}
                               onChange={() => handleUserSelection(user.id)}
                               className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
@@ -662,8 +636,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">
                               <select
-                                id={`user-role-${user.id}`}
-                                name={`user-role-${user.id}`}
                                 value={user.role}
                                 onChange={(e) => handleRoleUpdate(user.id, e.target.value)}
                                 disabled={updating === user.id || user.id === currentUser.id}
@@ -806,13 +778,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
               <form onSubmit={handleAddUser} className="space-y-4">
                 <div>
-                  <label htmlFor="new-user-email" className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Email Address *
                   </label>
                   <input
                     type="email"
-                    id="new-user-email"
-                    name="new-user-email"
                     value={newUserEmail}
                     onChange={(e) => setNewUserEmail(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -822,13 +792,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label htmlFor="new-user-password" className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Password *
                   </label>
                   <input
                     type="password"
-                    id="new-user-password"
-                    name="new-user-password"
                     value={newUserPassword}
                     onChange={(e) => setNewUserPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -839,13 +807,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label htmlFor="new-user-name" className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Full Name (Optional)
                   </label>
                   <input
                     type="text"
-                    id="new-user-name"
-                    name="new-user-name"
                     value={newUserName}
                     onChange={(e) => setNewUserName(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -854,12 +820,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label htmlFor="new-user-role" className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Role *
                   </label>
                   <select
-                    id="new-user-role"
-                    name="new-user-role"
                     value={newUserRole}
                     onChange={(e) => setNewUserRole(e.target.value as UserRole)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -926,13 +890,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
               <form onSubmit={handleUpdateUser} className="space-y-4">
                 <div>
-                  <label htmlFor="edit-user-email" className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Email Address
                   </label>
                   <input
                     type="email"
-                    id="edit-user-email"
-                    name="edit-user-email"
                     value={selectedUser.email}
                     disabled
                     className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-gray-400 cursor-not-allowed"
@@ -941,13 +903,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label htmlFor="edit-user-name" className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Full Name
                   </label>
                   <input
                     type="text"
-                    id="edit-user-name"
-                    name="edit-user-name"
                     value={editUserName}
                     onChange={(e) => setEditUserName(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -956,12 +916,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label htmlFor="edit-user-role" className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Role
                   </label>
                   <select
-                    id="edit-user-role"
-                    name="edit-user-role"
                     value={editUserRole}
                     onChange={(e) => setEditUserRole(e.target.value as UserRole)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -974,12 +932,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label htmlFor="edit-user-status" className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Status
                   </label>
                   <select
-                    id="edit-user-status"
-                    name="edit-user-status"
                     value={editUserStatus}
                     onChange={(e) => setEditUserStatus(e.target.value as UserStatus)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -991,13 +947,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 </div>
 
                 <div>
-                  <label htmlFor="edit-user-password" className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     New Password (Optional)
                   </label>
                   <input
                     type="password"
-                    id="edit-user-password"
-                    name="edit-user-password"
                     value={editUserPassword}
                     onChange={(e) => setEditUserPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
