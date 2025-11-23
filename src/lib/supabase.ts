@@ -14,6 +14,7 @@ export interface Profile {
   status: UserStatus;
   created_at: string;
   updated_at: string;
+  last_seen_at?: string; // Added missing property
 }
 
 export interface VehicleAlert {
@@ -128,7 +129,8 @@ export const authAPI = {
         role: (isAdmin ? 'admin' : 'user') as UserRole,
         status: 'active' as UserStatus,
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString() // Added last_seen_at
       };
 
       // Cache the profile
@@ -151,6 +153,7 @@ export const authAPI = {
     role?: UserRole; 
     status?: UserStatus;
     full_name?: string | null;
+    last_seen_at?: string; // Added last_seen_at
   }): Promise<Profile> => {
     return safeApiCall(async () => {
       // Update cached profile
@@ -173,7 +176,8 @@ export const authAPI = {
         role: updates.role || 'user',
         status: updates.status || 'active',
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        last_seen_at: updates.last_seen_at || new Date().toISOString() // Added last_seen_at
       };
     }, 'updateUserRole');
   }

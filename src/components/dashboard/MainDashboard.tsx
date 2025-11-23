@@ -20,11 +20,13 @@ interface MainDashboardProps {
 interface VehicleAlertWithImages extends VehicleAlert {
   evidence_images?: string[];
   reporter_profile?: any;
+  ob_number?: string;
 }
 
 interface CrimeReportWithImages extends CrimeReport {
   evidence_images?: string[];
   reporter_profile?: any;
+  ob_number?: string;
 }
 
 type ReportType = 'vehicles' | 'crimes';
@@ -190,12 +192,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       // Enhance reports with reporter information
       const vehiclesWithReporters = activeVehicles.map(vehicle => ({
         ...vehicle,
-        reporter_profile: user
+        reporter_profile: user,
+        ob_number: vehicle.ob_number || `OB-V-${vehicle.id.slice(-8).toUpperCase()}`
       }));
       
       const crimesWithReporters = activeCrimes.map(crime => ({
         ...crime,
-        reporter_profile: user
+        reporter_profile: user,
+        ob_number: crime.ob_number || `OB-C-${crime.id.slice(-8).toUpperCase()}`
       }));
       
       setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
@@ -350,30 +354,40 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   const currentReports = activeReportType === 'vehicles' ? vehicleReports : crimeReports;
 
-  // Helper function to get display text for reports
+  // Enhanced helper function to get display text for reports
   const getReportDisplayText = (report: AnyReport) => {
     if (isVehicleAlert(report)) {
       return {
         primary: report.license_plate,
         secondary: `${report.vehicle_make} ${report.vehicle_model} • ${report.vehicle_color}`,
         location: report.last_seen_location,
+        obNumber: report.ob_number || `OB-V-${report.id.slice(-8).toUpperCase()}`
       };
     } else if (isCrimeReport(report)) {
       return {
         primary: report.title,
         secondary: report.description.substring(0, 100) + (report.description.length > 100 ? '...' : ''),
         location: report.location,
+        obNumber: report.ob_number || `OB-C-${report.id.slice(-8).toUpperCase()}`
       };
     }
-    return { primary: '', secondary: '', location: '' };
+    return { primary: '', secondary: '', location: '', obNumber: '' };
   };
 
-  // Helper function to get reporter name
-  const getReporterName = (report: AnyReport) => {
-    if (report.reporter_profile) {
-      return report.reporter_profile.full_name || report.reporter_profile.email || 'Unknown';
-    }
-    return user?.full_name || user?.email || 'Unknown';
+  // Enhanced helper function to get reporter information
+  const getReporterInfo = (report: AnyReport) => {
+    const reporter = report.reporter_profile || user;
+    const reporterName = reporter?.full_name || reporter?.email || 'Unknown';
+    const reporterRole = reporter?.role || 'user';
+    const reporterStatus = reporter?.status || 'active';
+    
+    return {
+      name: reporterName,
+      role: reporterRole,
+      status: reporterStatus,
+      isOnline: reporterStatus === 'active',
+      contact: reporter?.email || 'No contact'
+    };
   };
 
   // Helper function to check if report has location
@@ -670,7 +684,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                 {currentReports.slice(0, 10).map((report) => {
                   const display = getReportDisplayText(report);
                   const reportImages = report.evidence_images || [];
-                  const reporterName = getReporterName(report);
+                  const reporterInfo = getReporterInfo(report);
                   
                   return (
                     <div key={report.id} className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 hover:border-gray-600 transition-colors">
@@ -678,13 +692,24 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 mb-3">
                             <div className="flex-1">
-                              <span className="font-semibold text-white text-lg truncate block">
-                                {display.primary}
-                              </span>
-                              {/* Reporter information */}
-                              <div className="flex items-center space-x-2 mt-1">
-                                <span className="text-sm text-gray-400">
-                                  Reported by: {reporterName}
+                              <div className="flex items-center space-x-3">
+                                <span className="font-semibold text-white text-lg truncate block">
+                                  {display.primary}
+                                </span>
+                                <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full border border-blue-500/30">
+                                  {display.obNumber}
+                                </span>
+                              </div>
+                              {/* Enhanced reporter information */}
+                              <div className="flex items-center space-x-3 mt-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-sm text-gray-400">
+                                    Reported by: {reporterInfo.name}
+                                  </span>
+                                  <div className={`w-2 h-2 rounded-full ${reporterInfo.isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></div>
+                                </div>
+                                <span className="text-xs text-gray-500 capitalize">
+                                  ({reporterInfo.role})
                                 </span>
                               </div>
                             </div>

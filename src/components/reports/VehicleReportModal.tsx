@@ -36,7 +36,8 @@ export default function VehicleReportModal({
     last_seen_time: '',
     severity: 'medium' as SeverityType,
     status: 'active' as ReportStatus,
-    notes: ''
+    notes: '',
+    ob_number: ''
   });
 
   const [images, setImages] = useState<File[]>([]);
@@ -48,6 +49,13 @@ export default function VehicleReportModal({
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Generate OB number function
+  const generateOBNumber = () => {
+    const timestamp = new Date().getTime();
+    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `OB-V-${timestamp}-${random}`;
+  };
 
   useEffect(() => {
     if (editReport) {
@@ -62,7 +70,8 @@ export default function VehicleReportModal({
         last_seen_time: editReport.last_seen_time ? editReport.last_seen_time.split('T')[0] : '',
         severity: editReport.severity || 'medium',
         status: editReport.status || 'active',
-        notes: editReport.notes || ''
+        notes: editReport.notes || '',
+        ob_number: editReport.ob_number || generateOBNumber()
       });
       // Load existing images if editing
       if (editReport.evidence_images) {
@@ -80,7 +89,8 @@ export default function VehicleReportModal({
         last_seen_time: '',
         severity: 'medium',
         status: 'active',
-        notes: ''
+        notes: '',
+        ob_number: generateOBNumber()
       });
       setUploadedImageUrls([]);
     }
@@ -180,6 +190,7 @@ export default function VehicleReportModal({
         severity: formData.severity,
         status: formData.status,
         notes: formData.notes,
+        ob_number: formData.ob_number,
         reported_by: user.id,
         evidence_images: uploadedImageUrls
       };
@@ -271,7 +282,8 @@ export default function VehicleReportModal({
       last_seen_time: '',
       severity: 'medium',
       status: 'active',
-      notes: ''
+      notes: '',
+      ob_number: generateOBNumber()
     });
     setImages([]);
     setImagePreviews([]);
@@ -316,6 +328,21 @@ export default function VehicleReportModal({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* OB Number Display */}
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-blue-300">Case Reference</h3>
+                    <p className="text-lg font-bold text-white">{formData.ob_number}</p>
+                  </div>
+                  <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                    <svg className="w-4 h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
               {/* Vehicle Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
