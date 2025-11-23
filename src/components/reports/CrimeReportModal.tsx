@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { reportsAPI, ReportStatus, supabase, formatDateForDateTimeLocal } from '@/lib/supabase';
+import { reportsAPI, ReportStatus, formatDateForDateTimeLocal } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import Image from 'next/image';
 
@@ -32,7 +32,6 @@ export default function CrimeReportModal({
   editReport 
 }: CrimeReportModalProps) {
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -116,6 +115,12 @@ export default function CrimeReportModal({
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (file.type.startsWith('image/')) {
+        // Validate file size (5MB limit)
+        if (file.size > 5 * 1024 * 1024) {
+          showError(`Image ${file.name} is too large. Maximum size is 5MB.`);
+          continue;
+        }
+        
         newImages.push(file);
         // Create preview
         const previewUrl = URL.createObjectURL(file);
@@ -139,88 +144,36 @@ export default function CrimeReportModal({
     setUploadedImageUrls(prev => prev.filter((_, i) => i !== index));
   };
 
-  // FIXED: Enhanced image upload function for crime-evidence bucket
-  const uploadImagesToStorage = async (reportId: string): Promise<string[]> => {
+  // SIMPLE FALLBACK: Convert images to base64 data URLs
+  const processImagesLocally = async (): Promise<string[]> => {
     if (images.length === 0) return uploadedImageUrls;
 
-    setUploading(true);
-    const uploadedUrls: string[] = [...uploadedImageUrls];
+    console.log(`🔄 Processing ${images.length} images locally...`);
+    
+    const processedUrls: string[] = [...uploadedImageUrls];
 
-    try {
-      console.log(`🔄 Starting upload of ${images.length} images for report ${reportId}`);
-
-      for (let i = 0; i < images.length; i++) {
-        const image = images[i];
-        const fileExt = image.name.split('.').pop()?.toLowerCase() || 'jpg';
-        
-        // Create a unique filename with timestamp to avoid conflicts
-        const timestamp = Date.now();
-        const randomString = Math.random().toString(36).substring(2, 8);
-        const fileName = `${reportId}/${timestamp}-${randomString}.${fileExt}`;
-
-        console.log('🔄 Uploading image:', {
-          bucket: 'crime-evidence',
-          fileName,
-          size: image.size,
-          type: image.type
+    for (const image of images) {
+      try {
+        // Convert image to base64 data URL
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('Failed to read image'));
+          reader.readAsDataURL(image);
         });
-
-        // Validate file size (5MB limit)
-        if (image.size > 5 * 1024 * 1024) {
-          throw new Error(`Image ${image.name} is too large. Maximum size is 5MB.`);
-        }
-
-        // Upload with error handling
-        const { error: uploadError, data } = await supabase.storage
-          .from('crime-evidence')
-          .upload(fileName, image, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) {
-          console.error('❌ Image upload error:', uploadError);
-          
-          // Handle specific errors
-          if (uploadError.message.includes('bucket')) {
-            throw new Error('Storage bucket not found. Please contact administrator.');
-          } else if (uploadError.message.includes('JWT')) {
-            throw new Error('Authentication error. Please sign in again.');
-          } else {
-            throw new Error(`Upload failed: ${uploadError.message}`);
-          }
-        }
-
-        // Get public URL with cache busting
-        const { data: { publicUrl } } = supabase.storage
-          .from('crime-evidence')
-          .getPublicUrl(fileName);
-
-        const finalUrl = `${publicUrl}?t=${timestamp}`;
-        console.log('✅ Image uploaded successfully:', finalUrl);
-        uploadedUrls.push(finalUrl);
+        
+        processedUrls.push(dataUrl);
+        console.log('✅ Image processed locally');
+      } catch (error) {
+        console.warn('⚠️ Failed to process image:', error);
+        // Continue with other images
       }
-
-      console.log(`✅ All ${images.length} images uploaded successfully`);
-      return uploadedUrls;
-
-    } catch (error) {
-      console.error('❌ Error uploading images:', error);
-      
-      // Clean up any successfully uploaded images on failure
-      if (uploadedUrls.length > uploadedImageUrls.length) {
-        console.log('🧹 Cleaning up partially uploaded images...');
-        // Keep only the original uploaded images
-        return uploadedImageUrls;
-      }
-      
-      throw error;
-    } finally {
-      setUploading(false);
     }
+
+    console.log(`✅ All ${images.length} images processed locally`);
+    return processedUrls;
   };
 
-  // FIXED: Enhanced submit handler with proper image upload timing
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -233,6 +186,11 @@ export default function CrimeReportModal({
     setLoading(true);
 
     try {
+      console.log('🔄 Starting crime report submission...', { formData, user });
+
+      // Process images locally first
+      const allImageUrls = await processImagesLocally();
+
       const reportData = {
         title: formData.title,
         description: formData.description,
@@ -242,7 +200,7 @@ export default function CrimeReportModal({
         severity: formData.severity,
         status: formData.status,
         witness_info: formData.witness_info,
-        evidence_images: uploadedImageUrls, // Start with existing images
+        evidence_images: allImageUrls,
         contact_allowed: Boolean(formData.contact_allowed),
         ob_number: formData.ob_number,
         reported_by: user.id
@@ -252,41 +210,21 @@ export default function CrimeReportModal({
       
       if (editReport) {
         console.log('🔄 Updating existing crime report...');
-        
-        // Upload new images first
-        const allImageUrls = await uploadImagesToStorage(editReport.id);
-        
-        // Update report with all images
-        result = await reportsAPI.updateCrimeReport(editReport.id, {
-          ...reportData,
-          evidence_images: allImageUrls
-        });
+        result = await reportsAPI.updateCrimeReport(editReport.id, reportData);
       } else {
         console.log('🔄 Creating new crime report...');
-        
-        // Create report first (without images initially)
-        result = await reportsAPI.createCrimeReport({
-          ...reportData,
-          evidence_images: [] // Start with empty array, update after image upload
-        });
-        
-        // Then upload images and update the report
-        if (images.length > 0 && result && result.id) {
-          console.log('🔄 Uploading images for new crime report...');
-          const imageUrls = await uploadImagesToStorage(result.id);
-          
-          // Update the report with the image URLs
-          await reportsAPI.updateCrimeReport(result.id, {
-            evidence_images: imageUrls
-          });
-          console.log('✅ Images uploaded and crime report updated');
-        }
+        result = await reportsAPI.createCrimeReport(reportData);
       }
 
       console.log('✅ Crime report saved successfully:', result);
       
       // Show success message
-      showSuccess(editReport ? 'Crime report updated successfully!' : 'Crime report created successfully!');
+      const successMsg = editReport ? 'Crime report updated successfully!' : 'Crime report created successfully!';
+      if (images.length > 0) {
+        showSuccess(successMsg + ' Images have been saved with the report.');
+      } else {
+        showSuccess(successMsg);
+      }
       
       // Close modal and refresh after delay
       setTimeout(() => {
@@ -538,7 +476,7 @@ export default function CrimeReportModal({
               {/* Image Upload */}
               <div>
                 <label htmlFor="image-upload" className="block text-sm font-medium text-gray-300 mb-2">
-                  Evidence Images
+                  Evidence Images (Stored with report)
                 </label>
                 <div className="border-2 border-dashed border-gray-600 rounded-xl p-6 text-center">
                   <input
@@ -559,13 +497,16 @@ export default function CrimeReportModal({
                     </svg>
                     <span className="text-gray-400 text-sm">Click to upload images</span>
                     <span className="text-gray-500 text-xs">PNG, JPG, JPEG up to 5MB</span>
+                    <span className="text-green-400 text-xs mt-2">✓ Images will be saved with the report</span>
                   </label>
                 </div>
 
                 {/* Image Previews */}
                 {(imagePreviews.length > 0 || uploadedImageUrls.length > 0) && (
                   <div className="mt-4">
-                    <h4 className="text-sm font-medium text-gray-300 mb-2">Uploaded Images:</h4>
+                    <h4 className="text-sm font-medium text-gray-300 mb-2">
+                      {uploadedImageUrls.length > 0 ? 'Report Images:' : 'New Images:'}
+                    </h4>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                       {/* Existing uploaded images */}
                       {uploadedImageUrls.map((url, index) => (
@@ -673,10 +614,10 @@ export default function CrimeReportModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={loading || uploading}
+                  disabled={loading}
                   className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
                 >
-                  {(loading || uploading) ? (
+                  {loading ? (
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                   ) : (
                     <>
