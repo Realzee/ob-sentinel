@@ -12,14 +12,12 @@ export interface Profile {
   full_name: string | null;
   role: UserRole;
   status: UserStatus;
-  last_seen: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface VehicleAlert {
   id: string;
-  ob_number: string;
   license_plate: string;
   vehicle_make: string;
   vehicle_model: string;
@@ -33,14 +31,12 @@ export interface VehicleAlert {
   notes?: string;
   evidence_images?: string[];
   reported_by: string;
-  reporter_profile?: Profile;
   created_at: string;
   updated_at: string;
 }
 
 export interface CrimeReport {
   id: string;
-  ob_number: string;
   title: string;
   description: string;
   location: string;
@@ -52,7 +48,6 @@ export interface CrimeReport {
   evidence_images?: string[];
   contact_allowed: boolean;
   reported_by: string;
-  reporter_profile?: Profile;
   created_at: string;
   updated_at: string;
 }
@@ -103,14 +98,7 @@ const safeApiCall = async (operation: () => Promise<any>, context: string) => {
   }
 };
 
-// Generate unique OB number
-const generateOBNumber = (): string => {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-  return `OB-${timestamp}-${random}`;
-};
-
-// Auth API - Enhanced with real user management
+// Auth API - Completely database-independent
 export const authAPI = {
   getCurrentUser: async (): Promise<Profile | null> => {
     return safeApiCall(async () => {
@@ -129,23 +117,6 @@ export const authAPI = {
         return profileCache.get(user.id);
       }
 
-      // Try to get profile from database first
-      try {
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-
-        if (!error && profile) {
-          console.log('✅ Found profile in database:', profile);
-          profileCache.set(user.id, profile);
-          return profile;
-        }
-      } catch (error) {
-        console.log('📋 No profile in database, using fallback');
-      }
-
       // Check if user is admin from hardcoded list
       const isAdmin = ADMIN_USERS.includes(user.email?.toLowerCase() || '');
       
@@ -156,7 +127,6 @@ export const authAPI = {
         full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
         role: (isAdmin ? 'admin' : 'user') as UserRole,
         status: 'active' as UserStatus,
-        last_seen: new Date().toISOString(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -171,35 +141,9 @@ export const authAPI = {
 
   getAllUsers: async (): Promise<Profile[]> => {
     return safeApiCall(async () => {
-      console.log('🔄 Fetching all users from database...');
-      
-      try {
-        // Try to get all users from database
-        const { data: profiles, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (!error && profiles && profiles.length > 0) {
-          console.log(`✅ Loaded ${profiles.length} users from database`);
-          
-          // Update cache with all users
-          profiles.forEach(profile => {
-            profileCache.set(profile.id, profile);
-          });
-          
-          return profiles;
-        }
-
-        // Fallback: return current user only
-        console.log('📋 No users in database, using fallback');
-        const currentUser = await authAPI.getCurrentUser();
-        return currentUser ? [currentUser] : [];
-      } catch (error) {
-        console.error('❌ Error fetching users:', error);
-        const currentUser = await authAPI.getCurrentUser();
-        return currentUser ? [currentUser] : [];
-      }
+      // Return current user only for now
+      const currentUser = await authAPI.getCurrentUser();
+      return currentUser ? [currentUser] : [];
     }, 'getAllUsers');
   },
 
@@ -209,29 +153,6 @@ export const authAPI = {
     full_name?: string | null;
   }): Promise<Profile> => {
     return safeApiCall(async () => {
-      console.log('🔄 Updating user role:', userId, updates);
-      
-      try {
-        // Update in database if possible
-        const { data: updatedProfile, error } = await supabase
-          .from('profiles')
-          .update({
-            ...updates,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', userId)
-          .select()
-          .single();
-
-        if (!error && updatedProfile) {
-          console.log('✅ User updated in database:', updatedProfile);
-          profileCache.set(userId, updatedProfile);
-          return updatedProfile;
-        }
-      } catch (error) {
-        console.log('📋 Database update failed, using cache');
-      }
-
       // Update cached profile
       const currentProfile = profileCache.get(userId) || await authAPI.getCurrentUser();
       if (currentProfile) {
@@ -251,44 +172,14 @@ export const authAPI = {
         full_name: updates.full_name || null,
         role: updates.role || 'user',
         status: updates.status || 'active',
-        last_seen: new Date().toISOString(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
     }, 'updateUserRole');
-  },
-
-  updateLastSeen: async (userId: string): Promise<void> => {
-    return safeApiCall(async () => {
-      const now = new Date().toISOString();
-      
-      try {
-        // Update in database if possible
-        await supabase
-          .from('profiles')
-          .update({ 
-            last_seen: now,
-            updated_at: now
-          })
-          .eq('id', userId);
-      } catch (error) {
-        console.log('📋 Database update failed for last_seen');
-      }
-
-      // Update cache
-      const currentProfile = profileCache.get(userId);
-      if (currentProfile) {
-        currentProfile.last_seen = now;
-        currentProfile.updated_at = now;
-        profileCache.set(userId, currentProfile);
-      }
-    }, 'updateLastSeen');
   }
 };
 
-
-
-// Enhanced Reports API with OB numbers and reporter profiles
+// Enhanced Reports API with better error handling and performance
 export const reportsAPI = {
   createVehicleAlert: async (data: any): Promise<any> => {
     return safeApiCall(async () => {
@@ -299,12 +190,8 @@ export const reportsAPI = {
         throw new Error('Not authenticated');
       }
 
-      // Generate OB number
-      const obNumber = generateOBNumber();
-
       // Prepare data with all required fields and proper formatting
       const alertData = {
-        ob_number: obNumber,
         license_plate: data.license_plate?.toUpperCase() || 'UNKNOWN',
         vehicle_make: data.vehicle_make || 'UNKNOWN',
         vehicle_model: data.vehicle_model || 'UNKNOWN',
@@ -325,10 +212,7 @@ export const reportsAPI = {
       const { data: result, error } = await supabase
         .from('vehicle_alerts')
         .insert([alertData])
-        .select(`
-          *,
-          reporter_profile:profiles(*)
-        `)
+        .select()
         .single();
 
       if (error) {
@@ -360,10 +244,7 @@ export const reportsAPI = {
           updated_at: new Date().toISOString()
         })
         .eq('id', id)
-        .select(`
-          *,
-          reporter_profile:profiles(*)
-        `)
+        .select()
         .single();
 
       if (error) {
@@ -381,28 +262,23 @@ export const reportsAPI = {
     }, 'updateVehicleAlert');
   },
 
-  getVehicleAlerts: async (): Promise<VehicleAlert[]> => {
-    try {
-      const { data, error } = await supabase
+  getVehicleAlerts: async (): Promise<any[]> => {
+    return safeApiCall(async () => {
+      // Use a faster query with only needed fields
+      const { data: alerts, error } = await supabase
         .from('vehicle_alerts')
-        .select(`
-          *,
-          reporter_profile:profiles(*)
-        `)
+        .select('*')
         .order('created_at', { ascending: false })
-        .limit(100);
+        .limit(100); // Increased limit
 
       if (error) {
         console.error('❌ Error getting vehicle alerts:', error);
-        throw error;
+        return [];
       }
 
-      console.log('✅ Vehicle alerts loaded:', data?.length || 0);
-      return data || [];
-    } catch (error) {
-      console.error('❌ Error getting vehicle alerts:', error);
-      return [];
-    }
+      console.log(`✅ Loaded ${alerts?.length || 0} vehicle alerts`);
+      return alerts || [];
+    }, 'getVehicleAlerts');
   },
 
   createCrimeReport: async (data: any): Promise<any> => {
@@ -414,11 +290,7 @@ export const reportsAPI = {
         throw new Error('Not authenticated');
       }
 
-      // Generate OB number
-      const obNumber = generateOBNumber();
-
       const reportData = {
-        ob_number: obNumber,
         title: data.title || 'Untitled Report',
         description: data.description || 'No description provided',
         location: data.location || 'Unknown location',
@@ -437,10 +309,7 @@ export const reportsAPI = {
       const { data: result, error } = await supabase
         .from('crime_reports')
         .insert([reportData])
-        .select(`
-          *,
-          reporter_profile:profiles(*)
-        `)
+        .select()
         .single();
 
       if (error) {
@@ -469,10 +338,7 @@ export const reportsAPI = {
           updated_at: new Date().toISOString()
         })
         .eq('id', id)
-        .select(`
-          *,
-          reporter_profile:profiles(*)
-        `)
+        .select()
         .single();
 
       if (error) {
@@ -490,28 +356,22 @@ export const reportsAPI = {
     }, 'updateCrimeReport');
   },
 
-  getCrimeReports: async (): Promise<CrimeReport[]> => {
-    try {
-      const { data, error } = await supabase
+  getCrimeReports: async (): Promise<any[]> => {
+    return safeApiCall(async () => {
+      const { data: reports, error } = await supabase
         .from('crime_reports')
-        .select(`
-          *,
-          reporter_profile:profiles(*)
-        `)
+        .select('*')
         .order('created_at', { ascending: false })
-        .limit(100);
+        .limit(100); // Increased limit
 
       if (error) {
         console.error('❌ Error getting crime reports:', error);
-        throw error;
+        return [];
       }
 
-      console.log('✅ Crime reports loaded:', data?.length || 0);
-      return data || [];
-    } catch (error) {
-      console.error('❌ Error getting crime reports:', error);
-      return [];
-    }
+      console.log(`✅ Loaded ${reports?.length || 0} crime reports`);
+      return reports || [];
+    }, 'getCrimeReports');
   },
 
   getDashboardStats: async (): Promise<any> => {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { reportsAPI, VehicleAlert, CrimeReport, authAPI, supabase } from '@/lib/supabase'; // Import supabase
+import { reportsAPI, VehicleAlert, CrimeReport, authAPI } from '@/lib/supabase';
 import VehicleReportModal from '@/components/reports/VehicleReportModal';
 import CrimeReportModal from '@/components/reports/CrimeReportModal';
 import ReportActionsModal from '@/components/reports/ReportActionsModal';
@@ -45,27 +45,6 @@ const ADMIN_EMAILS = [
   'clint@rapid911.co.za', 
   'zwell@msn.com'
 ];
-
-// Helper function to get user profile directly from database
-const getUserProfileDirect = async (userId: string): Promise<any> => {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (error) {
-      console.error('Error fetching user profile:', error);
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Error fetching user profile:', error);
-    return null;
-  }
-};
 
 export default function MainDashboard({ user }: MainDashboardProps) {
   const [vehicleReports, setVehicleReports] = useState<VehicleAlertWithImages[]>([]);
@@ -208,56 +187,16 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         crime.status !== 'rejected'
       );
       
-      // Enhance reports with reporter information and ensure OB numbers
-      const vehiclesWithReporters = await Promise.all(
-        activeVehicles.map(async (vehicle) => {
-          let reporterProfile = user;
-          
-          // Fetch actual reporter profile if different from current user
-          if (vehicle.reported_by && vehicle.reported_by !== user.id) {
-            try {
-              // Try to get user profile using direct database query
-              const profile = await getUserProfileDirect(vehicle.reported_by);
-              if (profile) {
-                reporterProfile = profile;
-              }
-            } catch (error) {
-              console.error('Error fetching reporter profile:', error);
-            }
-          }
-          
-          return {
-            ...vehicle,
-            reporter_profile: reporterProfile,
-            ob_number: vehicle.ob_number || `OB${vehicle.id.slice(-6).toUpperCase()}`
-          };
-        })
-      );
+      // Enhance reports with reporter information
+      const vehiclesWithReporters = activeVehicles.map(vehicle => ({
+        ...vehicle,
+        reporter_profile: user
+      }));
       
-      const crimesWithReporters = await Promise.all(
-        activeCrimes.map(async (crime) => {
-          let reporterProfile = user;
-          
-          // Fetch actual reporter profile if different from current user
-          if (crime.reported_by && crime.reported_by !== user.id) {
-            try {
-              // Try to get user profile using direct database query
-              const profile = await getUserProfileDirect(crime.reported_by);
-              if (profile) {
-                reporterProfile = profile;
-              }
-            } catch (error) {
-              console.error('Error fetching reporter profile:', error);
-            }
-          }
-          
-          return {
-            ...crime,
-            reporter_profile: reporterProfile,
-            ob_number: crime.ob_number || `OB${crime.id.slice(-6).toUpperCase()}`
-          };
-        })
-      );
+      const crimesWithReporters = activeCrimes.map(crime => ({
+        ...crime,
+        reporter_profile: user
+      }));
       
       setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
       setCrimeReports(crimesWithReporters as CrimeReportWithImages[]);
@@ -732,7 +671,6 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                   const display = getReportDisplayText(report);
                   const reportImages = report.evidence_images || [];
                   const reporterName = getReporterName(report);
-                  const obNumber = report.ob_number || `OB${report.id.slice(-6).toUpperCase()}`;
                   
                   return (
                     <div key={report.id} className="bg-gray-900/50 rounded-xl p-4 border border-gray-700 hover:border-gray-600 transition-colors">
@@ -740,14 +678,9 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 mb-3">
                             <div className="flex-1">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <span className="font-semibold text-white text-lg truncate block">
-                                  {display.primary}
-                                </span>
-                                <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full border border-blue-500/30">
-                                  {obNumber}
-                                </span>
-                              </div>
+                              <span className="font-semibold text-white text-lg truncate block">
+                                {display.primary}
+                              </span>
                               {/* Reporter information */}
                               <div className="flex items-center space-x-2 mt-1">
                                 <span className="text-sm text-gray-400">

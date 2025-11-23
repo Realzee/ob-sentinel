@@ -44,27 +44,23 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   useEffect(() => {
     if (isOpen) {
       loadUsers();
-      // Update current user's last seen
-      if (currentUser?.id) {
-        authAPI.updateLastSeen(currentUser.id);
-      }
     }
   }, [isOpen]);
 
   const loadUsers = async () => {
-    try {
-      setLoading(true);
-      console.log('🔄 Loading users...');
-      const usersData = await authAPI.getAllUsers();
-      console.log('📊 Loaded users:', usersData);
-      setUsers(usersData || []);
-    } catch (error) {
-      console.error('❌ Error loading users:', error);
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    setLoading(true);
+    const usersData = await authAPI.getAllUsers();
+    console.log('📊 Loaded users:', usersData);
+    setUsers(usersData || []);
+  } catch (error) {
+    console.error('❌ Error loading users:', error);
+    // Set empty array instead of showing error
+    setUsers([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const showSuccess = (message: string) => {
     setSuccessMessage(message);
@@ -87,7 +83,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       await authAPI.updateUserRole(userId, { role: newRole as UserRole });
-      await loadUsers(); // Refresh the list
+      await loadUsers();
       showSuccess('User role updated successfully!');
     } catch (error) {
       console.error('Error updating user role:', error);
@@ -107,7 +103,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       await authAPI.updateUserRole(userId, { status: newStatus as UserStatus });
-      await loadUsers(); // Refresh the list
+      await loadUsers();
       showSuccess(`User status updated to ${newStatus}!`);
     } catch (error) {
       console.error('Error updating user status:', error);
@@ -124,7 +120,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           await authAPI.updateUserRole(userId, { status: 'suspended' as UserStatus });
-          await loadUsers(); // Refresh the list
+          await loadUsers();
           showSuccess('User suspended successfully');
         } catch (error) {
           console.error('Error suspending user:', error);
@@ -178,7 +174,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       setNewUserName('');
       setNewUserRole('user');
       setIsAddUserModalOpen(false);
-      await loadUsers(); // Refresh the list
+      await loadUsers();
       
       showSuccess('User created successfully! They will need to confirm their email address.');
     } catch (error: any) {
@@ -242,7 +238,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       setEditUserStatus('active');
       setEditUserPassword('');
       setIsEditUserModalOpen(false);
-      await loadUsers(); // Refresh the list
+      await loadUsers();
       
       showSuccess('User updated successfully!');
     } catch (error: any) {
@@ -257,7 +253,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       await authAPI.updateUserRole(userId, { status: 'active' as UserStatus });
-      await loadUsers(); // Refresh the list
+      await loadUsers();
       showSuccess('User approved successfully!');
     } catch (error) {
       console.error('Error approving user:', error);
@@ -274,7 +270,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           await authAPI.updateUserRole(userId, { status: 'active' as UserStatus });
-          await loadUsers(); // Refresh the list
+          await loadUsers();
           showSuccess('User reactivated successfully');
         } catch (error) {
           console.error('Error reactivating user:', error);
@@ -286,35 +282,23 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     );
   };
 
-  // Check if user is online (last seen within 5 minutes)
-  const isUserOnline = (user: Profile) => {
-    const lastSeen = new Date(user.last_seen);
-    const now = new Date();
-    const diffInMinutes = (now.getTime() - lastSeen.getTime()) / (1000 * 60);
-    return diffInMinutes < 5; // Online if last seen within 5 minutes
-  };
-
   const filteredUsers = users.filter(user =>
     user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.role.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Format last seen time
-  const formatLastSeen = (lastSeen: string) => {
-    const date = new Date(lastSeen);
-    const now = new Date();
-    const diffInMinutes = (now.getTime() - date.getTime()) / (1000 * 60);
-    
-    if (diffInMinutes < 1) {
-      return 'Just now';
-    } else if (diffInMinutes < 60) {
-      return `${Math.floor(diffInMinutes)} min ago`;
-    } else if (diffInMinutes < 1440) {
-      return `${Math.floor(diffInMinutes / 60)} hours ago`;
-    } else {
-      return date.toLocaleDateString();
-    }
+  // Get user status indicator
+  const getUserStatusIndicator = (user: Profile) => {
+    const isOnline = user.status === 'active';
+    return (
+      <div className="flex items-center space-x-2">
+        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-500'}`}></div>
+        <span className="text-xs text-gray-400">
+          {isOnline ? 'Online' : user.status}
+        </span>
+      </div>
+    );
   };
 
   if (!isOpen) return null;
@@ -339,16 +323,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 <p className="text-gray-400 mt-1">Manage user roles, status, and permissions</p>
               </div>
               <div className="flex items-center space-x-3">
-                <button
-                  onClick={loadUsers}
-                  disabled={loading}
-                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  <span>Refresh</span>
-                </button>
                 <button
                   onClick={() => setIsAddUserModalOpen(true)}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
@@ -394,7 +368,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Last Seen</th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Joined</th>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
@@ -415,19 +389,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center space-x-2">
-                              <div className={`w-2 h-2 rounded-full ${isUserOnline(user) ? 'bg-green-500' : 'bg-gray-500'}`}></div>
-                              <span className="text-sm text-gray-400">
-                                {isUserOnline(user) ? 'Online' : 'Offline'}
-                              </span>
-                              <span className={`px-2 py-1 text-xs rounded-full ${
-                                user.status === 'active' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
-                                user.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
-                                'bg-red-500/20 text-red-300 border border-red-500/30'
-                              }`}>
-                                {user.status}
-                              </span>
-                            </div>
+                            {getUserStatusIndicator(user)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">
@@ -448,7 +410,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                            {formatLastSeen(user.last_seen)}
+                            {new Date(user.created_at).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">
