@@ -2,13 +2,31 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { authAPI, AuthUser, UserRole, UserStatus, authUserToProfile } from '@/lib/supabase';
+import { authAPI, Profile, UserRole, UserStatus, supabase } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 
 interface UserManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: any;
+}
+
+// Interface for Auth User
+interface AuthUser {
+  id: string;
+  email: string;
+  user_metadata: {
+    full_name?: string;
+    role?: UserRole;
+  };
+  created_at: string;
+  updated_at?: string;
+  last_sign_in_at?: string;
+  confirmed_at?: string;
+  email_confirmed_at?: string;
+  invited_at?: string;
+  role?: string;
+  status?: UserStatus;
 }
 
 export default function UserManagementModal({ isOpen, onClose, currentUser }: UserManagementModalProps) {
@@ -69,16 +87,39 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     return () => clearInterval(interval);
   }, [isOpen]);
 
-  // Get users from Auth API
+  // Get users from Supabase Auth
   const loadUsers = async () => {
     try {
       setLoading(true);
       
-      console.log('🔍 Loading users from Auth API...');
-      const authUsers = await authAPI.getAllUsers();
-      
+      console.log('🔍 Loading users from Supabase Auth...');
+
+      // Use admin auth API to list all users
+      const { data: { users: authUsers }, error } = await supabase.auth.admin.listUsers();
+
+      if (error) {
+        console.error('❌ Error loading users from Auth:', error);
+        throw error;
+      }
+
       console.log('✅ Successfully loaded users from Auth:', authUsers?.length);
-      setUsers(authUsers as AuthUser[] || []);
+      
+      // Transform auth users to our format
+      const formattedUsers: AuthUser[] = authUsers.map(user => ({
+        id: user.id,
+        email: user.email || '',
+        user_metadata: user.user_metadata || {},
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+        last_sign_in_at: user.last_sign_in_at,
+        confirmed_at: user.confirmed_at,
+        email_confirmed_at: user.email_confirmed_at,
+        invited_at: user.invited_at,
+        role: user.user_metadata?.role || 'user',
+        status: getUserStatus(user)
+      }));
+
+      setUsers(formattedUsers);
       
     } catch (error) {
       console.error('❌ Error loading users:', error);
@@ -87,6 +128,17 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     } finally {
       setLoading(false);
     }
+  };
+
+  // Determine user status based on auth properties
+  const getUserStatus = (user: any): UserStatus => {
+    if (user.banned_until && new Date(user.banned_until) > new Date()) {
+      return 'suspended';
+    }
+    if (user.invited_at && !user.confirmed_at) {
+      return 'pending';
+    }
+    return 'active';
   };
 
   const showSuccess = (message: string) => {
@@ -106,7 +158,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setShowErrorModal(true);
   };
 
-  // Update user role via Auth API
+  // Update user role in Auth metadata
   const handleRoleUpdate = async (userId: string, newRole: string) => {
     const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
     if (!validRoles.includes(newRole as UserRole)) {
@@ -117,24 +169,31 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       
-      const success = await authAPI.updateUserRole(userId, newRole as UserRole);
+      // Update user metadata in Auth
+      const { data, error } = await supabase.auth.admin.updateUserById(
+        userId,
+        { 
+          user_metadata: { 
+            ...users.find(u => u.id === userId)?.user_metadata,
+            role: newRole 
+          } 
+        }
+      );
+
+      if (error) throw error;
+
+      // Update local state
+      setUsers(prev => prev.map(u => 
+        u.id === userId 
+          ? { 
+              ...u, 
+              user_metadata: { ...u.user_metadata, role: newRole as UserRole },
+              role: newRole as UserRole
+            }
+          : u
+      ));
       
-      if (success) {
-        // Update local state
-        setUsers(prev => prev.map(u => 
-          u.id === userId 
-            ? { 
-                ...u, 
-                user_metadata: { ...u.user_metadata, role: newRole as UserRole },
-                role: newRole as UserRole
-              }
-            : u
-        ));
-        
-        showSuccess('User role updated successfully!');
-      } else {
-        throw new Error('Failed to update user role');
-      }
+      showSuccess('User role updated successfully!');
     } catch (error) {
       console.error('Error updating user role:', error);
       showError('Error updating user role. Please try again.');
@@ -143,7 +202,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Update user status via Auth API
+  // Update user status (ban/unban in Auth)
   const handleStatusUpdate = async (userId: string, newStatus: string) => {
     const validStatuses: UserStatus[] = ['pending', 'active', 'suspended'];
     if (!validStatuses.includes(newStatus as UserStatus)) {
@@ -154,20 +213,30 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       
-      const success = await authAPI.updateUserStatus(userId, newStatus as UserStatus);
-      
-      if (success) {
-        // Update local state
-        setUsers(prev => prev.map(u => 
-          u.id === userId 
-            ? { ...u, status: newStatus as UserStatus }
-            : u
-        ));
-        
-        showSuccess(`User status updated to ${newStatus}!`);
-      } else {
-        throw new Error('Failed to update user status');
+      if (newStatus === 'suspended') {
+        // Ban user indefinitely
+        const { error } = await supabase.auth.admin.updateUserById(
+          userId,
+          { ban_duration: '87600h' } // 10 years effectively permanent
+        );
+        if (error) throw error;
+      } else if (newStatus === 'active') {
+        // Unban user
+        const { error } = await supabase.auth.admin.updateUserById(
+          userId,
+          { ban_duration: 'none' }
+        );
+        if (error) throw error;
       }
+
+      // Update local state
+      setUsers(prev => prev.map(u => 
+        u.id === userId 
+          ? { ...u, status: newStatus as UserStatus }
+          : u
+      ));
+      
+      showSuccess(`User status updated to ${newStatus}!`);
     } catch (error) {
       console.error('Error updating user status:', error);
       showError('Error updating user status. Please try again.');
@@ -176,7 +245,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Suspend user via Auth API
+  // Suspend user by banning in Auth
   const handleDeleteUser = async (userId: string, userEmail: string) => {
     showConfirmation(
       `Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`,
@@ -184,20 +253,22 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           
-          const success = await authAPI.updateUserStatus(userId, 'suspended');
+          // Ban user in Auth
+          const { error } = await supabase.auth.admin.updateUserById(
+            userId,
+            { ban_duration: '87600h' } // 10 years effectively permanent
+          );
+
+          if (error) throw error;
+
+          // Update local state
+          setUsers(prev => prev.map(u => 
+            u.id === userId 
+              ? { ...u, status: 'suspended' as UserStatus }
+              : u
+          ));
           
-          if (success) {
-            // Update local state
-            setUsers(prev => prev.map(u => 
-              u.id === userId 
-                ? { ...u, status: 'suspended' as UserStatus }
-                : u
-            ));
-            
-            showSuccess('User suspended successfully');
-          } else {
-            throw new Error('Failed to suspend user');
-          }
+          showSuccess('User suspended successfully');
         } catch (error) {
           console.error('Error suspending user:', error);
           showError('Error suspending user. Please try again.');
@@ -247,14 +318,26 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  // Bulk role update via Auth API
+  // Bulk role update in Auth
   const handleBulkRoleUpdate = async (newRole: UserRole) => {
     if (selectedUsers.length === 0) return;
 
     try {
-      // Update each user
+      // Update each user in Auth
       for (const userId of selectedUsers) {
-        await authAPI.updateUserRole(userId, newRole);
+        const user = users.find(u => u.id === userId);
+        if (user) {
+          const { error } = await supabase.auth.admin.updateUserById(
+            userId,
+            { 
+              user_metadata: { 
+                ...user.user_metadata,
+                role: newRole 
+              } 
+            }
+          );
+          if (error) throw error;
+        }
       }
 
       // Update local state
@@ -292,7 +375,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Create user via Auth API
+  // Create user directly in Auth
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -304,15 +387,21 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setAddingUser(true);
       
-      const newUser = await authAPI.createUser({
+      // Create user using admin API
+      const { data, error } = await supabase.auth.admin.createUser({
         email: newUserEmail,
         password: newUserPassword,
-        full_name: newUserName || '',
-        role: newUserRole
+        email_confirm: true, // Auto-confirm email
+        user_metadata: {
+          full_name: newUserName || '',
+          role: newUserRole
+        }
       });
 
-      if (newUser) {
-        // Refresh users to get updated data
+      if (error) throw error;
+
+      if (data.user) {
+        // Refresh users list
         await loadUsers();
       }
 
@@ -335,13 +424,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const handleEditUser = (user: AuthUser) => {
     setSelectedUser(user);
     setEditUserName(user.user_metadata?.full_name || '');
-    setEditUserRole((user.user_metadata?.role as UserRole) || 'user');
+    setEditUserRole(user.user_metadata?.role as UserRole || 'user');
     setEditUserStatus(user.status || 'active');
     setEditUserPassword('');
     setIsEditUserModalOpen(true);
   };
 
-  // Update user via Auth API
+  // Update user in Auth
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -350,14 +439,29 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setEditingUser(true);
 
-      // Update role if changed
-      if (editUserRole !== selectedUser.user_metadata?.role) {
-        await authAPI.updateUserRole(selectedUser.id, editUserRole);
+      // Update user in Auth
+      const updateData: any = {
+        user_metadata: {
+          full_name: editUserName || null,
+          role: editUserRole
+        }
+      };
+
+      // Update password only if provided and not empty
+      if (editUserPassword && editUserPassword.trim() !== '') {
+        updateData.password = editUserPassword;
       }
+
+      const { error: userError } = await supabase.auth.admin.updateUserById(
+        selectedUser.id,
+        updateData
+      );
+
+      if (userError) throw userError;
 
       // Update status if changed
       if (editUserStatus !== selectedUser.status) {
-        await authAPI.updateUserStatus(selectedUser.id, editUserStatus);
+        await handleStatusUpdate(selectedUser.id, editUserStatus);
       }
 
       // Refresh users to get updated data
@@ -380,25 +484,32 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Approve user by updating status via Auth API
+  // Approve user by confirming email in Auth
   const handleApproveUser = async (userId: string) => {
     try {
       setUpdating(userId);
       
-      const success = await authAPI.updateUserStatus(userId, 'active');
+      // Confirm user email in Auth
+      const { error } = await supabase.auth.admin.updateUserById(
+        userId,
+        { 
+          email_confirm: true,
+          user_metadata: {
+            ...users.find(u => u.id === userId)?.user_metadata
+          }
+        }
+      );
+
+      if (error) throw error;
+
+      // Update local state
+      setUsers(prev => prev.map(u => 
+        u.id === userId 
+          ? { ...u, status: 'active' as UserStatus }
+          : u
+      ));
       
-      if (success) {
-        // Update local state
-        setUsers(prev => prev.map(u => 
-          u.id === userId 
-            ? { ...u, status: 'active' as UserStatus }
-            : u
-        ));
-        
-        showSuccess('User approved successfully!');
-      } else {
-        throw new Error('Failed to approve user');
-      }
+      showSuccess('User approved successfully!');
     } catch (error) {
       console.error('Error approving user:', error);
       showError('Error approving user. Please try again.');
@@ -407,7 +518,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Reactivate user by updating status via Auth API
+  // Reactivate user by unbanning in Auth
   const handleReactivateUser = async (userId: string) => {
     showConfirmation(
       'Are you sure you want to reactivate this user?',
@@ -415,20 +526,22 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           
-          const success = await authAPI.updateUserStatus(userId, 'active');
+          // Unban user in Auth
+          const { error } = await supabase.auth.admin.updateUserById(
+            userId,
+            { ban_duration: 'none' }
+          );
+
+          if (error) throw error;
+
+          // Update local state
+          setUsers(prev => prev.map(u => 
+            u.id === userId 
+              ? { ...u, status: 'active' as UserStatus }
+              : u
+          ));
           
-          if (success) {
-            // Update local state
-            setUsers(prev => prev.map(u => 
-              u.id === userId 
-                ? { ...u, status: 'active' as UserStatus }
-                : u
-            ));
-            
-            showSuccess('User reactivated successfully');
-          } else {
-            throw new Error('Failed to reactivate user');
-          }
+          showSuccess('User reactivated successfully');
         } catch (error) {
           console.error('Error reactivating user:', error);
           showError('Error reactivating user. Please try again.');
@@ -437,16 +550,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         }
       }
     );
-  };
-
-  // Helper function to get user display name
-  const getUserDisplayName = (user: AuthUser) => {
-    return user.user_metadata?.full_name || user.email.split('@')[0] || 'No Name';
-  };
-
-  // Helper function to get user role
-  const getUserRole = (user: AuthUser) => {
-    return user.user_metadata?.role || 'user';
   };
 
   if (!isOpen) return null;
@@ -601,7 +704,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
                               <div className="text-sm font-medium text-white">
-                                {getUserDisplayName(user)}
+                                {user.user_metadata?.full_name || 'No Name'}
                               </div>
                               <div className="text-sm text-gray-400">{user.email}</div>
                               {user.id === currentUser.id && (
@@ -619,7 +722,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                               <select
                                 id={`user-role-${user.id}`}
                                 name={`user-role-${user.id}`}
-                                value={getUserRole(user)}
+                                value={user.user_metadata?.role || 'user'}
                                 onChange={(e) => handleRoleUpdate(user.id, e.target.value)}
                                 disabled={updating === user.id || user.id === currentUser.id}
                                 className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -692,11 +795,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
             {/* Stats and Footer */}
             <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
               <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <div className="text-2xl font-bold text-white">{users.filter(u => getUserRole(u) === 'admin').length}</div>
+                <div className="text-2xl font-bold text-white">{users.filter(u => u.user_metadata?.role === 'admin').length}</div>
                 <div className="text-sm text-gray-400">Admins</div>
               </div>
               <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <div className="text-2xl font-bold text-white">{users.filter(u => getUserRole(u) === 'moderator').length}</div>
+                <div className="text-2xl font-bold text-white">{users.filter(u => u.user_metadata?.role === 'moderator').length}</div>
                 <div className="text-sm text-gray-400">Moderators</div>
               </div>
               <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
