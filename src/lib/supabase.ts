@@ -116,7 +116,51 @@ const safeApiCall = async (operation: () => Promise<any>, context: string) => {
   }
 };
 
-// Auth API - Completely database-independent
+// User profile creation helper
+const ensureUserProfileExists = async (userId: string, email: string): Promise<boolean> => {
+  try {
+    // Check if user exists in public.users table
+    const { data: existingUser, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .single();
+
+    if (existingUser) {
+      console.log('✅ User profile exists in public.users');
+      return true;
+    }
+
+    // Create user profile if it doesn't exist
+    console.log('📝 Creating user profile in public.users...');
+    const isAdmin = ADMIN_USERS.includes(email.toLowerCase());
+    
+    const { error: insertError } = await supabase
+      .from('users')
+      .insert({
+        id: userId,
+        email: email,
+        full_name: email.split('@')[0],
+        role: isAdmin ? 'admin' : 'user',
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+    if (insertError) {
+      console.error('❌ Failed to create user profile:', insertError);
+      return false;
+    }
+
+    console.log('✅ User profile created successfully');
+    return true;
+  } catch (error) {
+    console.error('❌ Error ensuring user profile:', error);
+    return false;
+  }
+};
+
+// Auth API - Enhanced with user profile creation
 export const authAPI = {
   getCurrentUser: async (): Promise<Profile | null> => {
     return safeApiCall(async () => {
@@ -135,11 +179,24 @@ export const authAPI = {
         return profileCache.get(user.id);
       }
 
-      // Check if user is admin from hardcoded list
+      // Try to get user from public.users table
+      const { data: existingProfile, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (existingProfile) {
+        console.log('✅ Found user in public.users table');
+        profileCache.set(user.id, existingProfile);
+        return existingProfile;
+      }
+
+      // If user doesn't exist in public.users, create them
+      console.log('📝 Creating user in public.users table...');
       const isAdmin = ADMIN_USERS.includes(user.email?.toLowerCase() || '');
       
-      // Create profile without database
-      const profile = {
+      const newProfile = {
         id: user.id,
         email: user.email!,
         full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
@@ -150,11 +207,23 @@ export const authAPI = {
         last_seen_at: new Date().toISOString()
       };
 
-      // Cache the profile
-      profileCache.set(user.id, profile);
-      
-      console.log('📊 Created profile (database bypassed):', profile);
-      return profile;
+      // Insert into public.users table
+      const { data: createdProfile, error: insertError } = await supabase
+        .from('users')
+        .insert([newProfile])
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('❌ Failed to create user profile in public.users:', insertError);
+        // Fallback to cached version
+        profileCache.set(user.id, newProfile);
+        return newProfile;
+      }
+
+      console.log('✅ Created user profile in public.users:', createdProfile);
+      profileCache.set(user.id, createdProfile);
+      return createdProfile;
     }, 'getCurrentUser');
   },
 
@@ -279,89 +348,96 @@ export const reportsAPI = {
   },
 
   createCrimeReport: async (data: any): Promise<any> => {
-  return safeApiCall(async () => {
-    console.log('🔄 Creating crime report:', data);
-    
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      throw new Error('Not authenticated');
-    }
-
-    // Use the same data preparation pattern as createVehicleAlert
-    const reportData = {
-      title: data.title || 'Untitled Report',
-      description: data.description || 'No description provided',
-      location: data.location || null,
-      incident_time: data.incident_time ? new Date(data.incident_time).toISOString() : null,
-      report_type: data.report_type || 'other',
-      severity: data.severity || 'medium',
-      status: data.status || 'active',
-      witness_info: data.witness_info || null,
-      evidence_images: data.evidence_images || [],
-      contact_allowed: Boolean(data.contact_allowed),
-      reported_by: user.id,
-      ob_number: data.ob_number || `OBC${Date.now().toString(36).toUpperCase()}`
-    };
-
-    console.log('📤 Sending crime report to database (matching vehicle pattern):', reportData);
-
-    const { data: result, error } = await supabase
-      .from('crime_reports')
-      .insert([reportData])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('❌ Crime report creation FAILED:', error);
+    return safeApiCall(async () => {
+      console.log('🔄 Creating crime report:', data);
       
-      // Use the same error handling pattern as createVehicleAlert
-      if (error.code === '23505') {
-        throw new Error('A similar report already exists.');
-      } else if (error.code === '42501') {
-        throw new Error('Permission denied. Please check your account permissions.');
-      } else {
-        throw new Error(error.message || 'Failed to create crime report.');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Not authenticated');
       }
-    }
 
-    console.log('✅ Crime report created successfully:', result);
-    return result;
-  }, 'createCrimeReport');
-},
+      // ENSURE USER PROFILE EXISTS BEFORE CREATING REPORT
+      const profileExists = await ensureUserProfileExists(user.id, user.email!);
+      if (!profileExists) {
+        throw new Error('User profile setup failed. Please try again.');
+      }
+
+      // Use the exact same pattern as createVehicleAlert
+      const reportData = {
+        title: data.title || 'Untitled Report',
+        description: data.description || 'No description provided',
+        location: data.location || null,
+        incident_time: data.incident_time ? new Date(data.incident_time).toISOString() : null,
+        report_type: data.report_type || 'other',
+        severity: data.severity || 'medium',
+        status: data.status || 'active',
+        witness_info: data.witness_info || null,
+        evidence_images: data.evidence_images || [],
+        contact_allowed: Boolean(data.contact_allowed),
+        reported_by: user.id,
+        ob_number: data.ob_number || `OBC${Date.now().toString(36).toUpperCase()}`
+      };
+
+      console.log('📤 Sending crime report to database:', reportData);
+
+      const { data: result, error } = await supabase
+        .from('crime_reports')
+        .insert([reportData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Crime report creation FAILED:', error);
+        
+        if (error.code === '23505') {
+          throw new Error('A similar report already exists.');
+        } else if (error.code === '42501') {
+          throw new Error('Permission denied. Please check your account permissions.');
+        } else if (error.code === '23503') {
+          throw new Error('User reference issue. Please try again.');
+        } else {
+          throw new Error(error.message || 'Failed to create crime report.');
+        }
+      }
+
+      console.log('✅ Crime report created successfully:', result);
+      return result;
+    }, 'createCrimeReport');
+  },
 
   updateCrimeReport: async (id: string, updates: any): Promise<any> => {
-  return safeApiCall(async () => {
-    console.log('🔄 Updating crime report:', id, updates);
-    
-    // Use the same pattern as updateVehicleAlert - remove user-related updates
-    const safeUpdates = { ...updates };
-    delete safeUpdates.reported_by;
-    delete safeUpdates.reporter_profile;
-    
-    const { data: report, error } = await supabase
-      .from('crime_reports')
-      .update({
-        ...safeUpdates,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('❌ Error updating crime report:', error);
+    return safeApiCall(async () => {
+      console.log('🔄 Updating crime report:', id, updates);
       
-      if (error.code === '42501') {
-        throw new Error('Permission denied. Please check your account permissions.');
-      } else {
-        throw new Error(error.message || 'Failed to update crime report.');
-      }
-    }
+      // Use the same pattern as updateVehicleAlert - remove user-related updates
+      const safeUpdates = { ...updates };
+      delete safeUpdates.reported_by;
+      delete safeUpdates.reporter_profile;
+      
+      const { data: report, error } = await supabase
+        .from('crime_reports')
+        .update({
+          ...safeUpdates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
 
-    console.log('✅ Crime report updated successfully:', report);
-    return report;
-  }, 'updateCrimeReport');
-},
+      if (error) {
+        console.error('❌ Error updating crime report:', error);
+        
+        if (error.code === '42501') {
+          throw new Error('Permission denied. Please check your account permissions.');
+        } else {
+          throw new Error(error.message || 'Failed to update crime report.');
+        }
+      }
+
+      console.log('✅ Crime report updated successfully:', report);
+      return report;
+    }, 'updateCrimeReport');
+  },
 
   getCrimeReports: async (): Promise<any[]> => {
     return safeApiCall(async () => {
@@ -480,7 +556,7 @@ export const debugAPI = {
   },
 
   checkTables: async (): Promise<{ [key: string]: boolean }> => {
-    const tables = ['vehicle_alerts', 'crime_reports'];
+    const tables = ['vehicle_alerts', 'crime_reports', 'users'];
     const results: { [key: string]: boolean } = {};
 
     for (const table of tables) {
@@ -496,6 +572,42 @@ export const debugAPI = {
     return results;
   },
 
+  checkRecentCrimeReports: async (): Promise<any[]> => {
+    return safeApiCall(async () => {
+      const { data: reports, error } = await supabase
+        .from('crime_reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('❌ Error checking crime reports:', error);
+        return [];
+      }
+
+      console.log('🔍 Recent crime reports in database:', reports);
+      return reports || [];
+    }, 'checkRecentCrimeReports');
+  },
+
+  checkUserProfiles: async (): Promise<any[]> => {
+    return safeApiCall(async () => {
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id, email, role, status')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('❌ Error checking user profiles:', error);
+        return [];
+      }
+
+      console.log('🔍 User profiles in database:', users);
+      return users || [];
+    }, 'checkUserProfiles');
+  },
+
   clearAuth: async (): Promise<void> => {
     try {
       await supabase.auth.signOut();
@@ -504,6 +616,8 @@ export const debugAPI = {
         localStorage.removeItem('supabase.auth.token');
         sessionStorage.clear();
       }
+      // Clear profile cache
+      profileCache.clear();
       console.log('✅ Auth cleared successfully');
     } catch (error) {
       console.error('❌ Error clearing auth:', error);
