@@ -10,15 +10,15 @@ export type SeverityType = 'low' | 'medium' | 'high' | 'critical';
 export interface Profile {
   id: string;
   email: string;
-  full_name: string | null;
+  full_name?: string | null; // Make optional
   role: UserRole;
-  status: UserStatus;
+  status: UserStatus; // Keep as UserStatus
   created_at: string;
   updated_at: string;
   last_seen_at?: string;
 }
 
-// Make sure AuthUser interface is properly exported
+// Update AuthUser interface to match
 export interface AuthUser {
   id: string;
   email: string;
@@ -33,9 +33,10 @@ export interface AuthUser {
   email_confirmed_at?: string;
   invited_at?: string;
   role?: string;
-  status?: UserStatus;
+  status?: UserStatus; // Keep as UserStatus
   banned_until?: string | null;
 }
+
 export interface VehicleAlert {
   id: string;
   license_plate: string;
