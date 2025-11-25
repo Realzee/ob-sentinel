@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "export": "next build && next export",
-    "serve": "npx serve@latest out", 
+    "serve": "npx serve@latest out",
     "deploy": "npm run build && npm run export"
   },
   "dependencies": {
@@ -24,6 +24,7 @@
     "react-hook-form": "^7.65.0"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.21",
     "@types/node": "20.0.0",
     "@types/react": "18.2.0",
     "autoprefixer": "^10.0.1",
