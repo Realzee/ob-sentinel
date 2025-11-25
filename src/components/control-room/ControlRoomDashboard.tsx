@@ -11,6 +11,7 @@ import AnalyticsPanel from '@/components/control-room/AnalyticsPanel';
 import CommunicationsHub from '@/components/control-room/CommunicationsHub';
 import CustomButton from '@/components/ui/CustomButton';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 interface ControlRoomDashboardProps {
   user: any;
@@ -28,9 +29,9 @@ export interface Incident {
   reportedAt: string;
   reporter: string;
   assignedTeam?: string;
-  coordinates?: { lat: number; lng: number };
+  coordinates: { lat: number; lng: number };
   obNumber: string;
-  rawData?: any; // Made optional to fix the type issue
+  rawData?: any;
 }
 
 interface ResponseTeam {
@@ -41,6 +42,7 @@ interface ResponseTeam {
   currentLocation?: string;
   assignedIncidents: string[];
   lastUpdate: string;
+  coordinates: { lat: number; lng: number };
 }
 
 export default function ControlRoomDashboard({ user }: ControlRoomDashboardProps) {
@@ -50,6 +52,25 @@ export default function ControlRoomDashboard({ user }: ControlRoomDashboardProps
   const [activeView, setActiveView] = useState<'map' | 'list' | 'analytics'>('map');
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<string>('');
+  const router = useRouter();
+
+  // Generate random coordinates around Johannesburg area
+  const generateRandomCoordinates = () => {
+    const baseLat = -26.2041; // Johannesburg latitude
+    const baseLng = 28.0473;  // Johannesburg longitude
+    const lat = baseLat + (Math.random() - 0.5) * 0.1; // ~11km variation
+    const lng = baseLng + (Math.random() - 0.5) * 0.1; // ~11km variation
+    return { lat, lng };
+  };
+
+  // Generate team coordinates (closer to center for better visibility)
+  const generateTeamCoordinates = () => {
+    const baseLat = -26.2041;
+    const baseLng = 28.0473;
+    const lat = baseLat + (Math.random() - 0.5) * 0.05; // ~5.5km variation
+    const lng = baseLng + (Math.random() - 0.5) * 0.05; // ~5.5km variation
+    return { lat, lng };
+  };
 
   // Mock response teams - in real app, this would come from your database
   const mockTeams: ResponseTeam[] = [
@@ -60,7 +81,8 @@ export default function ControlRoomDashboard({ user }: ControlRoomDashboardProps
       members: ['John D.', 'Sarah M.'],
       currentLocation: 'Command Center',
       assignedIncidents: [],
-      lastUpdate: new Date().toISOString()
+      lastUpdate: new Date().toISOString(),
+      coordinates: generateTeamCoordinates()
     },
     {
       id: 'team-2',
@@ -69,7 +91,8 @@ export default function ControlRoomDashboard({ user }: ControlRoomDashboardProps
       members: ['Mike R.', 'Lisa T.'],
       currentLocation: 'Downtown Area',
       assignedIncidents: [],
-      lastUpdate: new Date().toISOString()
+      lastUpdate: new Date().toISOString(),
+      coordinates: generateTeamCoordinates()
     },
     {
       id: 'team-3',
@@ -78,7 +101,8 @@ export default function ControlRoomDashboard({ user }: ControlRoomDashboardProps
       members: ['David K.', 'Emma P.'],
       currentLocation: 'North District',
       assignedIncidents: [],
-      lastUpdate: new Date().toISOString()
+      lastUpdate: new Date().toISOString(),
+      coordinates: generateTeamCoordinates()
     }
   ];
 
@@ -93,34 +117,44 @@ export default function ControlRoomDashboard({ user }: ControlRoomDashboardProps
       ]);
 
       // Transform vehicle alerts to incidents
-      const vehicleIncidents: Incident[] = (vehicleAlerts || []).map(alert => ({
-        id: alert.id,
-        type: 'vehicle',
-        title: `Stolen Vehicle: ${alert.license_plate}`,
-        description: `${alert.vehicle_make} ${alert.vehicle_model} - ${alert.reason}`,
-        location: alert.last_seen_location,
-        severity: alert.severity,
-        status: alert.status,
-        reportedAt: alert.created_at,
-        reporter: 'Anonymous', // Would map to user profile
-        obNumber: alert.ob_number || 'OBV-UNKNOWN',
-        rawData: alert
-      }));
+      const vehicleIncidents: Incident[] = (vehicleAlerts || []).map(alert => {
+        const coordinates = generateRandomCoordinates();
+        
+        return {
+          id: alert.id,
+          type: 'vehicle',
+          title: `Stolen Vehicle: ${alert.license_plate}`,
+          description: `${alert.vehicle_make} ${alert.vehicle_model} - ${alert.reason}`,
+          location: alert.last_seen_location,
+          severity: alert.severity,
+          status: alert.status,
+          reportedAt: alert.created_at,
+          reporter: 'Anonymous', // Would map to user profile
+          obNumber: alert.ob_number || 'OBV-UNKNOWN',
+          rawData: alert,
+          coordinates: coordinates
+        };
+      });
 
       // Transform crime reports to incidents
-      const crimeIncidents: Incident[] = (crimeReports || []).map(crime => ({
-        id: crime.id,
-        type: 'crime',
-        title: crime.title,
-        description: crime.description,
-        location: crime.location,
-        severity: crime.severity,
-        status: crime.status,
-        reportedAt: crime.created_at,
-        reporter: 'Anonymous', // Would map to user profile
-        obNumber: crime.ob_number || 'OBC-UNKNOWN',
-        rawData: crime
-      }));
+      const crimeIncidents: Incident[] = (crimeReports || []).map(crime => {
+        const coordinates = generateRandomCoordinates();
+        
+        return {
+          id: crime.id,
+          type: 'crime',
+          title: crime.title,
+          description: crime.description,
+          location: crime.location,
+          severity: crime.severity,
+          status: crime.status,
+          reportedAt: crime.created_at,
+          reporter: 'Anonymous', // Would map to user profile
+          obNumber: crime.ob_number || 'OBC-UNKNOWN',
+          rawData: crime,
+          coordinates: coordinates
+        };
+      });
 
       // Combine and filter only active incidents
       const allIncidents = [...vehicleIncidents, ...crimeIncidents];
@@ -246,6 +280,11 @@ export default function ControlRoomDashboard({ user }: ControlRoomDashboardProps
     setSelectedIncident(incident);
   }, []);
 
+  // Handle navigation back to main dashboard
+  const handleBackToDashboard = () => {
+    router.push('/dashboard');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -307,6 +346,19 @@ export default function ControlRoomDashboard({ user }: ControlRoomDashboardProps
             </div>
 
             <div className="flex items-center space-x-4">
+              {/* Back to Dashboard Button */}
+              <CustomButton
+                onClick={handleBackToDashboard}
+                variant="secondary"
+                size="sm"
+                className="flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                <span>Back to Dashboard</span>
+              </CustomButton>
+
               <div className="text-right">
                 <div className="text-sm font-medium text-white">
                   {user?.full_name || user?.email?.split('@')[0] || 'Controller'}
@@ -421,6 +473,7 @@ export default function ControlRoomDashboard({ user }: ControlRoomDashboardProps
                     }`}>
                       {selectedIncident.severity.toUpperCase()}
                     </span>
+                    <span className="text-gray-400">📌 Lat: {selectedIncident.coordinates.lat.toFixed(4)}, Lng: {selectedIncident.coordinates.lng.toFixed(4)}</span>
                   </div>
                 </div>
                 <div className="flex space-x-2">
