@@ -287,25 +287,23 @@ export const reportsAPI = {
       throw new Error('Not authenticated');
     }
 
-    // Enhanced data validation and formatting
+    // Use the same data preparation pattern as createVehicleAlert
     const reportData = {
-      title: data.title?.trim() || 'Untitled Report',
-      description: data.description?.trim() || 'No description provided',
-      location: data.location?.trim() || 'Unknown location',
+      title: data.title || 'Untitled Report',
+      description: data.description || 'No description provided',
+      location: data.location || null,
       incident_time: data.incident_time ? new Date(data.incident_time).toISOString() : null,
       report_type: data.report_type || 'other',
       severity: data.severity || 'medium',
       status: data.status || 'active',
-      witness_info: data.witness_info?.trim() || null,
-      evidence_images: Array.isArray(data.evidence_images) ? data.evidence_images : [],
+      witness_info: data.witness_info || null,
+      evidence_images: data.evidence_images || [],
       contact_allowed: Boolean(data.contact_allowed),
       reported_by: user.id,
-      ob_number: data.ob_number || `OBC${Date.now().toString(36).toUpperCase()}`,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      ob_number: data.ob_number || `OBC${Date.now().toString(36).toUpperCase()}`
     };
 
-    console.log('📤 Sending crime report to database:', reportData);
+    console.log('📤 Sending crime report to database (matching vehicle pattern):', reportData);
 
     const { data: result, error } = await supabase
       .from('crime_reports')
@@ -316,20 +314,14 @@ export const reportsAPI = {
     if (error) {
       console.error('❌ Crime report creation FAILED:', error);
       
-      // Enhanced error handling
-      if (error.code === '42501') {
-        throw new Error('Permission denied. Please check your account permissions or database RLS policies.');
-      } else if (error.code === '23505') {
+      // Use the same error handling pattern as createVehicleAlert
+      if (error.code === '23505') {
         throw new Error('A similar report already exists.');
-      } else if (error.code === '23503') {
-        throw new Error('Invalid user reference. Please log out and log in again.');
+      } else if (error.code === '42501') {
+        throw new Error('Permission denied. Please check your account permissions.');
       } else {
-        throw new Error(error.message || 'Failed to create crime report. Please try again.');
+        throw new Error(error.message || 'Failed to create crime report.');
       }
-    }
-
-    if (!result) {
-      throw new Error('No data returned after creating crime report.');
     }
 
     console.log('✅ Crime report created successfully:', result);
@@ -338,38 +330,38 @@ export const reportsAPI = {
 },
 
   updateCrimeReport: async (id: string, updates: any): Promise<any> => {
-    return safeApiCall(async () => {
-      console.log('🔄 Updating crime report:', id, updates);
-      
-      // Remove any user-related updates to avoid RLS recursion
-      const safeUpdates = { ...updates };
-      delete safeUpdates.reported_by;
-      delete safeUpdates.reporter_profile;
-      
-      const { data: report, error } = await supabase
-        .from('crime_reports')
-        .update({
-          ...safeUpdates,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single();
+  return safeApiCall(async () => {
+    console.log('🔄 Updating crime report:', id, updates);
+    
+    // Use the same pattern as updateVehicleAlert - remove user-related updates
+    const safeUpdates = { ...updates };
+    delete safeUpdates.reported_by;
+    delete safeUpdates.reporter_profile;
+    
+    const { data: report, error } = await supabase
+      .from('crime_reports')
+      .update({
+        ...safeUpdates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
 
-      if (error) {
-        console.error('❌ Error updating crime report:', error);
-        
-        if (error.code === '42501') {
-          throw new Error('Permission denied. Please check your account permissions.');
-        } else {
-          throw new Error(error.message || 'Failed to update crime report.');
-        }
+    if (error) {
+      console.error('❌ Error updating crime report:', error);
+      
+      if (error.code === '42501') {
+        throw new Error('Permission denied. Please check your account permissions.');
+      } else {
+        throw new Error(error.message || 'Failed to update crime report.');
       }
+    }
 
-      console.log('✅ Crime report updated successfully:', report);
-      return report;
-    }, 'updateCrimeReport');
-  },
+    console.log('✅ Crime report updated successfully:', report);
+    return report;
+  }, 'updateCrimeReport');
+},
 
   getCrimeReports: async (): Promise<any[]> => {
     return safeApiCall(async () => {
