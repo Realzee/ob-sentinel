@@ -150,12 +150,12 @@ const safeApiCall = async (operation: () => Promise<any>, context: string) => {
 const createUserProfileSimple = async (userId: string, email: string): Promise<Profile> => {
   const isAdmin = ADMIN_USERS.includes(email.toLowerCase());
   
-  const profile = {
+  const profile: Profile = {
     id: userId,
     email: email,
     full_name: email.split('@')[0],
     role: (isAdmin ? 'admin' : 'user') as UserRole,
-    status: 'active' as UserStatus,
+    status: 'active' as UserStatus, // Add type assertion
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     last_seen_at: new Date().toISOString()

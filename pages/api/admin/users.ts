@@ -30,15 +30,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Transform auth users to our format
       const formattedUsers = users.map(user => ({
-        id: user.id,
-        email: user.email || '',
-        user_metadata: user.user_metadata || {},
-        created_at: user.created_at,
-        updated_at: user.updated_at,
-        last_sign_in_at: user.last_sign_in_at,
-        role: user.user_metadata?.role || 'user',
-        status: getUserStatus(user)
-      }));
+  id: user.id,
+  email: user.email || '',
+  user_metadata: user.user_metadata || {},
+  created_at: user.created_at,
+  updated_at: user.updated_at,
+  last_sign_in_at: user.last_sign_in_at,
+  role: user.user_metadata?.role || 'user',
+  status: getUserStatus(user) // This now returns UserStatus
+}));
 
       res.json({ users: formattedUsers });
     } else {

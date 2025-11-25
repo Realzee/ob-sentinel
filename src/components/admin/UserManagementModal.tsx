@@ -76,15 +76,15 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
     if (currentAuthUser) {
       const fallbackUser: AuthUser = {
-        id: currentAuthUser.id,
-        email: currentAuthUser.email || '',
-        user_metadata: currentAuthUser.user_metadata || {},
-        created_at: currentAuthUser.created_at,
-        updated_at: currentAuthUser.updated_at,
-        last_sign_in_at: currentAuthUser.last_sign_in_at,
-        role: currentAuthUser.user_metadata?.role || 'user',
-        status: 'active' as UserStatus // Cast to UserStatus
-      };
+  id: currentAuthUser.id,
+  email: currentAuthUser.email || '',
+  user_metadata: currentAuthUser.user_metadata || {},
+  created_at: currentAuthUser.created_at,
+  updated_at: currentAuthUser.updated_at,
+  last_sign_in_at: currentAuthUser.last_sign_in_at,
+  role: currentAuthUser.user_metadata?.role || 'user',
+  status: 'active' // This is fine since 'active' is a valid UserStatus
+};
       setUsers([fallbackUser]);
     } else {
       setUsers([]);
@@ -93,7 +93,6 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setLoading(false);
   }
 };
-
   // Real-time updates
   useEffect(() => {
     if (!isOpen) return;
@@ -352,13 +351,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   };
 
   const handleEditUser = (user: AuthUser) => {
-    setSelectedUser(user);
-    setEditUserName(user.user_metadata?.full_name || '');
-    setEditUserRole((user.user_metadata?.role as UserRole) || 'user');
-    setEditUserStatus(user.status || 'active');
-    setEditUserPassword('');
-    setIsEditUserModalOpen(true);
-  };
+  setSelectedUser(user);
+  setEditUserName(user.user_metadata?.full_name || '');
+  setEditUserRole((user.user_metadata?.role as UserRole) || 'user');
+  setEditUserStatus(user.status || 'active'); // This should work now since status is UserStatus
+  setEditUserPassword('');
+  setIsEditUserModalOpen(true);
+};
 
   // Update user via Auth API
   const handleUpdateUser = async (e: React.FormEvent) => {
@@ -952,16 +951,16 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     Status
                   </label>
                   <select
-                    id="edit-user-status"
-                    name="edit-user-status"
-                    value={editUserStatus}
-                    onChange={(e) => setEditUserStatus(e.target.value as UserStatus)}
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                  >
-                    <option value="active">Active</option>
-                    <option value="pending">Pending</option>
-                    <option value="suspended">Suspended</option>
-                  </select>
+          id="edit-user-status"
+          name="edit-user-status"
+          value={editUserStatus}
+          onChange={(e) => setEditUserStatus(e.target.value as UserStatus)} 
+          className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+        >
+          <option value="active">Active</option>
+          <option value="pending">Pending</option>
+          <option value="suspended">Suspended</option>
+        </select>
                 </div>
 
                 <div>
