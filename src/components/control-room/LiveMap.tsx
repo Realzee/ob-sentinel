@@ -2,11 +2,12 @@
 'use client';
 
 import { useState } from 'react';
+import type { Incident } from './ControlRoomDashboard';
 
 interface LiveMapProps {
-  incidents: any[];
+  incidents: Incident[];
   teams: any[];
-  onIncidentSelect: (incident: any) => void;
+  onIncidentSelect: (incident: Incident) => void;
 }
 
 export default function LiveMap({ incidents, teams, onIncidentSelect }: LiveMapProps) {
