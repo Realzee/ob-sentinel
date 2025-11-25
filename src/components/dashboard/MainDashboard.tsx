@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { reportsAPI, VehicleAlert, CrimeReport, authAPI, Profile } from '@/lib/supabase';
+import { reportsAPI, VehicleAlert, CrimeReport, authAPI, Profile, AuthUser, authUserToProfile } from '@/lib/supabase';
 import VehicleReportModal from '@/components/reports/VehicleReportModal';
 import CrimeReportModal from '@/components/reports/CrimeReportModal';
 import ReportActionsModal from '@/components/reports/ReportActionsModal';
@@ -58,6 +58,43 @@ const generateShortOBNumber = (type: 'V' | 'C') => {
   return `OB${type}${timestamp.slice(-4)}${random}`;
 };
 
+// Helper function to handle both AuthUser and Profile types
+const getUserDisplayName = (user: any): string => {
+  if (!user) return 'User';
+  
+  if (user.full_name) {
+    return user.full_name;
+  } else if (user.user_metadata?.full_name) {
+    return user.user_metadata.full_name;
+  } else if (user.email) {
+    return user.email.split('@')[0];
+  }
+  
+  return 'User';
+};
+
+const getUserRole = (user: any): string => {
+  if (!user) return 'user';
+  
+  if (user.role) {
+    return user.role;
+  } else if (user.user_metadata?.role) {
+    return user.user_metadata.role;
+  }
+  
+  return 'user';
+};
+
+const getUserStatus = (user: any): string => {
+  if (!user) return 'active';
+  
+  if (user.status) {
+    return user.status;
+  }
+  
+  return 'active';
+};
+
 export default function MainDashboard({ user }: MainDashboardProps) {
   const [vehicleReports, setVehicleReports] = useState<VehicleAlertWithImages[]>([]);
   const [crimeReports, setCrimeReports] = useState<CrimeReportWithImages[]>([]);
@@ -94,9 +131,9 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const router = useRouter();
 
   // FIXED: Enhanced user role and status detection
-  const isAdmin = user?.role === 'admin' || ADMIN_EMAILS.includes(user?.email?.toLowerCase());
-  const isModerator = user?.role === 'moderator';
-  const isController = user?.role === 'controller';
+  const isAdmin = getUserRole(user) === 'admin' || ADMIN_EMAILS.includes(user?.email?.toLowerCase());
+  const isModerator = getUserRole(user) === 'moderator';
+  const isController = getUserRole(user) === 'controller';
 
   // FIX: Add missing canDelete variable
   const canDelete = isAdmin || isModerator;
@@ -106,19 +143,6 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   // Control Room access
   const canAccessControlRoom = isAdmin || isModerator || isController;
-
-  // FIXED: Get username from full_name or email
-  const getUserDisplayName = () => {
-    return user?.full_name || user?.email?.split('@')[0] || 'User';
-  };
-
-  const getUserRole = () => {
-    return user?.role || 'user';
-  };
-
-  const getUserStatus = () => {
-    return user?.status || 'active';
-  };
 
   // Enhanced cache management
   const clearAllCache = useCallback(() => {
@@ -186,7 +210,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   useEffect(() => {
     console.log('🔍 User Role Debug:', {
       email: user?.email,
-      role: user?.role,
+      role: getUserRole(user),
       isAdmin: isAdmin,
       canManageUsers: canManageUsers,
       canAccessControlRoom: canAccessControlRoom,
@@ -243,8 +267,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       
       // Create a map of user profiles for quick lookup
       const userProfilesMap = new Map();
-      allUsers.forEach((user: Profile) => {
-        userProfilesMap.set(user.id, user);
+      allUsers.forEach((user: AuthUser | Profile) => {
+        // Convert AuthUser to Profile if needed
+        if ('user_metadata' in user) {
+          const profile = authUserToProfile(user);
+          userProfilesMap.set(user.id, profile);
+        } else {
+          userProfilesMap.set(user.id, user);
+        }
       });
 
       // Enhance reports with reporter information
@@ -486,16 +516,26 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   // Enhanced helper function to get reporter information
   const getReporterInfo = (report: AnyReport) => {
     const reporter = report.reporter_profile;
-    const reporterName = reporter?.full_name || reporter?.email?.split('@')[0] || 'Unknown User';
-    const reporterRole = reporter?.role || 'user';
-    const reporterStatus = reporter?.status || 'active';
+    if (!reporter) {
+      return {
+        name: 'Unknown User',
+        role: 'user',
+        status: 'active',
+        isOnline: false,
+        contact: 'No contact'
+      };
+    }
+
+    const reporterName = reporter.full_name || reporter.email?.split('@')[0] || 'Unknown User';
+    const reporterRole = reporter.role || 'user';
+    const reporterStatus = reporter.status || 'active';
     
     return {
       name: reporterName,
       role: reporterRole,
       status: reporterStatus,
       isOnline: reporterStatus === 'active',
-      contact: reporter?.email || 'No contact'
+      contact: reporter.email || 'No contact'
     };
   };
 
@@ -543,10 +583,10 @@ export default function MainDashboard({ user }: MainDashboardProps) {
               {/* User Info - FIXED: Now shows username instead of email */}
               <div className="hidden sm:block text-right">
                 <div className="text-sm font-medium text-white">
-                  {getUserDisplayName()}
+                  {getUserDisplayName(user)}
                 </div>
                 <div className="text-xs text-gray-400 capitalize">
-                  {getUserRole()} • {getUserStatus()}
+                  {getUserRole(user)} • {getUserStatus(user)}
                 </div>
               </div>
 
@@ -612,10 +652,10 @@ export default function MainDashboard({ user }: MainDashboardProps) {
               <div className="space-y-4">
                 <div className="text-center">
                   <div className="text-sm font-medium text-white">
-                    {getUserDisplayName()}
+                    {getUserDisplayName(user)}
                   </div>
                   <div className="text-xs text-gray-400 capitalize">
-                    {getUserRole()} • {getUserStatus()}
+                    {getUserRole(user)} • {getUserStatus(user)}
                   </div>
                 </div>
                 
@@ -694,7 +734,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         {/* Welcome Section */}
         <div className="text-center mb-6">
           <h2 className="text-2xl font-bold text-white mb-2">
-            Welcome back, {getUserDisplayName()}!
+            Welcome back, {getUserDisplayName(user)}!
           </h2>
           <p className="text-gray-400">Monitor and manage community safety reports</p>
         </div>
