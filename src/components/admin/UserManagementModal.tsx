@@ -11,19 +11,32 @@ interface UserManagementModalProps {
   currentUser: any;
 }
 
-// Use Profile interface directly
-interface User extends Profile {
-  // Extend Profile to ensure compatibility
+// Interface for Auth User
+interface AuthUser {
+  id: string;
+  email: string;
+  user_metadata: {
+    full_name?: string;
+    role?: UserRole;
+  };
+  created_at: string;
+  updated_at?: string;
+  last_sign_in_at?: string;
+  confirmed_at?: string;
+  email_confirmed_at?: string;
+  invited_at?: string;
+  role?: string;
+  status?: UserStatus;
 }
 
 export default function UserManagementModal({ isOpen, onClose, currentUser }: UserManagementModalProps) {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AuthUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedUser, setSelectedUser] = useState<AuthUser | null>(null);
   
   // Enhanced filtering
   const [filters, setFilters] = useState({
@@ -74,77 +87,59 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     return () => clearInterval(interval);
   }, [isOpen]);
 
-  // Get users from public.profiles table with admin access
+  // Get users from Supabase Auth
   const loadUsers = async () => {
-  try {
-    setLoading(true);
-    
-    console.log('🔍 Attempting to load users from profiles table...');
-
-    // Try with a simpler query first
-    const { data: profilesData, error } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, role, status, created_at, updated_at')
-      .order('created_at', { ascending: false })
-      .limit(100); // Add limit to prevent large queries
-
-    if (error) {
-      console.error('❌ Error loading users from public.profiles:', error);
+    try {
+      setLoading(true);
       
-      // If there's a recursion error, try a different approach
-      if (error.code === '42P17' || error.message.includes('recursion')) {
-        console.log('🔄 RLS recursion detected, trying service role approach...');
-        await loadUsersWithServiceRole();
-        return;
+      console.log('🔍 Loading users from Supabase Auth...');
+
+      // Use admin auth API to list all users
+      const { data: { users: authUsers }, error } = await supabase.auth.admin.listUsers();
+
+      if (error) {
+        console.error('❌ Error loading users from Auth:', error);
+        throw error;
       }
+
+      console.log('✅ Successfully loaded users from Auth:', authUsers?.length);
       
-      throw error;
+      // Transform auth users to our format
+      const formattedUsers: AuthUser[] = authUsers.map(user => ({
+        id: user.id,
+        email: user.email || '',
+        user_metadata: user.user_metadata || {},
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+        last_sign_in_at: user.last_sign_in_at,
+        confirmed_at: user.confirmed_at,
+        email_confirmed_at: user.email_confirmed_at,
+        invited_at: user.invited_at,
+        role: user.user_metadata?.role || 'user',
+        status: getUserStatus(user)
+      }));
+
+      setUsers(formattedUsers);
+      
+    } catch (error) {
+      console.error('❌ Error loading users:', error);
+      showError('Failed to load users. Please contact administrator.');
+      setUsers([]);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    console.log('✅ Successfully loaded users from profiles:', profilesData?.length);
-    setUsers(profilesData as User[] || []);
-    
-  } catch (error) {
-    console.error('❌ Final error loading users:', error);
-    showError('Failed to load users due to database policy issues. Please contact administrator.');
-    setUsers([]);
-  } finally {
-    setLoading(false);
-  }
-};
-
-// Alternative approach using service role (if available)
-const loadUsersWithServiceRole = async () => {
-  try {
-    console.log('🛠️ Trying service role approach...');
-    
-    // This would require service role key - for now, show helpful message
-    showError(
-      'Database policy conflict detected. ' +
-      'Please ask an administrator to fix the RLS policies on the profiles table.'
-    );
-    
-    // Create a mock admin user for demonstration
-    const mockUsers: User[] = [
-      {
-        id: currentUser.id,
-        email: currentUser.email,
-        full_name: currentUser.user_metadata?.full_name || 'Admin User',
-        role: 'admin',
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        last_seen_at: new Date().toISOString()
-      }
-    ];
-    
-    setUsers(mockUsers);
-    
-  } catch (error) {
-    console.error('❌ Service role approach failed:', error);
-    showError('Cannot load users. Database configuration required.');
-  }
-};
+  // Determine user status based on auth properties
+  const getUserStatus = (user: any): UserStatus => {
+    if (user.banned_until && new Date(user.banned_until) > new Date()) {
+      return 'suspended';
+    }
+    if (user.invited_at && !user.confirmed_at) {
+      return 'pending';
+    }
+    return 'active';
+  };
 
   const showSuccess = (message: string) => {
     setSuccessMessage(message);
@@ -163,7 +158,7 @@ const loadUsersWithServiceRole = async () => {
     setShowErrorModal(true);
   };
 
-  // Update user role in public.profiles table
+  // Update user role in Auth metadata
   const handleRoleUpdate = async (userId: string, newRole: string) => {
     const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
     if (!validRoles.includes(newRole as UserRole)) {
@@ -174,21 +169,27 @@ const loadUsersWithServiceRole = async () => {
     try {
       setUpdating(userId);
       
-      // Update in public.profiles table
-      const { error } = await supabase
-        .from('profiles')
-        .update({ 
-          role: newRole as UserRole,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId);
+      // Update user metadata in Auth
+      const { data, error } = await supabase.auth.admin.updateUserById(
+        userId,
+        { 
+          user_metadata: { 
+            ...users.find(u => u.id === userId)?.user_metadata,
+            role: newRole 
+          } 
+        }
+      );
 
       if (error) throw error;
 
       // Update local state
       setUsers(prev => prev.map(u => 
         u.id === userId 
-          ? { ...u, role: newRole as UserRole, updated_at: new Date().toISOString() }
+          ? { 
+              ...u, 
+              user_metadata: { ...u.user_metadata, role: newRole as UserRole },
+              role: newRole as UserRole
+            }
           : u
       ));
       
@@ -201,7 +202,7 @@ const loadUsersWithServiceRole = async () => {
     }
   };
 
-  // Update user status in public.profiles table
+  // Update user status (ban/unban in Auth)
   const handleStatusUpdate = async (userId: string, newStatus: string) => {
     const validStatuses: UserStatus[] = ['pending', 'active', 'suspended'];
     if (!validStatuses.includes(newStatus as UserStatus)) {
@@ -212,21 +213,26 @@ const loadUsersWithServiceRole = async () => {
     try {
       setUpdating(userId);
       
-      // Update in public.profiles table
-      const { error } = await supabase
-        .from('profiles')
-        .update({ 
-          status: newStatus as UserStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId);
-
-      if (error) throw error;
+      if (newStatus === 'suspended') {
+        // Ban user indefinitely
+        const { error } = await supabase.auth.admin.updateUserById(
+          userId,
+          { ban_duration: '87600h' } // 10 years effectively permanent
+        );
+        if (error) throw error;
+      } else if (newStatus === 'active') {
+        // Unban user
+        const { error } = await supabase.auth.admin.updateUserById(
+          userId,
+          { ban_duration: 'none' }
+        );
+        if (error) throw error;
+      }
 
       // Update local state
       setUsers(prev => prev.map(u => 
         u.id === userId 
-          ? { ...u, status: newStatus as UserStatus, updated_at: new Date().toISOString() }
+          ? { ...u, status: newStatus as UserStatus }
           : u
       ));
       
@@ -239,7 +245,7 @@ const loadUsersWithServiceRole = async () => {
     }
   };
 
-  // Suspend user by updating status in public.profiles table
+  // Suspend user by banning in Auth
   const handleDeleteUser = async (userId: string, userEmail: string) => {
     showConfirmation(
       `Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`,
@@ -247,21 +253,18 @@ const loadUsersWithServiceRole = async () => {
         try {
           setUpdating(userId);
           
-          // Update in public.profiles table
-          const { error } = await supabase
-            .from('profiles')
-            .update({ 
-              status: 'suspended' as UserStatus,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', userId);
+          // Ban user in Auth
+          const { error } = await supabase.auth.admin.updateUserById(
+            userId,
+            { ban_duration: '87600h' } // 10 years effectively permanent
+          );
 
           if (error) throw error;
 
           // Update local state
           setUsers(prev => prev.map(u => 
             u.id === userId 
-              ? { ...u, status: 'suspended' as UserStatus, updated_at: new Date().toISOString() }
+              ? { ...u, status: 'suspended' as UserStatus }
               : u
           ));
           
@@ -277,9 +280,9 @@ const loadUsersWithServiceRole = async () => {
   };
 
   // Enhanced user status with timestamp
-  const getUserStatusWithTimestamp = (user: User) => {
+  const getUserStatusWithTimestamp = (user: AuthUser) => {
     const isOnline = user.status === 'active';
-    const lastSeen = user.last_seen_at ? new Date(user.last_seen_at) : null;
+    const lastSeen = user.last_sign_in_at ? new Date(user.last_sign_in_at) : null;
     
     return (
       <div className="flex items-center space-x-2">
@@ -306,35 +309,45 @@ const loadUsersWithServiceRole = async () => {
   const filteredUsers = users.filter(user => {
     const matchesSearch = 
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.role.toLowerCase().includes(searchTerm.toLowerCase());
+      user.user_metadata?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.user_metadata?.role || 'user').toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesRole = !filters.role || user.role === filters.role;
+    const matchesRole = !filters.role || (user.user_metadata?.role || 'user') === filters.role;
     const matchesStatus = !filters.status || user.status === filters.status;
     
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  // Bulk role update in public.profiles table
+  // Bulk role update in Auth
   const handleBulkRoleUpdate = async (newRole: UserRole) => {
     if (selectedUsers.length === 0) return;
 
     try {
-      // Update in public.profiles table
-      const { error } = await supabase
-        .from('profiles')
-        .update({ 
-          role: newRole,
-          updated_at: new Date().toISOString()
-        })
-        .in('id', selectedUsers);
-
-      if (error) throw error;
+      // Update each user in Auth
+      for (const userId of selectedUsers) {
+        const user = users.find(u => u.id === userId);
+        if (user) {
+          const { error } = await supabase.auth.admin.updateUserById(
+            userId,
+            { 
+              user_metadata: { 
+                ...user.user_metadata,
+                role: newRole 
+              } 
+            }
+          );
+          if (error) throw error;
+        }
+      }
 
       // Update local state
       setUsers(prev => prev.map(u => 
         selectedUsers.includes(u.id) 
-          ? { ...u, role: newRole, updated_at: new Date().toISOString() }
+          ? { 
+              ...u, 
+              user_metadata: { ...u.user_metadata, role: newRole },
+              role: newRole
+            }
           : u
       ));
       
@@ -362,7 +375,7 @@ const loadUsersWithServiceRole = async () => {
     }
   };
 
-  // Create user with profile in public.profiles table
+  // Create user directly in Auth
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -374,23 +387,21 @@ const loadUsersWithServiceRole = async () => {
     try {
       setAddingUser(true);
       
-      // Create auth user
-      const { data, error } = await supabase.auth.signUp({
+      // Create user using admin API
+      const { data, error } = await supabase.auth.admin.createUser({
         email: newUserEmail,
         password: newUserPassword,
-        options: {
-          data: {
-            full_name: newUserName || '',
-            role: newUserRole
-          }
+        email_confirm: true, // Auto-confirm email
+        user_metadata: {
+          full_name: newUserName || '',
+          role: newUserRole
         }
       });
 
       if (error) throw error;
 
       if (data.user) {
-        // The profile should be automatically created via database trigger
-        // But we'll manually refresh to ensure we have the latest data
+        // Refresh users list
         await loadUsers();
       }
 
@@ -401,7 +412,7 @@ const loadUsersWithServiceRole = async () => {
       setNewUserRole('user');
       setIsAddUserModalOpen(false);
       
-      showSuccess('User created successfully! They will need to confirm their email address.');
+      showSuccess('User created successfully!');
     } catch (error: any) {
       console.error('Error creating user:', error);
       showError(error.message || 'Error creating user. Please try again.');
@@ -410,16 +421,16 @@ const loadUsersWithServiceRole = async () => {
     }
   };
 
-  const handleEditUser = (user: User) => {
+  const handleEditUser = (user: AuthUser) => {
     setSelectedUser(user);
-    setEditUserName(user.full_name || '');
-    setEditUserRole(user.role);
-    setEditUserStatus(user.status);
+    setEditUserName(user.user_metadata?.full_name || '');
+    setEditUserRole(user.user_metadata?.role as UserRole || 'user');
+    setEditUserStatus(user.status || 'active');
     setEditUserPassword('');
     setIsEditUserModalOpen(true);
   };
 
-  // Update user in public.profiles table
+  // Update user in Auth
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -428,26 +439,29 @@ const loadUsersWithServiceRole = async () => {
     try {
       setEditingUser(true);
 
-      // Update profile in public.profiles table
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
+      // Update user in Auth
+      const updateData: any = {
+        user_metadata: {
           full_name: editUserName || null,
-          role: editUserRole,
-          status: editUserStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedUser.id);
-
-      if (profileError) throw profileError;
+          role: editUserRole
+        }
+      };
 
       // Update password only if provided and not empty
       if (editUserPassword && editUserPassword.trim() !== '') {
-        const { error: passwordError } = await supabase.auth.updateUser({
-          password: editUserPassword
-        });
+        updateData.password = editUserPassword;
+      }
 
-        if (passwordError) throw passwordError;
+      const { error: userError } = await supabase.auth.admin.updateUserById(
+        selectedUser.id,
+        updateData
+      );
+
+      if (userError) throw userError;
+
+      // Update status if changed
+      if (editUserStatus !== selectedUser.status) {
+        await handleStatusUpdate(selectedUser.id, editUserStatus);
       }
 
       // Refresh users to get updated data
@@ -470,26 +484,28 @@ const loadUsersWithServiceRole = async () => {
     }
   };
 
-  // Approve user by updating status in public.profiles table
+  // Approve user by confirming email in Auth
   const handleApproveUser = async (userId: string) => {
     try {
       setUpdating(userId);
       
-      // Update in public.profiles table
-      const { error } = await supabase
-        .from('profiles')
-        .update({ 
-          status: 'active' as UserStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId);
+      // Confirm user email in Auth
+      const { error } = await supabase.auth.admin.updateUserById(
+        userId,
+        { 
+          email_confirm: true,
+          user_metadata: {
+            ...users.find(u => u.id === userId)?.user_metadata
+          }
+        }
+      );
 
       if (error) throw error;
 
       // Update local state
       setUsers(prev => prev.map(u => 
         u.id === userId 
-          ? { ...u, status: 'active' as UserStatus, updated_at: new Date().toISOString() }
+          ? { ...u, status: 'active' as UserStatus }
           : u
       ));
       
@@ -502,7 +518,7 @@ const loadUsersWithServiceRole = async () => {
     }
   };
 
-  // Reactivate user by updating status in public.profiles table
+  // Reactivate user by unbanning in Auth
   const handleReactivateUser = async (userId: string) => {
     showConfirmation(
       'Are you sure you want to reactivate this user?',
@@ -510,21 +526,18 @@ const loadUsersWithServiceRole = async () => {
         try {
           setUpdating(userId);
           
-          // Update in public.profiles table
-          const { error } = await supabase
-            .from('profiles')
-            .update({ 
-              status: 'active' as UserStatus,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', userId);
+          // Unban user in Auth
+          const { error } = await supabase.auth.admin.updateUserById(
+            userId,
+            { ban_duration: 'none' }
+          );
 
           if (error) throw error;
 
           // Update local state
           setUsers(prev => prev.map(u => 
             u.id === userId 
-              ? { ...u, status: 'active' as UserStatus, updated_at: new Date().toISOString() }
+              ? { ...u, status: 'active' as UserStatus }
               : u
           ));
           
@@ -560,7 +573,7 @@ const loadUsersWithServiceRole = async () => {
                 <h2 className="text-2xl font-bold text-white">User Management</h2>
                 <p className="text-gray-400 mt-1">Manage user roles, status, and permissions</p>
                 <p className="text-green-500 text-sm mt-1">
-                  Admin Access: Viewing all users from public.profiles table
+                  Admin Access: Viewing all users from Supabase Auth
                 </p>
               </div>
               <div className="flex items-center space-x-3">
@@ -691,7 +704,7 @@ const loadUsersWithServiceRole = async () => {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
                               <div className="text-sm font-medium text-white">
-                                {user.full_name || 'No Name'}
+                                {user.user_metadata?.full_name || 'No Name'}
                               </div>
                               <div className="text-sm text-gray-400">{user.email}</div>
                               {user.id === currentUser.id && (
@@ -709,7 +722,7 @@ const loadUsersWithServiceRole = async () => {
                               <select
                                 id={`user-role-${user.id}`}
                                 name={`user-role-${user.id}`}
-                                value={user.role}
+                                value={user.user_metadata?.role || 'user'}
                                 onChange={(e) => handleRoleUpdate(user.id, e.target.value)}
                                 disabled={updating === user.id || user.id === currentUser.id}
                                 className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -782,11 +795,11 @@ const loadUsersWithServiceRole = async () => {
             {/* Stats and Footer */}
             <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
               <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <div className="text-2xl font-bold text-white">{users.filter(u => u.role === 'admin').length}</div>
+                <div className="text-2xl font-bold text-white">{users.filter(u => u.user_metadata?.role === 'admin').length}</div>
                 <div className="text-sm text-gray-400">Admins</div>
               </div>
               <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <div className="text-2xl font-bold text-white">{users.filter(u => u.role === 'moderator').length}</div>
+                <div className="text-2xl font-bold text-white">{users.filter(u => u.user_metadata?.role === 'moderator').length}</div>
                 <div className="text-sm text-gray-400">Moderators</div>
               </div>
               <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
