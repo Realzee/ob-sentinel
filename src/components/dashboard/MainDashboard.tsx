@@ -13,6 +13,7 @@ import ImagePreviewModal from '@/components/reports/ImagePreviewModal';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import CustomButton from '@/components/ui/CustomButton';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 interface MainDashboardProps {
   user: any;
@@ -90,6 +91,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const [cacheBuster, setCacheBuster] = useState(0);
   
   const { signOut } = useAuth();
+  const router = useRouter();
 
   // FIXED: Enhanced user role and status detection
   const isAdmin = user?.role === 'admin' || ADMIN_EMAILS.includes(user?.email?.toLowerCase());
@@ -101,6 +103,9 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   // Admin users have full access to user management
   const canManageUsers = isAdmin;
+
+  // Control Room access
+  const canAccessControlRoom = isAdmin || isModerator || isController;
 
   // FIXED: Get username from full_name or email
   const getUserDisplayName = () => {
@@ -184,6 +189,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       role: user?.role,
       isAdmin: isAdmin,
       canManageUsers: canManageUsers,
+      canAccessControlRoom: canAccessControlRoom,
       inAdminList: ADMIN_EMAILS.includes(user?.email?.toLowerCase())
     });
   }, [user]);
@@ -216,85 +222,72 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   // Enhanced loadReports function with active status filtering
   const loadReports = useCallback(async () => {
-  try {
-    setReportsLoading(true);
-    console.log('🔄 Loading fresh reports data...');
-    
-    const [vehiclesData, crimesData, allUsers] = await Promise.all([
-      reportsAPI.getVehicleAlerts(),
-      reportsAPI.getCrimeReports(),
-      authAPI.getAllUsers()
-    ]);
-    
-    console.log('📊 Raw vehicles data:', vehiclesData);
-    console.log('📊 Raw crimes data:', crimesData);
-    
-    // Filter out rejected/deleted reports and only show active/resolved
-    const activeVehicles = vehiclesData.filter(vehicle => 
-      vehicle && vehicle.status !== 'rejected'
-    );
-    
-    const activeCrimes = crimesData.filter(crime => 
-      crime && crime.status !== 'rejected'
-    );
-    
-    console.log(`✅ Filtered: ${activeVehicles.length} vehicles, ${activeCrimes.length} crimes`);
-    
-    // Create a map of user profiles for quick lookup
-    const userProfilesMap = new Map();
-    allUsers.forEach((user: Profile) => {
-      if (user && user.id) {
+    try {
+      setReportsLoading(true);
+      console.log('🔄 Loading fresh reports data...');
+      
+      const [vehiclesData, crimesData, allUsers] = await Promise.all([
+        reportsAPI.getVehicleAlerts(),
+        reportsAPI.getCrimeReports(),
+        authAPI.getAllUsers() // Get all users for reporter info
+      ]);
+      
+      // Filter out rejected/deleted reports and only show active/resolved
+      const activeVehicles = vehiclesData.filter(vehicle => 
+        vehicle.status !== 'rejected'
+      );
+      
+      const activeCrimes = crimesData.filter(crime => 
+        crime.status !== 'rejected'
+      );
+      
+      // Create a map of user profiles for quick lookup
+      const userProfilesMap = new Map();
+      allUsers.forEach((user: Profile) => {
         userProfilesMap.set(user.id, user);
-      }
-    });
+      });
 
-    // Enhance reports with reporter information
-    const vehiclesWithReporters = activeVehicles.map(vehicle => ({
-      ...vehicle,
-      reporter_profile: userProfilesMap.get(vehicle.reported_by) || {
-        id: vehicle.reported_by,
-        email: 'unknown@example.com',
-        full_name: 'Unknown User',
-        role: 'user',
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      ob_number: vehicle.ob_number || generateShortOBNumber('V'),
-      evidence_images: vehicle.evidence_images || []
-    }));
-    
-    const crimesWithReporters = activeCrimes.map(crime => ({
-      ...crime,
-      reporter_profile: userProfilesMap.get(crime.reported_by) || {
-        id: crime.reported_by,
-        email: 'unknown@example.com',
-        full_name: 'Unknown User',
-        role: 'user',
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      ob_number: crime.ob_number || generateShortOBNumber('C'),
-      evidence_images: crime.evidence_images || []
-    }));
-    
-    setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
-    setCrimeReports(crimesWithReporters as CrimeReportWithImages[]);
-    
-    console.log(`✅ Loaded ${vehiclesWithReporters.length} vehicle reports and ${crimesWithReporters.length} crime reports`);
-    
-  } catch (error) {
-    console.error('❌ Error loading reports:', error);
-    showError('Failed to load reports. Please try refreshing the page.');
-    
-    // Set empty arrays on error to prevent UI issues
-    setVehicleReports([]);
-    setCrimeReports([]);
-  } finally {
-    setReportsLoading(false);
-  }
-}, []);
+      // Enhance reports with reporter information
+      const vehiclesWithReporters = activeVehicles.map(vehicle => ({
+        ...vehicle,
+        reporter_profile: userProfilesMap.get(vehicle.reported_by) || {
+          id: vehicle.reported_by,
+          email: 'unknown@example.com',
+          full_name: 'Unknown User',
+          role: 'user',
+          status: 'active',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        ob_number: vehicle.ob_number || generateShortOBNumber('V')
+      }));
+      
+      const crimesWithReporters = activeCrimes.map(crime => ({
+        ...crime,
+        reporter_profile: userProfilesMap.get(crime.reported_by) || {
+          id: crime.reported_by,
+          email: 'unknown@example.com',
+          full_name: 'Unknown User',
+          role: 'user',
+          status: 'active',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        ob_number: crime.ob_number || generateShortOBNumber('C')
+      }));
+      
+      setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
+      setCrimeReports(crimesWithReporters as CrimeReportWithImages[]);
+      
+      console.log(`✅ Loaded ${vehiclesWithReporters.length} vehicle reports and ${crimesWithReporters.length} crime reports`);
+      
+    } catch (error) {
+      console.error('Error loading reports:', error);
+      showError('Failed to load reports. Please try refreshing the page.');
+    } finally {
+      setReportsLoading(false);
+    }
+  }, []);
 
   // Enhanced loadData with better cache clearing
   const loadData = useCallback(async () => {
@@ -557,6 +550,22 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                 </div>
               </div>
 
+              {/* Control Room Access - NEW: For authorized users */}
+              {canAccessControlRoom && (
+                <CustomButton
+                  onClick={() => router.push('/control-room')}
+                  variant="primary"
+                  size="sm"
+                  className="hidden sm:flex items-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>Control Room</span>
+                </CustomButton>
+              )}
+
               {/* Admin Actions - FIXED: Now properly shows for admins */}
               {canManageUsers && (
                 <CustomButton
@@ -610,6 +619,22 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                   </div>
                 </div>
                 
+                {/* Control Room Access - Mobile */}
+                {canAccessControlRoom && (
+                  <CustomButton
+                    onClick={() => router.push('/control-room')}
+                    variant="primary"
+                    size="md"
+                    className="w-full flex items-center justify-center space-x-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span>Control Room</span>
+                  </CustomButton>
+                )}
+
                 {canManageUsers && (
                   <CustomButton
                     onClick={() => setIsUserManagementOpen(true)}
@@ -837,16 +862,9 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                                 </span>
                               </div>
                             </div>
-                            <span className={`px-3 py-1 text-xs rounded-full font-medium ${
-  report.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' :
-  report.status === 'active' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
-  report.status === 'resolved' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
-  report.status === 'recovered' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
-  report.status === 'rejected' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
-  'bg-gray-500/20 text-gray-300 border border-gray-500/30'
-}`}>
-  {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
-</span>
+                            <span className={`px-3 py-1 text-xs rounded-full font-medium ${report.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' : report.status === 'active' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : report.status === 'resolved' ? 'bg-green-500/20 text-green-300 border border-green-500/30' : report.status === 'recovered' ? 'bg-green-500/20 text-green-300 border border-green-500/30' : report.status === 'rejected' ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 'bg-gray-500/20 text-gray-300 border border-gray-500/30'}`}>
+                              {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
+                            </span>
                           </div>
                           <p className="text-gray-300 mb-2">
                             {display.secondary}
@@ -857,12 +875,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                             <span>{new Date(report.created_at).toLocaleDateString()}</span>
                             <span>•</span>
                             <span className="flex items-center space-x-1">
-                              <span className={`inline-block w-2 h-2 rounded-full ${
-                                report.severity === 'critical' ? 'bg-red-500' :
-                                report.severity === 'high' ? 'bg-orange-500' :
-                                report.severity === 'medium' ? 'bg-yellow-500' :
-                                'bg-green-500'
-                              }`}></span>
+                              <span className={`inline-block w-2 h-2 rounded-full ${report.severity === 'critical' ? 'bg-red-500' : report.severity === 'high' ? 'bg-orange-500' : report.severity === 'medium' ? 'bg-yellow-500' : 'bg-green-500'}`}></span>
                               <span className="capitalize">{report.severity}</span>
                             </span>
                           </div>
