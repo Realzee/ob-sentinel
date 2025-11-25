@@ -190,7 +190,7 @@ export const authAPI = {
     }, 'getCurrentUser');
   },
 
-  getAllUsers: async (): Promise<AuthUser[]> => {
+  getAllUsers: async (): Promise<any[]> => {
   return safeApiCall(async () => {
     console.log('🔍 Loading users from Auth API route...');
 
@@ -198,7 +198,9 @@ export const authAPI = {
       const response = await fetch('/api/admin/users');
       
       if (!response.ok) {
-        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('❌ API route failed:', response.status, errorText);
+        throw new Error(`API returned ${response.status}`);
       }
 
       const data = await response.json();
@@ -206,24 +208,22 @@ export const authAPI = {
       return data.users || [];
 
     } catch (error) {
-      console.error('❌ Auth API failed, falling back to current user only:', error);
+      console.error('❌ Auth API route failed:', error);
       
       // Fallback: return current user only
-      const currentUser = await authAPI.getCurrentUser();
-      if (currentUser) {
-        const authUser: AuthUser = {
-          id: currentUser.id,
-          email: currentUser.email,
-          user_metadata: {
-            full_name: currentUser.full_name || undefined,
-            role: currentUser.role
-          },
-          created_at: currentUser.created_at,
-          updated_at: currentUser.updated_at,
-          role: currentUser.role,
-          status: currentUser.status
+      const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
+      if (currentAuthUser) {
+        const fallbackUser = {
+          id: currentAuthUser.id,
+          email: currentAuthUser.email || '',
+          user_metadata: currentAuthUser.user_metadata || {},
+          created_at: currentAuthUser.created_at,
+          updated_at: currentAuthUser.updated_at,
+          last_sign_in_at: currentAuthUser.last_sign_in_at,
+          role: currentAuthUser.user_metadata?.role || 'user',
+          status: 'active'
         };
-        return [authUser];
+        return [fallbackUser];
       }
       
       return [];
