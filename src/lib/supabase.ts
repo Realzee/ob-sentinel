@@ -18,6 +18,24 @@ export interface Profile {
   last_seen_at?: string;
 }
 
+// Make sure AuthUser interface is properly exported
+export interface AuthUser {
+  id: string;
+  email: string;
+  user_metadata: {
+    full_name?: string;
+    role?: UserRole;
+  };
+  created_at: string;
+  updated_at?: string;
+  last_sign_in_at?: string;
+  confirmed_at?: string;
+  email_confirmed_at?: string;
+  invited_at?: string;
+  role?: string;
+  status?: UserStatus;
+  banned_until?: string | null;
+}
 export interface VehicleAlert {
   id: string;
   license_plate: string;
@@ -67,6 +85,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     flowType: 'pkce'
   }
+});
+
+export const authUserToProfile = (authUser: AuthUser): Profile => ({
+  id: authUser.id,
+  email: authUser.email,
+  full_name: authUser.user_metadata?.full_name || null,
+  role: (authUser.user_metadata?.role as UserRole) || 'user',
+  status: authUser.status || 'active',
+  created_at: authUser.created_at,
+  updated_at: authUser.updated_at || authUser.created_at,
+  last_seen_at: authUser.last_sign_in_at || authUser.created_at
 });
 
 // Type guard functions
@@ -161,13 +190,142 @@ export const authAPI = {
     }, 'getCurrentUser');
   },
 
-  getAllUsers: async (): Promise<Profile[]> => {
-    return safeApiCall(async () => {
-      // Return current user only for now (avoid RLS recursion)
+  getAllUsers: async (): Promise<AuthUser[]> => {
+  return safeApiCall(async () => {
+    console.log('🔍 Loading users from Auth API route...');
+
+    try {
+      const response = await fetch('/api/admin/users');
+      
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Successfully loaded users from Auth API:', data.users?.length);
+      return data.users || [];
+
+    } catch (error) {
+      console.error('❌ Auth API failed, falling back to current user only:', error);
+      
+      // Fallback: return current user only
       const currentUser = await authAPI.getCurrentUser();
-      return currentUser ? [currentUser] : [];
-    }, 'getAllUsers');
+      if (currentUser) {
+        const authUser: AuthUser = {
+          id: currentUser.id,
+          email: currentUser.email,
+          user_metadata: {
+            full_name: currentUser.full_name || undefined,
+            role: currentUser.role
+          },
+          created_at: currentUser.created_at,
+          updated_at: currentUser.updated_at,
+          role: currentUser.role,
+          status: currentUser.status
+        };
+        return [authUser];
+      }
+      
+      return [];
+    }
+  }, 'getAllUsers');
+},
+
+  updateUserRole: async (userId: string, newRole: UserRole): Promise<boolean> => {
+    return safeApiCall(async () => {
+      console.log('🔄 Updating user role via API:', userId, newRole);
+
+      try {
+        const response = await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'updateRole',
+            userId,
+            role: newRole
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`API returned ${response.status}`);
+        }
+
+        console.log('✅ User role updated successfully');
+        return true;
+      } catch (error) {
+        console.error('❌ Failed to update user role:', error);
+        return false;
+      }
+    }, 'updateUserRole');
   },
+
+  createUser: async (userData: {
+    email: string;
+    password: string;
+    full_name?: string;
+    role?: UserRole;
+  }): Promise<AuthUser | null> => {
+    return safeApiCall(async () => {
+      console.log('🔄 Creating new user via API:', userData.email);
+
+      try {
+        const response = await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'createUser',
+            ...userData
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `API returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('✅ User created successfully');
+        return data.user;
+      } catch (error) {
+        console.error('❌ Failed to create user:', error);
+        return null;
+      }
+    }, 'createUser');
+  },
+
+  updateUserStatus: async (userId: string, status: UserStatus): Promise<boolean> => {
+    return safeApiCall(async () => {
+      console.log('🔄 Updating user status via API:', userId, status);
+
+      try {
+        const response = await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'updateStatus',
+            userId,
+            status
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`API returned ${response.status}`);
+        }
+
+        console.log('✅ User status updated successfully');
+        return true;
+      } catch (error) {
+        console.error('❌ Failed to update user status:', error);
+        return false;
+      }
+    }, 'updateUserStatus');
+  }
 };
 
 // ULTRA-SIMPLE CRIME REPORT CREATION - BYPASS ALL USER CHECKS

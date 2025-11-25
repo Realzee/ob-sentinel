@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { reportsAPI, VehicleAlert, CrimeReport, authAPI, Profile, AuthUser, authUserToProfile } from '@/lib/supabase';
+import { reportsAPI, VehicleAlert, CrimeReport, authAPI, Profile } from '@/lib/supabase';
 import VehicleReportModal from '@/components/reports/VehicleReportModal';
 import CrimeReportModal from '@/components/reports/CrimeReportModal';
 import ReportActionsModal from '@/components/reports/ReportActionsModal';
@@ -58,43 +58,6 @@ const generateShortOBNumber = (type: 'V' | 'C') => {
   return `OB${type}${timestamp.slice(-4)}${random}`;
 };
 
-// Helper function to handle both AuthUser and Profile types
-const getUserDisplayName = (user: any): string => {
-  if (!user) return 'User';
-  
-  if (user.full_name) {
-    return user.full_name;
-  } else if (user.user_metadata?.full_name) {
-    return user.user_metadata.full_name;
-  } else if (user.email) {
-    return user.email.split('@')[0];
-  }
-  
-  return 'User';
-};
-
-const getUserRole = (user: any): string => {
-  if (!user) return 'user';
-  
-  if (user.role) {
-    return user.role;
-  } else if (user.user_metadata?.role) {
-    return user.user_metadata.role;
-  }
-  
-  return 'user';
-};
-
-const getUserStatus = (user: any): string => {
-  if (!user) return 'active';
-  
-  if (user.status) {
-    return user.status;
-  }
-  
-  return 'active';
-};
-
 export default function MainDashboard({ user }: MainDashboardProps) {
   const [vehicleReports, setVehicleReports] = useState<VehicleAlertWithImages[]>([]);
   const [crimeReports, setCrimeReports] = useState<CrimeReportWithImages[]>([]);
@@ -131,9 +94,9 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const router = useRouter();
 
   // FIXED: Enhanced user role and status detection
-  const isAdmin = getUserRole(user) === 'admin' || ADMIN_EMAILS.includes(user?.email?.toLowerCase());
-  const isModerator = getUserRole(user) === 'moderator';
-  const isController = getUserRole(user) === 'controller';
+  const isAdmin = user?.role === 'admin' || ADMIN_EMAILS.includes(user?.email?.toLowerCase());
+  const isModerator = user?.role === 'moderator';
+  const isController = user?.role === 'controller';
 
   // FIX: Add missing canDelete variable
   const canDelete = isAdmin || isModerator;
@@ -143,6 +106,19 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   // Control Room access
   const canAccessControlRoom = isAdmin || isModerator || isController;
+
+  // FIXED: Get username from full_name or email
+  const getUserDisplayName = () => {
+    return user?.full_name || user?.email?.split('@')[0] || 'User';
+  };
+
+  const getUserRole = () => {
+    return user?.role || 'user';
+  };
+
+  const getUserStatus = () => {
+    return user?.status || 'active';
+  };
 
   // Enhanced cache management
   const clearAllCache = useCallback(() => {
@@ -210,7 +186,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   useEffect(() => {
     console.log('🔍 User Role Debug:', {
       email: user?.email,
-      role: getUserRole(user),
+      role: user?.role,
       isAdmin: isAdmin,
       canManageUsers: canManageUsers,
       canAccessControlRoom: canAccessControlRoom,
@@ -246,78 +222,89 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   // Enhanced loadReports function with active status filtering
   const loadReports = useCallback(async () => {
-    try {
-      setReportsLoading(true);
-      console.log('🔄 Loading fresh reports data...');
-      
-      const [vehiclesData, crimesData, allUsers] = await Promise.all([
-        reportsAPI.getVehicleAlerts(),
-        reportsAPI.getCrimeReports(),
-        authAPI.getAllUsers() // Get all users for reporter info
-      ]);
-      
-      // Filter out rejected/deleted reports and only show active/resolved
-      const activeVehicles = vehiclesData.filter(vehicle => 
-        vehicle.status !== 'rejected'
-      );
-      
-      const activeCrimes = crimesData.filter(crime => 
-        crime.status !== 'rejected'
-      );
-      
-      // Create a map of user profiles for quick lookup
-      const userProfilesMap = new Map();
-      allUsers.forEach((user: AuthUser | Profile) => {
-        // Convert AuthUser to Profile if needed
-        if ('user_metadata' in user) {
-          const profile = authUserToProfile(user);
-          userProfilesMap.set(user.id, profile);
-        } else {
-          userProfilesMap.set(user.id, user);
-        }
-      });
+  try {
+    setReportsLoading(true);
+    console.log('🔄 Loading fresh reports data...');
+    
+    const [vehiclesData, crimesData, allUsers] = await Promise.all([
+      reportsAPI.getVehicleAlerts(),
+      reportsAPI.getCrimeReports(),
+      authAPI.getAllUsers() // Get all users for reporter info
+    ]);
+    
+    // Filter out rejected/deleted reports and only show active/resolved
+    const activeVehicles = vehiclesData.filter(vehicle => 
+      vehicle.status !== 'rejected'
+    );
+    
+    const activeCrimes = crimesData.filter(crime => 
+      crime.status !== 'rejected'
+    );
+    
+    // Create a map of user profiles for quick lookup
+    const userProfilesMap = new Map();
+    allUsers.forEach((user: any) => {
+      // Handle both AuthUser and Profile types
+      if ('full_name' in user) {
+        // It's a Profile
+        userProfilesMap.set(user.id, user);
+      } else if ('user_metadata' in user) {
+        // It's an AuthUser - convert to Profile format
+        const profile = {
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || null,
+          role: user.user_metadata?.role || 'user',
+          status: user.status || 'active',
+          created_at: user.created_at,
+          updated_at: user.updated_at || user.created_at,
+          last_seen_at: user.last_sign_in_at || user.created_at
+        };
+        userProfilesMap.set(user.id, profile);
+      }
+    });
 
-      // Enhance reports with reporter information
-      const vehiclesWithReporters = activeVehicles.map(vehicle => ({
-        ...vehicle,
-        reporter_profile: userProfilesMap.get(vehicle.reported_by) || {
-          id: vehicle.reported_by,
-          email: 'unknown@example.com',
-          full_name: 'Unknown User',
-          role: 'user',
-          status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        ob_number: vehicle.ob_number || generateShortOBNumber('V')
-      }));
-      
-      const crimesWithReporters = activeCrimes.map(crime => ({
-        ...crime,
-        reporter_profile: userProfilesMap.get(crime.reported_by) || {
-          id: crime.reported_by,
-          email: 'unknown@example.com',
-          full_name: 'Unknown User',
-          role: 'user',
-          status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        ob_number: crime.ob_number || generateShortOBNumber('C')
-      }));
-      
-      setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
-      setCrimeReports(crimesWithReporters as CrimeReportWithImages[]);
-      
-      console.log(`✅ Loaded ${vehiclesWithReporters.length} vehicle reports and ${crimesWithReporters.length} crime reports`);
-      
-    } catch (error) {
-      console.error('Error loading reports:', error);
-      showError('Failed to load reports. Please try refreshing the page.');
-    } finally {
-      setReportsLoading(false);
-    }
-  }, []);
+    // Enhance reports with reporter information
+    const vehiclesWithReporters = activeVehicles.map(vehicle => ({
+      ...vehicle,
+      reporter_profile: userProfilesMap.get(vehicle.reported_by) || {
+        id: vehicle.reported_by,
+        email: 'unknown@example.com',
+        full_name: 'Unknown User',
+        role: 'user',
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      ob_number: vehicle.ob_number || generateShortOBNumber('V')
+    }));
+    
+    const crimesWithReporters = activeCrimes.map(crime => ({
+      ...crime,
+      reporter_profile: userProfilesMap.get(crime.reported_by) || {
+        id: crime.reported_by,
+        email: 'unknown@example.com',
+        full_name: 'Unknown User',
+        role: 'user',
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      ob_number: crime.ob_number || generateShortOBNumber('C')
+    }));
+    
+    setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
+    setCrimeReports(crimesWithReporters as CrimeReportWithImages[]);
+    
+    console.log(`✅ Loaded ${vehiclesWithReporters.length} vehicle reports and ${crimesWithReporters.length} crime reports`);
+    
+  } catch (error) {
+    console.error('Error loading reports:', error);
+    showError('Failed to load reports. Please try refreshing the page.');
+  } finally {
+    setReportsLoading(false);
+  }
+}, []);
 
   // Enhanced loadData with better cache clearing
   const loadData = useCallback(async () => {
@@ -516,26 +503,16 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   // Enhanced helper function to get reporter information
   const getReporterInfo = (report: AnyReport) => {
     const reporter = report.reporter_profile;
-    if (!reporter) {
-      return {
-        name: 'Unknown User',
-        role: 'user',
-        status: 'active',
-        isOnline: false,
-        contact: 'No contact'
-      };
-    }
-
-    const reporterName = reporter.full_name || reporter.email?.split('@')[0] || 'Unknown User';
-    const reporterRole = reporter.role || 'user';
-    const reporterStatus = reporter.status || 'active';
+    const reporterName = reporter?.full_name || reporter?.email?.split('@')[0] || 'Unknown User';
+    const reporterRole = reporter?.role || 'user';
+    const reporterStatus = reporter?.status || 'active';
     
     return {
       name: reporterName,
       role: reporterRole,
       status: reporterStatus,
       isOnline: reporterStatus === 'active',
-      contact: reporter.email || 'No contact'
+      contact: reporter?.email || 'No contact'
     };
   };
 
@@ -583,10 +560,10 @@ export default function MainDashboard({ user }: MainDashboardProps) {
               {/* User Info - FIXED: Now shows username instead of email */}
               <div className="hidden sm:block text-right">
                 <div className="text-sm font-medium text-white">
-                  {getUserDisplayName(user)}
+                  {getUserDisplayName()}
                 </div>
                 <div className="text-xs text-gray-400 capitalize">
-                  {getUserRole(user)} • {getUserStatus(user)}
+                  {getUserRole()} • {getUserStatus()}
                 </div>
               </div>
 
@@ -652,10 +629,10 @@ export default function MainDashboard({ user }: MainDashboardProps) {
               <div className="space-y-4">
                 <div className="text-center">
                   <div className="text-sm font-medium text-white">
-                    {getUserDisplayName(user)}
+                    {getUserDisplayName()}
                   </div>
                   <div className="text-xs text-gray-400 capitalize">
-                    {getUserRole(user)} • {getUserStatus(user)}
+                    {getUserRole()} • {getUserStatus()}
                   </div>
                 </div>
                 
@@ -734,7 +711,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         {/* Welcome Section */}
         <div className="text-center mb-6">
           <h2 className="text-2xl font-bold text-white mb-2">
-            Welcome back, {getUserDisplayName(user)}!
+            Welcome back, {getUserDisplayName()}!
           </h2>
           <p className="text-gray-400">Monitor and manage community safety reports</p>
         </div>
