@@ -279,51 +279,63 @@ export const reportsAPI = {
   },
 
   createCrimeReport: async (data: any): Promise<any> => {
-    return safeApiCall(async () => {
-      console.log('🔄 Creating crime report:', data);
+  return safeApiCall(async () => {
+    console.log('🔄 Creating crime report:', data);
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('Not authenticated');
+    }
+
+    // Enhanced data validation and formatting
+    const reportData = {
+      title: data.title?.trim() || 'Untitled Report',
+      description: data.description?.trim() || 'No description provided',
+      location: data.location?.trim() || 'Unknown location',
+      incident_time: data.incident_time ? new Date(data.incident_time).toISOString() : null,
+      report_type: data.report_type || 'other',
+      severity: data.severity || 'medium',
+      status: data.status || 'active',
+      witness_info: data.witness_info?.trim() || null,
+      evidence_images: Array.isArray(data.evidence_images) ? data.evidence_images : [],
+      contact_allowed: Boolean(data.contact_allowed),
+      reported_by: user.id,
+      ob_number: data.ob_number || `OBC${Date.now().toString(36).toUpperCase()}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    console.log('📤 Sending crime report to database:', reportData);
+
+    const { data: result, error } = await supabase
+      .from('crime_reports')
+      .insert([reportData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Crime report creation FAILED:', error);
       
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        throw new Error('Not authenticated');
+      // Enhanced error handling
+      if (error.code === '42501') {
+        throw new Error('Permission denied. Please check your account permissions or database RLS policies.');
+      } else if (error.code === '23505') {
+        throw new Error('A similar report already exists.');
+      } else if (error.code === '23503') {
+        throw new Error('Invalid user reference. Please log out and log in again.');
+      } else {
+        throw new Error(error.message || 'Failed to create crime report. Please try again.');
       }
+    }
 
-      const reportData = {
-        title: data.title || 'Untitled Report',
-        description: data.description || 'No description provided',
-        location: data.location || 'Unknown location',
-        incident_time: data.incident_time ? new Date(data.incident_time).toISOString() : null,
-        report_type: data.report_type || 'other',
-        severity: data.severity || 'medium',
-        status: data.status || 'active',
-        witness_info: data.witness_info || null,
-        evidence_images: data.evidence_images || [],
-        contact_allowed: Boolean(data.contact_allowed),
-        reported_by: user.id,
-        ob_number: data.ob_number || `OBC${Date.now().toString(36).toUpperCase()}`
-      };
+    if (!result) {
+      throw new Error('No data returned after creating crime report.');
+    }
 
-      console.log('📤 Sending crime report to database:', reportData);
-
-      const { data: result, error } = await supabase
-        .from('crime_reports')
-        .insert([reportData])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Crime report creation FAILED:', error);
-        
-        if (error.code === '42501') {
-          throw new Error('Permission denied. Please check your account permissions.');
-        } else {
-          throw new Error(error.message || 'Failed to create crime report.');
-        }
-      }
-
-      console.log('✅ Crime report created successfully:', result);
-      return result;
-    }, 'createCrimeReport');
-  },
+    console.log('✅ Crime report created successfully:', result);
+    return result;
+  }, 'createCrimeReport');
+},
 
   updateCrimeReport: async (id: string, updates: any): Promise<any> => {
     return safeApiCall(async () => {

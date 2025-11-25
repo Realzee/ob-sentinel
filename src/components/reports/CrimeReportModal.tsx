@@ -175,75 +175,107 @@ export default function CrimeReportModal({
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  e.preventDefault();
+  
+  // Enhanced validation
+  if (!formData.title.trim()) {
+    showError('Please enter a title for the crime report.');
+    return;
+  }
+  
+  if (!formData.description.trim()) {
+    showError('Please provide a description of the incident.');
+    return;
+  }
+  
+  if (!formData.location.trim()) {
+    showError('Please provide the location of the incident.');
+    return;
+  }
+  
+  if (!formData.report_type.trim()) {
+    showError('Please select a report type.');
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    console.log('🔄 Starting crime report submission...', { formData, user });
+
+    // Validate user is authenticated
+    if (!user?.id) {
+      throw new Error('User not authenticated. Please log in again.');
+    }
+
+    // Process images locally first
+    const allImageUrls = await processImagesLocally();
+
+    const reportData = {
+      title: formData.title.trim(),
+      description: formData.description.trim(),
+      location: formData.location.trim(),
+      incident_time: formData.incident_time ? new Date(formData.incident_time).toISOString() : null,
+      report_type: formData.report_type,
+      severity: formData.severity,
+      status: formData.status,
+      witness_info: formData.witness_info?.trim() || null,
+      evidence_images: allImageUrls,
+      contact_allowed: Boolean(formData.contact_allowed),
+      ob_number: formData.ob_number,
+      reported_by: user.id
+    };
+
+    console.log('📤 Submitting crime report data:', reportData);
+
+    let result;
     
-    // Validate form before submission
-    if (!formData.title.trim() || !formData.description.trim()) {
-      showError('Please fill in all required fields (Title and Description).');
-      return;
+    if (editReport) {
+      console.log('🔄 Updating existing crime report...');
+      result = await reportsAPI.updateCrimeReport(editReport.id, reportData);
+    } else {
+      console.log('🔄 Creating new crime report...');
+      result = await reportsAPI.createCrimeReport(reportData);
     }
 
-    setLoading(true);
-
-    try {
-      console.log('🔄 Starting crime report submission...', { formData, user });
-
-      // Process images locally first
-      const allImageUrls = await processImagesLocally();
-
-      const reportData = {
-        title: formData.title,
-        description: formData.description,
-        location: formData.location,
-        incident_time: formData.incident_time ? new Date(formData.incident_time).toISOString() : undefined,
-        report_type: formData.report_type,
-        severity: formData.severity,
-        status: formData.status,
-        witness_info: formData.witness_info,
-        evidence_images: allImageUrls,
-        contact_allowed: Boolean(formData.contact_allowed),
-        ob_number: formData.ob_number,
-        reported_by: user.id
-      };
-
-      let result;
-      
-      if (editReport) {
-        console.log('🔄 Updating existing crime report...');
-        result = await reportsAPI.updateCrimeReport(editReport.id, reportData);
-      } else {
-        console.log('🔄 Creating new crime report...');
-        result = await reportsAPI.createCrimeReport(reportData);
-      }
-
-      console.log('✅ Crime report saved successfully:', result);
-      
-      // Show success message
-      const successMsg = editReport ? 'Crime report updated successfully!' : 'Crime report created successfully!';
-      if (images.length > 0) {
-        showSuccess(successMsg + ' Images have been saved with the report.');
-      } else {
-        showSuccess(successMsg);
-      }
-      
-      // Close modal and refresh after delay
-      setTimeout(() => {
-        handleModalClose();
-        onReportCreated();
-      }, 2000);
-      
-    } catch (error: any) {
-      console.error('❌ Error saving crime report:', error);
-      
-      let errorMessage = 'Error saving crime report. Please try again.';
-      if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      showError(errorMessage);
-      setLoading(false);
+    if (!result) {
+      throw new Error('No response from server. Report may not have been saved.');
     }
-  };
+
+    console.log('✅ Crime report saved successfully:', result);
+    
+    // Show success message
+    const successMsg = editReport ? 'Crime report updated successfully!' : 'Crime report created successfully!';
+    if (images.length > 0) {
+      showSuccess(successMsg + ' Images have been saved with the report.');
+    } else {
+      showSuccess(successMsg);
+    }
+    
+    // Close modal and refresh after delay
+    setTimeout(() => {
+      handleModalClose();
+      onReportCreated();
+    }, 2000);
+    
+  } catch (error: any) {
+    console.error('❌ Error saving crime report:', error);
+    
+    let errorMessage = 'Error saving crime report. Please try again.';
+    
+    if (error.message?.includes('permission') || error.message?.includes('RLS')) {
+      errorMessage = 'Database permission denied. Please check if your user has proper permissions.';
+    } else if (error.message?.includes('authenticated')) {
+      errorMessage = 'Authentication error. Please log out and log in again.';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    showError(errorMessage);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;

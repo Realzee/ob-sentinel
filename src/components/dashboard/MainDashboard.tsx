@@ -216,72 +216,85 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   // Enhanced loadReports function with active status filtering
   const loadReports = useCallback(async () => {
-    try {
-      setReportsLoading(true);
-      console.log('🔄 Loading fresh reports data...');
-      
-      const [vehiclesData, crimesData, allUsers] = await Promise.all([
-        reportsAPI.getVehicleAlerts(),
-        reportsAPI.getCrimeReports(),
-        authAPI.getAllUsers() // Get all users for reporter info
-      ]);
-      
-      // Filter out rejected/deleted reports and only show active/resolved
-      const activeVehicles = vehiclesData.filter(vehicle => 
-        vehicle.status !== 'rejected'
-      );
-      
-      const activeCrimes = crimesData.filter(crime => 
-        crime.status !== 'rejected'
-      );
-      
-      // Create a map of user profiles for quick lookup
-      const userProfilesMap = new Map();
-      allUsers.forEach((user: Profile) => {
+  try {
+    setReportsLoading(true);
+    console.log('🔄 Loading fresh reports data...');
+    
+    const [vehiclesData, crimesData, allUsers] = await Promise.all([
+      reportsAPI.getVehicleAlerts(),
+      reportsAPI.getCrimeReports(),
+      authAPI.getAllUsers()
+    ]);
+    
+    console.log('📊 Raw vehicles data:', vehiclesData);
+    console.log('📊 Raw crimes data:', crimesData);
+    
+    // Filter out rejected/deleted reports and only show active/resolved
+    const activeVehicles = vehiclesData.filter(vehicle => 
+      vehicle && vehicle.status !== 'rejected'
+    );
+    
+    const activeCrimes = crimesData.filter(crime => 
+      crime && crime.status !== 'rejected'
+    );
+    
+    console.log(`✅ Filtered: ${activeVehicles.length} vehicles, ${activeCrimes.length} crimes`);
+    
+    // Create a map of user profiles for quick lookup
+    const userProfilesMap = new Map();
+    allUsers.forEach((user: Profile) => {
+      if (user && user.id) {
         userProfilesMap.set(user.id, user);
-      });
+      }
+    });
 
-      // Enhance reports with reporter information
-      const vehiclesWithReporters = activeVehicles.map(vehicle => ({
-        ...vehicle,
-        reporter_profile: userProfilesMap.get(vehicle.reported_by) || {
-          id: vehicle.reported_by,
-          email: 'unknown@example.com',
-          full_name: 'Unknown User',
-          role: 'user',
-          status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        ob_number: vehicle.ob_number || generateShortOBNumber('V')
-      }));
-      
-      const crimesWithReporters = activeCrimes.map(crime => ({
-        ...crime,
-        reporter_profile: userProfilesMap.get(crime.reported_by) || {
-          id: crime.reported_by,
-          email: 'unknown@example.com',
-          full_name: 'Unknown User',
-          role: 'user',
-          status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        },
-        ob_number: crime.ob_number || generateShortOBNumber('C')
-      }));
-      
-      setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
-      setCrimeReports(crimesWithReporters as CrimeReportWithImages[]);
-      
-      console.log(`✅ Loaded ${vehiclesWithReporters.length} vehicle reports and ${crimesWithReporters.length} crime reports`);
-      
-    } catch (error) {
-      console.error('Error loading reports:', error);
-      showError('Failed to load reports. Please try refreshing the page.');
-    } finally {
-      setReportsLoading(false);
-    }
-  }, []);
+    // Enhance reports with reporter information
+    const vehiclesWithReporters = activeVehicles.map(vehicle => ({
+      ...vehicle,
+      reporter_profile: userProfilesMap.get(vehicle.reported_by) || {
+        id: vehicle.reported_by,
+        email: 'unknown@example.com',
+        full_name: 'Unknown User',
+        role: 'user',
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      ob_number: vehicle.ob_number || generateShortOBNumber('V'),
+      evidence_images: vehicle.evidence_images || []
+    }));
+    
+    const crimesWithReporters = activeCrimes.map(crime => ({
+      ...crime,
+      reporter_profile: userProfilesMap.get(crime.reported_by) || {
+        id: crime.reported_by,
+        email: 'unknown@example.com',
+        full_name: 'Unknown User',
+        role: 'user',
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      ob_number: crime.ob_number || generateShortOBNumber('C'),
+      evidence_images: crime.evidence_images || []
+    }));
+    
+    setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
+    setCrimeReports(crimesWithReporters as CrimeReportWithImages[]);
+    
+    console.log(`✅ Loaded ${vehiclesWithReporters.length} vehicle reports and ${crimesWithReporters.length} crime reports`);
+    
+  } catch (error) {
+    console.error('❌ Error loading reports:', error);
+    showError('Failed to load reports. Please try refreshing the page.');
+    
+    // Set empty arrays on error to prevent UI issues
+    setVehicleReports([]);
+    setCrimeReports([]);
+  } finally {
+    setReportsLoading(false);
+  }
+}, []);
 
   // Enhanced loadData with better cache clearing
   const loadData = useCallback(async () => {
