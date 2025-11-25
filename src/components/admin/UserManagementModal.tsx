@@ -11,7 +11,7 @@ interface UserManagementModalProps {
   currentUser: any;
 }
 
-// Use Profile interface instead of creating a new User interface
+// Use Profile interface directly
 interface User extends Profile {
   // Extend Profile to ensure compatibility
 }
@@ -74,24 +74,24 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     return () => clearInterval(interval);
   }, [isOpen]);
 
-  // Get users directly from public.users table with admin access
+  // Get users from public.profiles table with admin access
   const loadUsers = async () => {
     try {
       setLoading(true);
       
-      // Direct query to public.users table - admin has full access
-      const { data: usersData, error } = await supabase
-        .from('users')
+      // Direct query to public.profiles table - admin has full access
+      const { data: profilesData, error } = await supabase
+        .from('profiles')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('❌ Error loading users from public.users:', error);
+        console.error('❌ Error loading users from public.profiles:', error);
         throw error;
       }
 
-      console.log('📊 Loaded users from public.users:', usersData);
-      setUsers(usersData as User[] || []);
+      console.log('📊 Loaded users from public.profiles:', profilesData);
+      setUsers(profilesData as User[] || []);
     } catch (error) {
       console.error('❌ Error loading users:', error);
       showError('Failed to load users. Please try again.');
@@ -118,7 +118,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setShowErrorModal(true);
   };
 
-  // Update user role in public.users table
+  // Update user role in public.profiles table
   const handleRoleUpdate = async (userId: string, newRole: string) => {
     const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
     if (!validRoles.includes(newRole as UserRole)) {
@@ -129,9 +129,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       
-      // Update in public.users table
+      // Update in public.profiles table
       const { error } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ 
           role: newRole as UserRole,
           updated_at: new Date().toISOString()
@@ -156,7 +156,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Update user status in public.users table
+  // Update user status in public.profiles table
   const handleStatusUpdate = async (userId: string, newStatus: string) => {
     const validStatuses: UserStatus[] = ['pending', 'active', 'suspended'];
     if (!validStatuses.includes(newStatus as UserStatus)) {
@@ -167,9 +167,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setUpdating(userId);
       
-      // Update in public.users table
+      // Update in public.profiles table
       const { error } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ 
           status: newStatus as UserStatus,
           updated_at: new Date().toISOString()
@@ -194,7 +194,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Suspend user by updating status in public.users table
+  // Suspend user by updating status in public.profiles table
   const handleDeleteUser = async (userId: string, userEmail: string) => {
     showConfirmation(
       `Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`,
@@ -202,9 +202,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           
-          // Update in public.users table
+          // Update in public.profiles table
           const { error } = await supabase
-            .from('users')
+            .from('profiles')
             .update({ 
               status: 'suspended' as UserStatus,
               updated_at: new Date().toISOString()
@@ -270,14 +270,14 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  // Bulk role update in public.users table
+  // Bulk role update in public.profiles table
   const handleBulkRoleUpdate = async (newRole: UserRole) => {
     if (selectedUsers.length === 0) return;
 
     try {
-      // Update in public.users table
+      // Update in public.profiles table
       const { error } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ 
           role: newRole,
           updated_at: new Date().toISOString()
@@ -317,7 +317,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Create user with profile in public.users table
+  // Create user with profile in public.profiles table
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -374,7 +374,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setIsEditUserModalOpen(true);
   };
 
-  // Update user in public.users table
+  // Update user in public.profiles table
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -383,9 +383,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setEditingUser(true);
 
-      // Update profile in public.users table
+      // Update profile in public.profiles table
       const { error: profileError } = await supabase
-        .from('users')
+        .from('profiles')
         .update({
           full_name: editUserName || null,
           role: editUserRole,
@@ -425,14 +425,14 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Approve user by updating status in public.users table
+  // Approve user by updating status in public.profiles table
   const handleApproveUser = async (userId: string) => {
     try {
       setUpdating(userId);
       
-      // Update in public.users table
+      // Update in public.profiles table
       const { error } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ 
           status: 'active' as UserStatus,
           updated_at: new Date().toISOString()
@@ -457,7 +457,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Reactivate user by updating status in public.users table
+  // Reactivate user by updating status in public.profiles table
   const handleReactivateUser = async (userId: string) => {
     showConfirmation(
       'Are you sure you want to reactivate this user?',
@@ -465,9 +465,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         try {
           setUpdating(userId);
           
-          // Update in public.users table
+          // Update in public.profiles table
           const { error } = await supabase
-            .from('users')
+            .from('profiles')
             .update({ 
               status: 'active' as UserStatus,
               updated_at: new Date().toISOString()
@@ -515,7 +515,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 <h2 className="text-2xl font-bold text-white">User Management</h2>
                 <p className="text-gray-400 mt-1">Manage user roles, status, and permissions</p>
                 <p className="text-green-500 text-sm mt-1">
-                  Admin Access: Viewing all users from public.users table
+                  Admin Access: Viewing all users from public.profiles table
                 </p>
               </div>
               <div className="flex items-center space-x-3">
