@@ -1,4 +1,4 @@
-// components/control-room/ControlRoomDashboard.tsx
+// components/control-room/ControlRoomDashboard.tsx (Enhanced with modals)
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -14,8 +14,16 @@ export default function ControlRoomDashboard() {
   const [loading, setLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'vehicles' | 'crimes'>('overview');
+  
+  // Modal states
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalConfig, setModalConfig] = useState({
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    variant: 'danger' as 'danger' | 'warning' | 'success'
+  });
 
-  // Ensure this only runs on client side
   useEffect(() => {
     setIsClient(true);
     loadData();
@@ -31,7 +39,6 @@ export default function ControlRoomDashboard() {
         reportsAPI.getDashboardStats()
       ]);
 
-      // Filter active reports only for control room
       const activeVehicles = vehiclesData.filter((vehicle: any) => 
         ['active', 'pending'].includes(vehicle.status)
       );
@@ -51,39 +58,80 @@ export default function ControlRoomDashboard() {
     }
   };
 
+  const showConfirmationModal = (config: {
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'danger' | 'warning' | 'success';
+  }) => {
+    setModalConfig({
+      ...config,
+      variant: config.variant || 'danger'
+    });
+    setModalOpen(true);
+  };
+
   const handleResolveReport = async (reportId: string, type: 'vehicle' | 'crime') => {
-    try {
-      if (type === 'vehicle') {
-        await reportsAPI.updateVehicleAlert(reportId, { status: 'resolved' });
-        setVehicleReports(prev => prev.filter(report => report.id !== reportId));
-      } else {
-        await reportsAPI.updateCrimeReport(reportId, { status: 'resolved' });
-        setCrimeReports(prev => prev.filter(report => report.id !== reportId));
+    showConfirmationModal({
+      title: 'Resolve Report',
+      message: `Are you sure you want to mark this ${type} report as resolved?`,
+      variant: 'success',
+      onConfirm: async () => {
+        try {
+          if (type === 'vehicle') {
+            await reportsAPI.updateVehicleAlert(reportId, { status: 'resolved' });
+            setVehicleReports(prev => prev.filter(report => report.id !== reportId));
+          } else {
+            await reportsAPI.updateCrimeReport(reportId, { status: 'resolved' });
+            setCrimeReports(prev => prev.filter(report => report.id !== reportId));
+          }
+          setModalOpen(false);
+        } catch (error) {
+          console.error('Error resolving report:', error);
+        }
       }
-    } catch (error) {
-      console.error('Error resolving report:', error);
-    }
+    });
   };
 
   const handleEscalateReport = async (reportId: string, type: 'vehicle' | 'crime') => {
-    try {
-      if (type === 'vehicle') {
-        await reportsAPI.updateVehicleAlert(reportId, { severity: 'critical' });
-        setVehicleReports(prev => prev.map(report => 
-          report.id === reportId ? { ...report, severity: 'critical' } : report
-        ));
-      } else {
-        await reportsAPI.updateCrimeReport(reportId, { severity: 'critical' });
-        setCrimeReports(prev => prev.map(report => 
-          report.id === reportId ? { ...report, severity: 'critical' } : report
-        ));
+    showConfirmationModal({
+      title: 'Escalate Report',
+      message: `Are you sure you want to escalate this ${type} report to critical priority?`,
+      variant: 'warning',
+      onConfirm: async () => {
+        try {
+          if (type === 'vehicle') {
+            await reportsAPI.updateVehicleAlert(reportId, { severity: 'critical' });
+            setVehicleReports(prev => prev.map(report => 
+              report.id === reportId ? { ...report, severity: 'critical' } : report
+            ));
+          } else {
+            await reportsAPI.updateCrimeReport(reportId, { severity: 'critical' });
+            setCrimeReports(prev => prev.map(report => 
+              report.id === reportId ? { ...report, severity: 'critical' } : report
+            ));
+          }
+          setModalOpen(false);
+        } catch (error) {
+          console.error('Error escalating report:', error);
+        }
       }
-    } catch (error) {
-      console.error('Error escalating report:', error);
-    }
+    });
   };
 
-  // Show loading state during SSR
+  const handleExportData = () => {
+    showConfirmationModal({
+      title: 'Export Data',
+      message: 'This will export all current reports data. Do you want to continue?',
+      variant: 'success',
+      onConfirm: () => {
+        // Implement export functionality
+        console.log('Exporting data...');
+        setModalOpen(false);
+      }
+    });
+  };
+
   if (!isClient) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -108,6 +156,16 @@ export default function ControlRoomDashboard() {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onConfirm={modalConfig.onConfirm}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        variant={modalConfig.variant}
+      />
+
       {/* Header */}
       <header className="bg-black/80 backdrop-blur-md border-b border-gray-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -226,6 +284,7 @@ export default function ControlRoomDashboard() {
                     Generate BOLO Report
                   </CustomButton>
                   <CustomButton
+                    onClick={handleExportData}
                     variant="success"
                     size="md"
                     className="w-full"
