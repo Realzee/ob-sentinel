@@ -1,60 +1,245 @@
 // components/control-room/LiveMap.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
-interface LiveMapProps {
-  vehicleReports: any[];
-  crimeReports: any[];
+interface VehicleReport {
+  id: string;
+  license_plate: string;
+  vehicle_make: string;
+  vehicle_model: string;
+  vehicle_color: string;
+  last_seen_location: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: string;
+  created_at: string;
+  latitude?: number;
+  longitude?: number;
 }
 
+interface CrimeReport {
+  id: string;
+  title: string;
+  report_type: string;
+  location: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: string;
+  created_at: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+interface LiveMapProps {
+  vehicleReports: VehicleReport[];
+  crimeReports: CrimeReport[];
+}
+
+// Sample coordinates for demo (you can replace with actual coordinates from your data)
+const SAMPLE_COORDINATES = [
+  { lat: 40.7128, lng: -74.0060 }, // New York
+  { lat: 40.7589, lng: -73.9851 }, // Times Square
+  { lat: 40.7505, lng: -73.9934 }, // Empire State
+  { lat: 40.6892, lng: -74.0445 }, // Statue of Liberty
+  { lat: 40.7812, lng: -73.9665 }, // Central Park
+];
+
 export default function LiveMap({ vehicleReports, crimeReports }: LiveMapProps) {
-  const [isClient, setIsClient] = useState(false);
-  const totalReports = vehicleReports.length + crimeReports.length;
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
 
   useEffect(() => {
-    setIsClient(true);
+    if (!mapRef.current) return;
+
+    const initMap = async () => {
+      try {
+        const L = await import('leaflet');
+        
+        // Fix for default markers in Next.js
+        delete (L.Icon.Default.prototype as any)._getIconUrl;
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+        });
+
+        // Initialize map centered on New York
+        const map = L.map(mapRef.current!).setView([40.7128, -74.0060], 12);
+        mapInstanceRef.current = map;
+
+        // Add OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+          maxZoom: 18,
+        }).addTo(map);
+
+        // Add markers for reports
+        updateMarkers(L, map, vehicleReports, crimeReports);
+
+      } catch (error) {
+        console.error('Error initializing map:', error);
+      }
+    };
+
+    initMap();
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+      }
+      markersRef.current.forEach(marker => {
+        marker.remove();
+      });
+    };
   }, []);
 
-  if (!isClient) {
-    return (
-      <div className="h-full bg-gray-800 rounded-lg p-4">
-        <div className="h-64 bg-gray-700 rounded-lg animate-pulse"></div>
-      </div>
-    );
-  }
+  // Update markers when reports change
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
 
-  return (
-    <div className="h-full bg-gray-800 rounded-lg p-4">
-      <h3 className="text-lg font-semibold text-white mb-4">Live Map</h3>
+    const L = require('leaflet');
+    updateMarkers(L, mapInstanceRef.current, vehicleReports, crimeReports);
+  }, [vehicleReports, crimeReports]);
+
+  const updateMarkers = (L: any, map: any, vehicles: VehicleReport[], crimes: CrimeReport[]) => {
+    // Remove existing markers
+    markersRef.current.forEach(marker => {
+      marker.remove();
+    });
+    markersRef.current = [];
+
+    // Add vehicle markers
+    vehicles.forEach((vehicle, index) => {
+      const coordIndex = index % SAMPLE_COORDINATES.length;
+      const coords = SAMPLE_COORDINATES[coordIndex];
       
-      <div className="h-64 bg-gradient-to-br from-gray-700 to-gray-800 rounded-lg border border-gray-600 flex items-center justify-center">
-        <div className="text-center text-gray-300">
-          <div className="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-500/30">
-            <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-            </svg>
-          </div>
-          <h4 className="text-lg font-semibold mb-2">Interactive Map</h4>
-          <p className="text-gray-400 text-sm mb-4">Real-time location tracking</p>
-          
-          <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="text-center">
-                <div className="text-red-400 font-semibold">{vehicleReports.length}</div>
-                <div className="text-gray-500 text-xs">Vehicle Alerts</div>
-              </div>
-              <div className="text-center">
-                <div className="text-blue-400 font-semibold">{crimeReports.length}</div>
-                <div className="text-gray-500 text-xs">Crime Reports</div>
-              </div>
+      const getVehicleColor = (severity: string) => {
+        switch (severity) {
+          case 'critical': return '#DC2626'; // red-600
+          case 'high': return '#EA580C'; // orange-600
+          case 'medium': return '#D97706'; // amber-600
+          default: return '#CA8A04'; // yellow-600
+        }
+      };
+
+      const vehicleIcon = L.divIcon({
+        className: 'vehicle-marker',
+        html: `
+          <div style="
+            background-color: ${getVehicleColor(vehicle.severity)};
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 14px;
+          ">🚗</div>
+        `,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      });
+
+      const marker = L.marker([coords.lat, coords.lng], { icon: vehicleIcon })
+        .addTo(map)
+        .bindPopup(`
+          <div style="min-width: 250px; font-family: system-ui, sans-serif;">
+            <h3 style="margin: 0 0 8px 0; font-weight: bold; color: #1F2937;">Vehicle Alert</h3>
+            <div style="display: grid; gap: 4px; font-size: 14px;">
+              <div><strong>Plate:</strong> ${vehicle.license_plate}</div>
+              <div><strong>Vehicle:</strong> ${vehicle.vehicle_color} ${vehicle.vehicle_make} ${vehicle.vehicle_model}</div>
+              <div><strong>Location:</strong> ${vehicle.last_seen_location}</div>
+              <div><strong>Severity:</strong> <span style="color: ${getVehicleColor(vehicle.severity)}; font-weight: bold">${vehicle.severity}</span></div>
+              <div><strong>Reported:</strong> ${new Date(vehicle.created_at).toLocaleDateString()}</div>
             </div>
           </div>
-          
-          <div className="mt-4 text-xs text-gray-500">
-            Map integration coming in next update
+        `);
+
+      markersRef.current.push(marker);
+    });
+
+    // Add crime markers
+    crimes.forEach((crime, index) => {
+      const coordIndex = (index + vehicles.length) % SAMPLE_COORDINATES.length;
+      const coords = SAMPLE_COORDINATES[coordIndex];
+      
+      const getCrimeColor = (severity: string) => {
+        switch (severity) {
+          case 'critical': return '#7C2D12'; // red-900
+          case 'high': return '#9A3412'; // orange-800
+          case 'medium': return '#B45309'; // amber-700
+          default: return '#D97706'; // amber-600
+        }
+      };
+
+      const crimeIcon = L.divIcon({
+        className: 'crime-marker',
+        html: `
+          <div style="
+            background-color: ${getCrimeColor(crime.severity)};
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 14px;
+          ">🚨</div>
+        `,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      });
+
+      const marker = L.marker([coords.lat, coords.lng], { icon: crimeIcon })
+        .addTo(map)
+        .bindPopup(`
+          <div style="min-width: 250px; font-family: system-ui, sans-serif;">
+            <h3 style="margin: 0 0 8px 0; font-weight: bold; color: #1F2937;">Crime Report</h3>
+            <div style="display: grid; gap: 4px; font-size: 14px;">
+              <div><strong>Type:</strong> ${crime.report_type}</div>
+              <div><strong>Title:</strong> ${crime.title}</div>
+              <div><strong>Location:</strong> ${crime.location}</div>
+              <div><strong>Severity:</strong> <span style="color: ${getCrimeColor(crime.severity)}; font-weight: bold">${crime.severity}</span></div>
+              <div><strong>Reported:</strong> ${new Date(crime.created_at).toLocaleDateString()}</div>
+            </div>
+          </div>
+        `);
+
+      markersRef.current.push(marker);
+    });
+  };
+
+  return (
+    <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 p-6">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-semibold text-white">Live Incident Map</h3>
+        <div className="flex items-center space-x-4 text-sm">
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-3 bg-red-600 rounded-full"></div>
+            <span className="text-gray-400">Vehicle Alerts</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-3 bg-amber-800 rounded-full"></div>
+            <span className="text-gray-400">Crime Reports</span>
           </div>
         </div>
+      </div>
+      <div 
+        ref={mapRef} 
+        className="w-full h-96 rounded-lg border border-gray-600"
+      />
+      <div className="mt-3 text-xs text-gray-400">
+        Showing {vehicleReports.length} vehicle alerts and {crimeReports.length} crime reports
       </div>
     </div>
   );
