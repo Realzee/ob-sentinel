@@ -1012,43 +1012,43 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       )}
 
       {/* Success Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
-        title="Success"
-        message={successMessage}
-        type="success"
-        confirmText="OK"
-        showCancel={false}
-      />
+<ConfirmationModal
+  isOpen={showSuccessModal}
+  onClose={() => setShowSuccessModal(false)}
+  title="Success"
+  message={successMessage}
+  variant="success" // Changed from 'type' to 'variant'
+  confirmText="OK"
+  showCancel={false}
+/>
 
-      {/* Error Modal */}
-      <ConfirmationModal
-        isOpen={showErrorModal}
-        onClose={() => setShowErrorModal(false)}
-        title="Error"
-        message={errorMessage}
-        type="error"
-        confirmText="OK"
-        showCancel={false}
-      />
+{/* Error Modal */}
+<ConfirmationModal
+  isOpen={showErrorModal}
+  onClose={() => setShowErrorModal(false)}
+  title="Error"
+  message={errorMessage}
+  variant="error" // Changed from 'type' to 'variant'
+  confirmText="OK"
+  showCancel={false}
+/>
 
-      {/* Confirmation Modal for Actions */}
-      <ConfirmationModal
-        isOpen={showConfirmModal}
-        onClose={() => setShowConfirmModal(false)}
-        onConfirm={() => {
-          if (confirmAction) {
-            confirmAction();
-          }
-          setShowConfirmModal(false);
-        }}
-        title="Confirm Action"
-        message={confirmMessage}
-        type="warning"
-        confirmText="Confirm"
-        cancelText="Cancel"
-      />
+{/* Confirmation Modal for Actions */}
+<ConfirmationModal
+  isOpen={showConfirmModal}
+  onClose={() => setShowConfirmModal(false)}
+  onConfirm={() => {
+    if (confirmAction) {
+      confirmAction();
+    }
+    setShowConfirmModal(false);
+  }}
+  title="Confirm Action"
+  message={confirmMessage}
+  variant="warning" // Changed from 'type' to 'variant'
+  confirmText="Confirm"
+  cancelText="Cancel"
+/>
     </>
   );
 }
