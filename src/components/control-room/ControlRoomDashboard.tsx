@@ -1,481 +1,368 @@
-// components/control-room/ControlRoomDashboard.tsx (Enhanced with modals)
-'use client';
+// src/components/control-room/ControlRoomDashboard.tsx
+import React, { useState, useEffect } from 'react';
+import { 
+  AlertTriangle, 
+  Shield, 
+  Users, 
+  MapPin, 
+  Car, 
+  FileText,
+  Search,
+  Filter,
+  Download,
+  RefreshCw
+} from 'lucide-react';
+import { reportsAPI, getDataFromPaginatedResponse, type VehicleAlert, type CrimeReport, type DashboardStats } from '@/lib/supabase';
 
-import { useState, useEffect } from 'react';
-import { reportsAPI, authAPI } from '@/lib/supabase';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { useRouter } from 'next/navigation';
-import LiveMap from './LiveMap';
-import ConfirmationModal from '@/components/ui/ConfirmationModal';
-import CustomButton from '@/components/ui/CustomButton';
-
-export default function ControlRoomDashboard() {
-  const { user, signOut } = useAuth();
-  const router = useRouter();
-  const [vehicleReports, setVehicleReports] = useState<any[]>([]);
-  const [crimeReports, setCrimeReports] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
+const ControlRoomDashboard: React.FC = () => {
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [vehicleAlerts, setVehicleAlerts] = useState<VehicleAlert[]>([]);
+  const [crimeReports, setCrimeReports] = useState<CrimeReport[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isClient, setIsClient] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'vehicles' | 'crimes'>('overview');
-  
-  // Modal states
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalConfig, setModalConfig] = useState({
-    title: '',
-    message: '',
-    onConfirm: () => {},
-    variant: 'danger' as 'danger' | 'warning' | 'success'
-  });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [severityFilter, setSeverityFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'vehicles' | 'crimes'>('vehicles');
 
   useEffect(() => {
-    setIsClient(true);
-    loadData();
+    loadDashboardData();
   }, []);
 
-  const loadData = async () => {
+  const loadDashboardData = async () => {
     try {
       setLoading(true);
-      
-      const [vehiclesData, crimesData, statsData] = await Promise.all([
+      const [stats, vehiclesResponse, crimesResponse] = await Promise.all([
+        reportsAPI.getDashboardStats(),
         reportsAPI.getVehicleAlerts(),
-        reportsAPI.getCrimeReports(),
-        reportsAPI.getDashboardStats()
+        reportsAPI.getCrimeReports()
       ]);
 
-      const activeVehicles = vehiclesData.filter((vehicle: any) => 
-        ['active', 'pending'].includes(vehicle.status)
-      );
+      setDashboardStats(stats);
       
-      const activeCrimes = crimesData.filter((crime: any) => 
-        ['active', 'pending'].includes(crime.status)
-      );
-
-      setVehicleReports(activeVehicles);
-      setCrimeReports(activeCrimes);
-      setStats(statsData);
-      
+      // Extract data from PaginatedResponse
+      setVehicleAlerts(getDataFromPaginatedResponse(vehiclesResponse));
+      setCrimeReports(getDataFromPaginatedResponse(crimesResponse));
     } catch (error) {
-      console.error('Error loading control room data:', error);
+      console.error('Error loading dashboard data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogout = async () => {
-    showConfirmationModal({
-      title: 'Logout',
-      message: 'Are you sure you want to logout?',
-      variant: 'warning',
-      onConfirm: async () => {
-        await signOut();
-        setModalOpen(false);
-      }
-    });
+  const refreshData = () => {
+    loadDashboardData();
   };
 
-  const handleGoToDashboard = () => {
-    router.push('/dashboard');
+  // Filter functions using the data arrays
+  const filteredVehicleAlerts = vehicleAlerts.filter(alert => {
+    const matchesSearch = 
+      alert.license_plate.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      alert.vehicle_make.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      alert.vehicle_model.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      alert.reason.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesStatus = statusFilter === 'all' || alert.status === statusFilter;
+    const matchesSeverity = severityFilter === 'all' || alert.severity === severityFilter;
+
+    return matchesSearch && matchesStatus && matchesSeverity;
+  });
+
+  const filteredCrimeReports = crimeReports.filter(report => {
+    const matchesSearch = 
+      report.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.report_type.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesStatus = statusFilter === 'all' || report.status === statusFilter;
+    const matchesSeverity = severityFilter === 'all' || report.severity === severityFilter;
+
+    return matchesSearch && matchesStatus && matchesSeverity;
+  });
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'critical': return 'bg-red-100 text-red-800 border-red-200';
+      case 'high': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'low': return 'bg-green-100 text-green-800 border-green-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
   };
 
-  const showConfirmationModal = (config: {
-    title: string;
-    message: string;
-    onConfirm: () => void;
-    variant?: 'danger' | 'warning' | 'success';
-  }) => {
-    setModalConfig({
-      ...config,
-      variant: config.variant || 'danger'
-    });
-    setModalOpen(true);
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-red-100 text-red-800 border-red-200';
+      case 'pending': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'resolved': return 'bg-green-100 text-green-800 border-green-200';
+      case 'recovered': return 'bg-green-100 text-green-800 border-green-200';
+      case 'rejected': return 'bg-gray-100 text-gray-800 border-gray-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
   };
 
-  const handleResolveReport = async (reportId: string, type: 'vehicle' | 'crime') => {
-    showConfirmationModal({
-      title: 'Resolve Report',
-      message: `Are you sure you want to mark this ${type} report as resolved?`,
-      variant: 'success',
-      onConfirm: async () => {
-        try {
-          if (type === 'vehicle') {
-            await reportsAPI.updateVehicleAlert(reportId, { status: 'resolved' });
-            setVehicleReports(prev => prev.filter(report => report.id !== reportId));
-          } else {
-            await reportsAPI.updateCrimeReport(reportId, { status: 'resolved' });
-            setCrimeReports(prev => prev.filter(report => report.id !== reportId));
-          }
-          setModalOpen(false);
-        } catch (error) {
-          console.error('Error resolving report:', error);
-        }
-      }
-    });
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setSeverityFilter('all');
   };
 
-  const handleEscalateReport = async (reportId: string, type: 'vehicle' | 'crime') => {
-    showConfirmationModal({
-      title: 'Escalate Report',
-      message: `Are you sure you want to escalate this ${type} report to critical priority?`,
-      variant: 'warning',
-      onConfirm: async () => {
-        try {
-          if (type === 'vehicle') {
-            await reportsAPI.updateVehicleAlert(reportId, { severity: 'critical' });
-            setVehicleReports(prev => prev.map(report => 
-              report.id === reportId ? { ...report, severity: 'critical' } : report
-            ));
-          } else {
-            await reportsAPI.updateCrimeReport(reportId, { severity: 'critical' });
-            setCrimeReports(prev => prev.map(report => 
-              report.id === reportId ? { ...report, severity: 'critical' } : report
-            ));
-          }
-          setModalOpen(false);
-        } catch (error) {
-          console.error('Error escalating report:', error);
-        }
-      }
-    });
+  const formatDisplayDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-ZA', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      console.error('Error formatting display date:', error);
+      return 'Invalid Date';
+    }
   };
-
-  const handleExportData = () => {
-    showConfirmationModal({
-      title: 'Export Data',
-      message: 'This will export all current reports data. Do you want to continue?',
-      variant: 'success',
-      onConfirm: () => {
-        // Implement export functionality
-        console.log('Exporting data...');
-        setModalOpen(false);
-      }
-    });
-  };
-
-  // Check if user is admin for dashboard access
-  const isAdmin = user?.user_metadata?.role === 'admin';
-
-  if (!isClient) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto"></div>
-          <p className="text-gray-400 mt-4">Loading Control Room...</p>
-        </div>
-      </div>
-    );
-  }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto"></div>
-          <p className="text-gray-400 mt-4">Loading Control Room Data...</p>
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p>Loading dashboard data...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onConfirm={modalConfig.onConfirm}
-        title={modalConfig.title}
-        message={modalConfig.message}
-        variant={modalConfig.variant}
-      />
-
+    <div className="space-y-6">
       {/* Header */}
-      <header className="bg-black/80 backdrop-blur-md border-b border-gray-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-4">
-                {/* Back to Dashboard Button for Admins */}
-                {isAdmin && (
-                  <CustomButton
-                    onClick={handleGoToDashboard}
-                    variant="secondary"
-                    size="sm"
-                    className="flex items-center space-x-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                    <span>Dashboard</span>
-                  </CustomButton>
-                )}
-                <h1 className="text-xl font-bold text-white">Control Room</h1>
-              </div>
-              <div className="flex space-x-1">
-                {[
-                  { id: 'overview', label: 'Overview' },
-                  { id: 'vehicles', label: 'Vehicle Alerts' },
-                  { id: 'crimes', label: 'Crime Reports' }
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      activeTab === tab.id
-                        ? 'bg-red-600 text-white'
-                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              {/* User Info */}
-              <div className="flex items-center space-x-3">
-                <span className="text-gray-300 text-sm">
-                  {user?.email}
-                </span>
-                <span className={`px-2 py-1 text-xs rounded-full ${
-                  user?.user_metadata?.role === 'admin' ? 'bg-purple-500/20 text-purple-300' :
-                  user?.user_metadata?.role === 'moderator' ? 'bg-blue-500/20 text-blue-300' :
-                  user?.user_metadata?.role === 'controller' ? 'bg-green-500/20 text-green-300' :
-                  'bg-gray-500/20 text-gray-300'
-                }`}>
-                  {user?.user_metadata?.role || 'user'}
-                </span>
-              </div>
-              
-              <CustomButton
-                onClick={loadData}
-                disabled={loading}
-                variant="secondary"
-                size="sm"
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Control Room Dashboard</h1>
+          <p className="text-gray-600">
+            Real-time monitoring and management of security incidents
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={refreshData}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+            <Download className="h-4 w-4" />
+            Export Report
+          </button>
+        </div>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-600">Today&apos;s Reports</h3>
+            <FileText className="h-4 w-4 text-gray-400" />
+          </div>
+          <div className="text-2xl font-bold mt-2">{dashboardStats?.todayReports || 0}</div>
+          <p className="text-xs text-gray-500 mt-1">
+            New incidents reported today
+          </p>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-600">Active Incidents</h3>
+            <AlertTriangle className="h-4 w-4 text-gray-400" />
+          </div>
+          <div className="text-2xl font-bold mt-2">{dashboardStats?.activeReports || 0}</div>
+          <p className="text-xs text-gray-500 mt-1">
+            Currently being investigated
+          </p>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-600">Critical Alerts</h3>
+            <Shield className="h-4 w-4 text-gray-400" />
+          </div>
+          <div className="text-2xl font-bold text-red-600 mt-2">{dashboardStats?.criticalReports || 0}</div>
+          <p className="text-xs text-gray-500 mt-1">
+            Require immediate attention
+          </p>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-600">Resolved Cases</h3>
+            <Users className="h-4 w-4 text-gray-400" />
+          </div>
+          <div className="text-2xl font-bold mt-2">
+            {(dashboardStats?.resolvedVehicles || 0) + (dashboardStats?.resolvedCrimes || 0)}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Successfully resolved incidents
+          </p>
+        </div>
+      </div>
+
+      {/* Search and Filters */}
+      <div className="bg-white p-6 rounded-lg border border-gray-200">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search reports, license plates, locations..."
+              value={searchQuery}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div className="flex gap-2">
+            <div className="relative">
+              <select
+                value={statusFilter}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatusFilter(e.target.value)}
+                className="appearance-none bg-white border border-gray-300 rounded-md py-2 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                Refresh
-              </CustomButton>
-              
-              {/* Logout Button */}
-              <CustomButton
-                onClick={handleLogout}
-                variant="danger"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                <span>Logout</span>
-              </CustomButton>
+                <option value="all">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="resolved">Resolved</option>
+              </select>
+              <Filter className="absolute right-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" />
             </div>
+
+            <div className="relative">
+              <select
+                value={severityFilter}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSeverityFilter(e.target.value)}
+                className="appearance-none bg-white border border-gray-300 rounded-md py-2 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="all">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              <Filter className="absolute right-2 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" />
+            </div>
+
+            {(searchQuery || statusFilter !== 'all' || severityFilter !== 'all') && (
+              <button 
+                onClick={clearFilters}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left column - Stats and Map */}
-            <div className="lg:col-span-2">
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                {[
-                  { value: stats?.activeReports || 0, label: "Active Reports", color: "bg-orange-600" },
-                  { value: vehicleReports.length, label: "Vehicle Alerts", color: "bg-red-600" },
-                  { value: crimeReports.length, label: "Crime Reports", color: "bg-blue-600" },
-                  { value: stats?.todayReports || 0, label: "Today's Total", color: "bg-green-600" }
-                ].map((stat, index) => (
-                  <div key={index} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-2xl font-bold text-white">{stat.value}</div>
-                        <div className="text-sm text-gray-400 mt-1">{stat.label}</div>
-                      </div>
-                      <div className={`w-3 h-3 rounded-full ${stat.color}`}></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Live Map */}
-              <div className="mb-6">
-                <LiveMap vehicleReports={vehicleReports} crimeReports={crimeReports} />
-              </div>
-
-              {/* Recent Activity */}
-              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700">
-                <div className="px-6 py-4 border-b border-gray-700">
-                  <h3 className="text-xl font-semibold text-white">Recent Activity</h3>
-                </div>
-                <div className="p-6">
-                  <div className="space-y-3">
-                    {[...vehicleReports.slice(0, 3), ...crimeReports.slice(0, 2)].map((report, index) => (
-                      <div key={report.id || index} className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-                        <div className="flex items-center space-x-3">
-                          <div className={`w-2 h-2 rounded-full ${
-                            report.license_plate ? 'bg-red-500' : 'bg-blue-500'
-                          }`}></div>
-                          <div>
-                            <div className="font-semibold text-white">
-                              {report.license_plate ? `Vehicle: ${report.license_plate}` : `Crime: ${report.title}`}
-                            </div>
-                            <div className="text-sm text-gray-400">
-                              {report.last_seen_location || report.location}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(report.created_at).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right column - Quick Actions */}
-            <div className="space-y-6">
-              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-                <div className="space-y-3">
-                  <CustomButton
-                    onClick={() => window.open('/bolo-generator', '_blank')}
-                    variant="primary"
-                    size="md"
-                    className="w-full"
-                  >
-                    Generate BOLO Report
-                  </CustomButton>
-                  <CustomButton
-                    onClick={handleExportData}
-                    variant="success"
-                    size="md"
-                    className="w-full"
-                  >
-                    Export Data
-                  </CustomButton>
-                  <CustomButton
-                    variant="secondary"
-                    size="md"
-                    className="w-full"
-                  >
-                    System Status
-                  </CustomButton>
-                </div>
-              </div>
-              
-              {/* System Status */}
-              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">System Status</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">API</span>
-                    <span className="text-green-400 text-sm font-medium">Online</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Database</span>
-                    <span className="text-green-400 text-sm font-medium">Connected</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Reports</span>
-                    <span className="text-blue-400 text-sm font-medium">Active</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Map Service</span>
-                    <span className="text-green-400 text-sm font-medium">Online</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Alert Summary */}
-              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Alert Summary</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Critical</span>
-                    <span className="text-red-400 font-semibold">
-                      {vehicleReports.filter(v => v.severity === 'critical').length + 
-                       crimeReports.filter(c => c.severity === 'critical').length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">High Priority</span>
-                    <span className="text-orange-400 font-semibold">
-                      {vehicleReports.filter(v => v.severity === 'high').length + 
-                       crimeReports.filter(c => c.severity === 'high').length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Medium Priority</span>
-                    <span className="text-yellow-400 font-semibold">
-                      {vehicleReports.filter(v => v.severity === 'medium').length + 
-                       crimeReports.filter(c => c.severity === 'medium').length}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Reports Tabs */}
+      <div className="space-y-4">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('vehicles')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                activeTab === 'vehicles'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Car className="h-4 w-4" />
+              Vehicle Alerts ({filteredVehicleAlerts.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('crimes')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                activeTab === 'crimes'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+              Crime Reports ({filteredCrimeReports.length})
+            </button>
+          </nav>
+        </div>
 
         {/* Vehicle Alerts Tab */}
         {activeTab === 'vehicles' && (
-          <div className="space-y-6">
-            <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700">
-              <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
-                <h3 className="text-xl font-semibold text-white">Active Vehicle Alerts</h3>
-                <span className="text-sm text-gray-400 bg-gray-900 px-3 py-1 rounded-full">
-                  {vehicleReports.length} active
-                </span>
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg border border-gray-200">
+              <div className="p-6 border-b border-gray-200">
+                <h2 className="text-lg font-semibold">Vehicle Alerts</h2>
               </div>
               <div className="p-6">
-                {vehicleReports.length === 0 ? (
-                  <p className="text-gray-400 text-center py-8">No active vehicle alerts</p>
+                {filteredVehicleAlerts.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Car className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No vehicle alerts found matching your criteria</p>
+                  </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {vehicleReports.map((report) => (
-                      <div key={report.id} className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <div className="font-semibold text-white text-lg">{report.license_plate}</div>
-                            <div className="text-sm text-gray-400">
-                              {report.vehicle_make} {report.vehicle_model} • {report.vehicle_color}
-                            </div>
-                          </div>
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            report.severity === 'critical' ? 'bg-red-500/20 text-red-300' :
-                            report.severity === 'high' ? 'bg-orange-500/20 text-orange-300' :
-                            'bg-yellow-500/20 text-yellow-300'
-                          }`}>
-                            {report.severity}
-                          </span>
-                        </div>
-                        <div className="text-sm text-gray-400 mb-3">
-                          <div>Location: {report.last_seen_location}</div>
-                          <div>Reported: {new Date(report.created_at).toLocaleDateString()}</div>
-                        </div>
-                        <div className="flex space-x-2">
-                          <CustomButton
-                            onClick={() => handleResolveReport(report.id, 'vehicle')}
-                            variant="success"
-                            size="sm"
-                          >
-                            Resolve
-                          </CustomButton>
-                          <CustomButton
-                            onClick={() => handleEscalateReport(report.id, 'vehicle')}
-                            variant="danger"
-                            size="sm"
-                          >
-                            Escalate
-                          </CustomButton>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-3 px-4 font-medium">License Plate</th>
+                          <th className="text-left py-3 px-4 font-medium">Vehicle</th>
+                          <th className="text-left py-3 px-4 font-medium">Reason</th>
+                          <th className="text-left py-3 px-4 font-medium">Location</th>
+                          <th className="text-left py-3 px-4 font-medium">Severity</th>
+                          <th className="text-left py-3 px-4 font-medium">Status</th>
+                          <th className="text-left py-3 px-4 font-medium">Reported</th>
+                          <th className="text-left py-3 px-4 font-medium">OB Number</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredVehicleAlerts.map((alert) => (
+                          <tr key={alert.id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="py-3 px-4 font-mono font-bold">
+                              {alert.license_plate}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-medium">
+                                {alert.vehicle_make} {alert.vehicle_model}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {alert.vehicle_color} {alert.year || ''}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 max-w-xs truncate">
+                              {alert.reason}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3" />
+                                <span className="text-sm">{alert.last_seen_location}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getSeverityColor(alert.severity)}`}>
+                                {alert.severity.toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(alert.status)}`}>
+                                {alert.status.toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-sm">
+                              {formatDisplayDate(alert.created_at)}
+                            </td>
+                            <td className="py-3 px-4 font-mono text-sm">
+                              {alert.ob_number}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -485,64 +372,109 @@ export default function ControlRoomDashboard() {
 
         {/* Crime Reports Tab */}
         {activeTab === 'crimes' && (
-          <div className="space-y-6">
-            <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700">
-              <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
-                <h3 className="text-xl font-semibold text-white">Active Crime Reports</h3>
-                <span className="text-sm text-gray-400 bg-gray-900 px-3 py-1 rounded-full">
-                  {crimeReports.length} active
-                </span>
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg border border-gray-200">
+              <div className="p-6 border-b border-gray-200">
+                <h2 className="text-lg font-semibold">Crime Reports</h2>
               </div>
               <div className="p-6">
-                {crimeReports.length === 0 ? (
-                  <p className="text-gray-400 text-center py-8">No active crime reports</p>
+                {filteredCrimeReports.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No crime reports found matching your criteria</p>
+                  </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {crimeReports.map((report) => (
-                      <div key={report.id} className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <div className="font-semibold text-white text-lg">{report.title}</div>
-                            <div className="text-sm text-gray-400">
-                              {report.report_type} • {report.location}
-                            </div>
-                          </div>
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            report.severity === 'critical' ? 'bg-red-500/20 text-red-300' :
-                            report.severity === 'high' ? 'bg-orange-500/20 text-orange-300' :
-                            'bg-yellow-500/20 text-yellow-300'
-                          }`}>
-                            {report.severity}
-                          </span>
-                        </div>
-                        <div className="text-sm text-gray-400 mb-3">
-                          <div>Reported: {new Date(report.created_at).toLocaleDateString()}</div>
-                        </div>
-                        <div className="flex space-x-2">
-                          <CustomButton
-                            onClick={() => handleResolveReport(report.id, 'crime')}
-                            variant="success"
-                            size="sm"
-                          >
-                            Resolve
-                          </CustomButton>
-                          <CustomButton
-                            onClick={() => handleEscalateReport(report.id, 'crime')}
-                            variant="danger"
-                            size="sm"
-                          >
-                            Escalate
-                          </CustomButton>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-3 px-4 font-medium">Title</th>
+                          <th className="text-left py-3 px-4 font-medium">Type</th>
+                          <th className="text-left py-3 px-4 font-medium">Location</th>
+                          <th className="text-left py-3 px-4 font-medium">Description</th>
+                          <th className="text-left py-3 px-4 font-medium">Severity</th>
+                          <th className="text-left py-3 px-4 font-medium">Status</th>
+                          <th className="text-left py-3 px-4 font-medium">Incident Time</th>
+                          <th className="text-left py-3 px-4 font-medium">OB Number</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredCrimeReports.map((report) => (
+                          <tr key={report.id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="py-3 px-4 font-medium">
+                              {report.title}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
+                                {report.report_type.toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3" />
+                                <span className="text-sm">{report.location}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 max-w-xs">
+                              <div className="truncate" title={report.description}>
+                                {report.description}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getSeverityColor(report.severity)}`}>
+                                {report.severity.toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(report.status)}`}>
+                                {report.status.toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-sm">
+                              {report.incident_time 
+                                ? formatDisplayDate(report.incident_time)
+                                : 'Unknown'
+                              }
+                            </td>
+                            <td className="py-3 px-4 font-mono text-sm">
+                              {report.ob_number}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
             </div>
           </div>
         )}
-      </main>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="bg-white p-6 rounded-lg border border-gray-200">
+        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
+        <div className="flex flex-wrap gap-4">
+          <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50">
+            <Car className="h-4 w-4" />
+            New Vehicle Alert
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50">
+            <FileText className="h-4 w-4" />
+            New Crime Report
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50">
+            <Users className="h-4 w-4" />
+            Manage Users
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50">
+            <MapPin className="h-4 w-4" />
+            View Map
+          </button>
+        </div>
+      </div>
     </div>
   );
-}
+};
+
+export default ControlRoomDashboard;
