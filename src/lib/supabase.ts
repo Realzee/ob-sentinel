@@ -457,139 +457,54 @@ export const authAPI = {
 
 // Reports API (for ControlRoomDashboard)
 export const reportsAPI = {
-  // Get all reports
-  getReports: async (): Promise<any[]> => {
+  // Vehicle Reports
+  createVehicleAlert: async (reportData: any) => {
     try {
       const { data, error } = await supabase
-        .from('reports')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error('Error getting reports:', error);
-      throw error;
-    }
-  },
-
-  // Create report
-  createReport: async (reportData: any): Promise<any> => {
-    try {
-      const { data, error } = await supabase
-        .from('reports')
-        .insert([reportData])
+        .from('vehicle_alerts')
+        .insert([{
+          ...reportData,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
         .select()
         .single();
-      
+
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error creating report:', error);
+      console.error('Error creating vehicle alert:', error);
       throw error;
     }
   },
 
-  // Update report
-  updateReport: async (reportId: string, updates: any): Promise<any> => {
-    try {
-      const { data, error } = await supabase
-        .from('reports')
-        .update(updates)
-        .eq('id', reportId)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('Error updating report:', error);
-      throw error;
-    }
-  },
-
-  // Get vehicle alerts
-  getVehicleAlerts: async (): Promise<VehicleAlert[]> => {
+  getVehicleAlerts: async () => {
     try {
       const { data, error } = await supabase
         .from('vehicle_alerts')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error getting vehicle alerts:', error);
-      throw error;
+      console.error('Error fetching vehicle alerts:', error);
+      return [];
     }
   },
 
-  // Get crime reports
-  getCrimeReports: async (): Promise<CrimeReport[]> => {
-    try {
-      const { data, error } = await supabase
-        .from('crime_reports')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error('Error getting crime reports:', error);
-      throw error;
-    }
-  },
-
-  // Get dashboard stats
-  getDashboardStats: async (): Promise<DashboardStats> => {
-    try {
-      const { data: alerts } = await supabase
-        .from('vehicle_alerts')
-        .select('id, status');
-      
-      const { data: reports } = await supabase
-        .from('crime_reports')
-        .select('id, status, created_at');
-      
-      const totalAlerts = alerts?.length || 0;
-      const activeAlerts = alerts?.filter(a => a.status === 'active').length || 0;
-      const totalReports = reports?.length || 0;
-      const openReports = reports?.filter(r => r.status === 'open').length || 0;
-      
-      const today = new Date().toISOString().split('T')[0];
-      const resolvedToday = reports?.filter(r => 
-        (r.status === 'closed' || r.status === 'resolved') && r.created_at.startsWith(today)
-      ).length || 0;
-
-      return {
-        total_alerts: totalAlerts,
-        active_alerts: activeAlerts,
-        total_reports: totalReports,
-        open_reports: openReports,
-        resolved_today: resolvedToday
-      };
-    } catch (error) {
-      console.error('Error getting dashboard stats:', error);
-      return {
-        total_alerts: 0,
-        active_alerts: 0,
-        total_reports: 0,
-        open_reports: 0,
-        resolved_today: 0
-      };
-    }
-  },
-
-  // Update vehicle alert
-  updateVehicleAlert: async (alertId: string, updates: Partial<VehicleAlert>): Promise<VehicleAlert> => {
+  updateVehicleAlert: async (id: string, updates: any) => {
     try {
       const { data, error } = await supabase
         .from('vehicle_alerts')
-        .update(updates)
-        .eq('id', alertId)
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
         .select()
         .single();
-      
+
       if (error) throw error;
       return data;
     } catch (error) {
@@ -598,21 +513,94 @@ export const reportsAPI = {
     }
   },
 
-  // Update crime report
-  updateCrimeReport: async (reportId: string, updates: Partial<CrimeReport>): Promise<CrimeReport> => {
+  // Crime Reports (similar structure)
+  createCrimeReport: async (reportData: any) => {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
-        .update(updates)
-        .eq('id', reportId)
+        .insert([{
+          ...reportData,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
         .select()
         .single();
-      
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating crime report:', error);
+      throw error;
+    }
+  },
+
+  getCrimeReports: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('crime_reports')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching crime reports:', error);
+      return [];
+    }
+  },
+
+  updateCrimeReport: async (id: string, updates: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('crime_reports')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
       if (error) throw error;
       return data;
     } catch (error) {
       console.error('Error updating crime report:', error);
       throw error;
+    }
+  },
+
+  // Dashboard Stats
+  getDashboardStats: async () => {
+    try {
+      const [vehiclesData, crimesData] = await Promise.all([
+        reportsAPI.getVehicleAlerts(),
+        reportsAPI.getCrimeReports()
+      ]);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const todayVehicles = vehiclesData.filter((report: any) => 
+        new Date(report.created_at) >= today
+      );
+      const todayCrimes = crimesData.filter((report: any) => 
+        new Date(report.created_at) >= today
+      );
+
+      return {
+        todayReports: todayVehicles.length + todayCrimes.length,
+        activeReports: vehiclesData.length + crimesData.length,
+        resolvedVehicles: vehiclesData.filter((v: any) => v.status === 'resolved').length,
+        resolvedCrimes: crimesData.filter((c: any) => c.status === 'resolved').length
+      };
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+      return {
+        todayReports: 0,
+        activeReports: 0,
+        resolvedVehicles: 0,
+        resolvedCrimes: 0
+      };
     }
   }
 };

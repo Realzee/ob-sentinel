@@ -1,10 +1,13 @@
-// components/reports/VehicleReportModal.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
-import { reportsAPI, ReportStatus, formatDateForDateTimeLocal } from '@/lib/supabase';
+import { reportsAPI, formatDateForDateTimeLocal } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import Image from 'next/image';
+
+// Define types locally since they're not exported from supabase
+type ReportStatus = 'active' | 'pending' | 'resolved' | 'rejected' | 'recovered';
+type SeverityType = 'low' | 'medium' | 'high' | 'critical';
 
 interface VehicleReportModalProps {
   isOpen: boolean;
@@ -13,9 +16,6 @@ interface VehicleReportModalProps {
   user: any;
   editReport?: any;
 }
-
-// Define severity type to match the expected union type
-type SeverityType = 'low' | 'medium' | 'high' | 'critical';
 
 // Generate short OB number
 const generateShortOBNumber = (type: 'V' | 'C') => {
@@ -181,82 +181,89 @@ export default function VehicleReportModal({
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  e.preventDefault();
+  
+  // Validate form before submission
+  if (!formData.license_plate.trim() || !formData.vehicle_make.trim()) {
+    showError('Please fill in all required fields (License Plate and Vehicle Make).');
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    console.log('🔄 Starting report submission...', { formData, user });
+
+    // Check if API function exists
+    if (!reportsAPI.createVehicleAlert) {
+      throw new Error('Report submission is currently unavailable. Please try again later.');
+    }
+
+    // Process images locally first
+    const allImageUrls = await processImagesLocally();
+
+    // Prepare report data
+    const reportData = {
+      license_plate: formData.license_plate.trim().toUpperCase(),
+      vehicle_make: formData.vehicle_make.trim(),
+      vehicle_model: formData.vehicle_model.trim(),
+      vehicle_color: formData.vehicle_color.trim(),
+      year: formData.year ? parseInt(formData.year) : null,
+      reason: formData.reason.trim(),
+      last_seen_location: formData.last_seen_location.trim(),
+      last_seen_time: formData.last_seen_time ? new Date(formData.last_seen_time).toISOString() : null,
+      severity: formData.severity,
+      status: formData.status,
+      notes: formData.notes.trim(),
+      ob_number: formData.ob_number,
+      reported_by: user.id,
+      evidence_images: allImageUrls
+    };
+
+    console.log('📤 Submitting report data:', reportData);
+
+    let result;
+
+    if (editReport) {
+      console.log('🔄 Updating existing report...');
+      result = await reportsAPI.updateVehicleAlert(editReport.id, reportData);
+    } else {
+      console.log('🔄 Creating new report...');
+      result = await reportsAPI.createVehicleAlert(reportData);
+    }
+
+    console.log('✅ Report saved successfully:', result);
+
+    // Show success message
+    const successMsg = editReport ? 'Vehicle report updated successfully!' : 'Vehicle report created successfully!';
+    showSuccess(successMsg);
+
+    // Close modal and refresh after delay
+    setTimeout(() => {
+      handleModalClose();
+      onReportCreated();
+    }, 2000);
+
+  } catch (error: any) {
+    console.error('❌ Error saving vehicle report:', error);
+
+    let errorMessage = 'Error saving vehicle report. Please try again.';
     
-    // Validate form before submission
-    if (!formData.license_plate.trim() || !formData.vehicle_make.trim()) {
-      showError('Please fill in all required fields (License Plate and Vehicle Make).');
-      return;
+    if (error.message?.includes('unavailable')) {
+      errorMessage = error.message;
+    } else if (error.message?.includes('permission') || error.message?.includes('RLS')) {
+      errorMessage = 'Database permission denied. Please check if your user has proper permissions.';
+    } else if (error.message?.includes('authenticated')) {
+      errorMessage = 'Authentication error. Please log out and log in again.';
+    } else if (error.message) {
+      errorMessage = error.message;
     }
 
-    setLoading(true);
-
-    try {
-      console.log('🔄 Starting report submission...', { formData, user });
-
-      // Process images locally first
-      const allImageUrls = await processImagesLocally();
-
-      // Prepare report data
-      const reportData = {
-        license_plate: formData.license_plate.trim().toUpperCase(),
-        vehicle_make: formData.vehicle_make.trim(),
-        vehicle_model: formData.vehicle_model.trim(),
-        vehicle_color: formData.vehicle_color.trim(),
-        year: formData.year ? parseInt(formData.year) : null,
-        reason: formData.reason.trim(),
-        last_seen_location: formData.last_seen_location.trim(),
-        last_seen_time: formData.last_seen_time ? new Date(formData.last_seen_time).toISOString() : null,
-        severity: formData.severity,
-        status: formData.status,
-        notes: formData.notes.trim(),
-        ob_number: formData.ob_number,
-        reported_by: user.id,
-        evidence_images: allImageUrls
-      };
-
-      console.log('📤 Submitting report data:', reportData);
-
-      let result;
-
-      if (editReport) {
-        console.log('🔄 Updating existing report...');
-        result = await reportsAPI.updateVehicleAlert(editReport.id, reportData);
-        console.log('✅ Report updated:', result);
-      } else {
-        console.log('🔄 Creating new report...');
-        result = await reportsAPI.createVehicleAlert(reportData);
-        console.log('✅ Report created:', result);
-      }
-
-      console.log('✅ Report saved successfully:', result);
-
-      // Show success message
-      const successMsg = editReport ? 'Vehicle report updated successfully!' : 'Vehicle report created successfully!';
-      if (images.length > 0) {
-        showSuccess(successMsg + ' Images have been saved with the report.');
-      } else {
-        showSuccess(successMsg);
-      }
-
-      // Close modal and refresh after delay
-      setTimeout(() => {
-        handleModalClose();
-        onReportCreated();
-      }, 2000);
-
-    } catch (error: any) {
-      console.error('❌ Error saving vehicle report:', error);
-
-      let errorMessage = 'Error saving vehicle report. Please try again.';
-      if (error.message) {
-        errorMessage = error.message;
-      }
-
-      showError(errorMessage);
-      setLoading(false);
-    }
-  };
+    showError(errorMessage);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -678,31 +685,30 @@ export default function VehicleReportModal({
 
       {/* Success Confirmation Modal */}
       <ConfirmationModal
-        isOpen={showSuccessModal}
-        onClose={() => {
-          setShowSuccessModal(false);
-          setLoading(false);
-        }}
-        title="Success"
-        message={successMessage}
-        type="success"
-        confirmText="OK"
-        showCancel={false}
-      />
+  isOpen={showSuccessModal}
+  onClose={() => {
+    setShowSuccessModal(false);
+    setLoading(false);
+  }}
+  title="Success"
+  message={successMessage}
+  variant="success"  // ✅ Correct prop
+  confirmText="OK"
+  showCancel={false}
+/>
 
-      {/* Error Modal */}
-      <ConfirmationModal
-        isOpen={showErrorModal}
-        onClose={() => {
-          setShowErrorModal(false);
-          setLoading(false);
-        }}
-        title="Error"
-        message={errorMessage}
-        type="error"
-        confirmText="OK"
-        showCancel={false}
-      />
+<ConfirmationModal
+  isOpen={showErrorModal}
+  onClose={() => {
+    setShowErrorModal(false);
+    setLoading(false);
+  }}
+  title="Error"
+  message={errorMessage}
+  variant="error"  // ✅ Correct prop
+  confirmText="OK"
+  showCancel={false}
+/>
     </>
   );
 }

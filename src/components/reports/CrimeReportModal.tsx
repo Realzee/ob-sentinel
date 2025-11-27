@@ -6,6 +6,8 @@ import { reportsAPI, ReportStatus, formatDateForDateTimeLocal } from '@/lib/supa
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import Image from 'next/image';
 
+
+
 interface CrimeReportModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -666,7 +668,7 @@ export default function CrimeReportModal({
         </div>
       </div>
 
-      {/* Success Confirmation Modal */}
+      {/* Success Confirmation Modal - FIXED */}
       <ConfirmationModal
         isOpen={showSuccessModal}
         onClose={() => {
@@ -675,12 +677,12 @@ export default function CrimeReportModal({
         }}
         title="Success"
         message={successMessage}
-        type="success"
+        variant="success"  // ✅ Fixed prop
         confirmText="OK"
         showCancel={false}
       />
 
-      {/* Error Modal */}
+      {/* Error Modal - FIXED */}
       <ConfirmationModal
         isOpen={showErrorModal}
         onClose={() => {
@@ -689,7 +691,7 @@ export default function CrimeReportModal({
         }}
         title="Error"
         message={errorMessage}
-        type="error"
+        variant="error"  // ✅ Fixed prop
         confirmText="OK"
         showCancel={false}
       />
