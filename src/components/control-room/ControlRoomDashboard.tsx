@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { reportsAPI, authAPI } from '@/lib/supabase';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useRouter } from 'next/navigation';
-import LiveMap from './LiveMap';
+import LiveMap from './LiveMapWrapper';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import CustomButton from '@/components/ui/CustomButton';
 
