@@ -34,33 +34,37 @@ export default function ControlRoomDashboard() {
   }, []);
 
   const loadData = async () => {
-    try {
-      setLoading(true);
-      
-      const [vehiclesData, crimesData, statsData] = await Promise.all([
-        reportsAPI.getVehicleAlerts(),
-        reportsAPI.getCrimeReports(),
-        reportsAPI.getDashboardStats()
-      ]);
+  try {
+    setLoading(true);
+    
+    const [vehiclesData, crimesData, statsData] = await Promise.all([
+      reportsAPI.getVehicleAlerts(),
+      reportsAPI.getCrimeReports(),
+      reportsAPI.getDashboardStats()
+    ]);
 
-      const activeVehicles = vehiclesData.filter((vehicle: any) => 
-        ['active', 'pending'].includes(vehicle.status)
-      );
-      
-      const activeCrimes = crimesData.filter((crime: any) => 
-        ['active', 'pending'].includes(crime.status)
-      );
+    const activeVehicles = vehiclesData.filter((vehicle: any) => 
+      ['active', 'pending'].includes(vehicle.status)
+    );
+    
+    const activeCrimes = crimesData.filter((crime: any) => 
+      ['active', 'pending'].includes(crime.status)
+    );
 
-      setVehicleReports(activeVehicles);
-      setCrimeReports(activeCrimes);
-      setStats(statsData);
-      
-    } catch (error) {
-      console.error('Error loading control room data:', error);
-    } finally {
-      setLoading(false);
+    setVehicleReports(activeVehicles);
+    setCrimeReports(activeCrimes);
+    setStats(statsData);
+    
+  } catch (error) {
+    console.error('Error loading control room data:', error);
+    // Don't show error for user loading failures, just log it
+    if (error instanceof Error && !error.message.includes('getAllUsers')) {
+      console.error('Control room data loading error:', error);
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleLogout = async () => {
     showConfirmationModal({
