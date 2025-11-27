@@ -70,23 +70,40 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     
   } catch (error) {
     console.error('❌ Error loading users:', error);
-    showError('Failed to load users. Using fallback data.');
+    
+    // More detailed error handling
+    if (error instanceof Error) {
+      if (error.message.includes('Admin access required')) {
+        showError('You need admin privileges to view users.');
+      } else if (error.message.includes('Authentication required')) {
+        showError('Please log in to view users.');
+      } else {
+        showError('Failed to load users: ' + error.message);
+      }
+    } else {
+      showError('Failed to load users. Please try again.');
+    }
     
     // Fallback: show current user only with proper typing
-    const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
-    if (currentAuthUser) {
-      const fallbackUser: AuthUser = {
-  id: currentAuthUser.id,
-  email: currentAuthUser.email || '',
-  user_metadata: currentAuthUser.user_metadata || {},
-  created_at: currentAuthUser.created_at,
-  updated_at: currentAuthUser.updated_at,
-  last_sign_in_at: currentAuthUser.last_sign_in_at,
-  role: currentAuthUser.user_metadata?.role || 'user',
-  status: 'active' // This is fine since 'active' is a valid UserStatus
-};
-      setUsers([fallbackUser]);
-    } else {
+    try {
+      const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
+      if (currentAuthUser) {
+        const fallbackUser: AuthUser = {
+          id: currentAuthUser.id,
+          email: currentAuthUser.email || '',
+          user_metadata: currentAuthUser.user_metadata || {},
+          created_at: currentAuthUser.created_at,
+          updated_at: currentAuthUser.updated_at || currentAuthUser.created_at,
+          last_sign_in_at: currentAuthUser.last_sign_in_at || null,
+          role: (currentAuthUser.user_metadata?.role as UserRole) || 'user',
+          status: 'active'
+        };
+        setUsers([fallbackUser]);
+      } else {
+        setUsers([]);
+      }
+    } catch (fallbackError) {
+      console.error('Fallback also failed:', fallbackError);
       setUsers([]);
     }
   } finally {

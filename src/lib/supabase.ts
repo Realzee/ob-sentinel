@@ -111,9 +111,22 @@ const transformUserToAuthUser = (user: User): AuthUser => {
   };
 };
 
+export const safeDateParse = (dateString: string | null): Date => {
+  if (!dateString) return new Date();
+  
+  try {
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? new Date() : date;
+  } catch {
+    return new Date();
+  }
+};
+
+
 // Utility functions that were missing
-export const formatDateForDateTimeLocal = (date: Date): string => {
-  return date.toISOString().slice(0, 16);
+export const formatDateForDateTimeLocal = (date: Date | string): string => {
+  const dateObj = typeof date === 'string' ? safeDateParse(date) : date;
+  return dateObj.toISOString().slice(0, 16);
 };
 
 export const isVehicleAlert = (item: any): item is VehicleAlert => {

@@ -1,4 +1,4 @@
-// api/admin/users/route.ts
+// app/api/admin/users/route.ts
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
@@ -26,10 +26,11 @@ export async function GET() {
     const { data: users, error } = await supabaseAdmin.auth.admin.listUsers();
     
     if (error) {
-      throw error;
+      console.error('Supabase error:', error);
+      return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 });
     }
 
-    // Transform to match AuthUser interface
+    // Transform to match AuthUser interface with proper date handling
     const transformedUsers = users.users.map(user => {
       // Determine user status based on available properties
       let status: 'pending' | 'active' | 'suspended' = 'active';
@@ -37,9 +38,8 @@ export async function GET() {
       if (!user.email_confirmed_at) {
         status = 'pending';
       }
-      // You can add more sophisticated status logic here based on your needs
-      // For example, check if user is banned based on your application logic
 
+      // Ensure dates are properly formatted as strings
       return {
         id: user.id,
         email: user.email!,
@@ -96,11 +96,12 @@ export async function POST(request: Request) {
     });
 
     if (error) {
-      throw error;
+      console.error('Supabase create user error:', error);
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
     if (!data.user) {
-      throw new Error('Failed to create user');
+      return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
     }
 
     // Transform the created user to match AuthUser interface
@@ -154,14 +155,10 @@ export async function PUT(request: Request) {
     // Prepare update data for Supabase
     const updateData: any = {};
 
-    if (updates.role) {
-      updateData.user_metadata = { role: updates.role };
-    }
-
-    if (updates.full_name) {
+    if (updates.role || updates.full_name) {
       updateData.user_metadata = {
-        ...updateData.user_metadata,
-        full_name: updates.full_name
+        ...(updates.role && { role: updates.role }),
+        ...(updates.full_name && { full_name: updates.full_name })
       };
     }
 
@@ -172,7 +169,8 @@ export async function PUT(request: Request) {
     );
 
     if (error) {
-      throw error;
+      console.error('Supabase update user error:', error);
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
     return NextResponse.json({ success: true });
@@ -180,52 +178,6 @@ export async function PUT(request: Request) {
     console.error('Error updating user:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to update user' }, 
-      { status: 500 }
-    );
-  }
-}
-
-export async function DELETE(request: Request) {
-  try {
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    // Get current user from auth
-    const { data: { user: currentUser }, error: authError } = await supabaseAdmin.auth.getUser();
-    
-    if (authError || !currentUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Check if current user is admin
-    const userRole = currentUser.user_metadata?.role;
-    if (userRole !== 'admin') {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
-
-    const { userId } = await request.json();
-
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-    }
-
-    // For safety, we'll just update user metadata to mark as suspended
-    // instead of actually deleting the user
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      user_metadata: { status: 'suspended' }
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error('Error suspending user:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to suspend user' }, 
       { status: 500 }
     );
   }
