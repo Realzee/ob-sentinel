@@ -11,6 +11,18 @@ interface UserManagementModalProps {
   currentUser: any;
 }
 
+// Helper function to validate and cast to UserRole
+const toUserRole = (role: string): UserRole => {
+  const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
+  return validRoles.includes(role as UserRole) ? (role as UserRole) : 'user';
+};
+
+// Helper function to validate and cast to UserStatus
+const toUserStatus = (status: string): UserStatus => {
+  const validStatuses: UserStatus[] = ['pending', 'active', 'suspended'];
+  return validStatuses.includes(status as UserStatus) ? (status as UserStatus) : 'active';
+};
+
 export default function UserManagementModal({ isOpen, onClose, currentUser }: UserManagementModalProps) {
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,29 +32,24 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AuthUser | null>(null);
   
-  // Enhanced filtering
   const [filters, setFilters] = useState({
     role: '',
     status: ''
   });
 
-  // User selection for bulk operations
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   
-  // Confirmation modals
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
   const [confirmMessage, setConfirmMessage] = useState('');
   
-  // Add user form state
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<UserRole>('user');
   
-  // Edit user form state
   const [editUserName, setEditUserName] = useState('');
   const [editUserRole, setEditUserRole] = useState<UserRole>('user');
   const [editUserStatus, setEditUserStatus] = useState<UserStatus>('active');
@@ -51,105 +58,8 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [addingUser, setAddingUser] = useState(false);
   const [editingUser, setEditingUser] = useState(false);
 
-  // Error state
   const [errorMessage, setErrorMessage] = useState('');
   const [showErrorModal, setShowErrorModal] = useState(false);
-
-  // Load users function
-  const loadUsers = async () => {
-  try {
-    setLoading(true);
-    
-    console.log('🔍 Loading users via API route...');
-    
-    // Use the API method that goes through our route
-    const usersData = await authAPI.getAllUsers();
-    
-    if (!usersData) {
-      throw new Error('Failed to load users - no data returned');
-    }
-    
-    setUsers(usersData);
-    
-    console.log('✅ Loaded users:', usersData.length);
-    
-  } catch (error: any) {
-    console.error('❌ Error loading users:', error);
-    
-    // More specific error handling
-    const errorMessage = error?.message || 'Unknown error occurred';
-    
-    if (errorMessage.includes('SUPABASE_SERVICE_ROLE_KEY') || 
-        errorMessage.includes('service role key') ||
-        errorMessage.includes('500') || 
-        errorMessage.includes('Internal Server Error')) {
-      showError('Admin access not properly configured. Please check environment variables in Vercel settings.');
-    } else if (errorMessage.includes('Admin access required') || 
-               errorMessage.includes('403') || 
-               errorMessage.includes('Forbidden')) {
-      showError('You need administrator privileges to view all users.');
-    } else if (errorMessage.includes('Authentication required') || 
-               errorMessage.includes('401') || 
-               errorMessage.includes('Unauthorized')) {
-      showError('Please log in to access user management.');
-    } else if (errorMessage.includes('Failed to load users')) {
-      showError('Unable to load user data. Please try again later.');
-    } else {
-      showError(`Failed to load users: ${errorMessage}`);
-    }
-    
-    // Enhanced fallback: show current user only with better typing
-    await loadFallbackUsers();
-  } finally {
-    setLoading(false);
-  }
-};
-
-// Separate fallback function for better organization
-const loadFallbackUsers = async () => {
-  try {
-    const { data: { user: currentAuthUser }, error: userError } = await supabase.auth.getUser();
-    
-    if (userError) {
-      console.warn('⚠️ Error getting current user for fallback:', userError);
-      setUsers([]);
-      return;
-    }
-
-    if (currentAuthUser) {
-      const fallbackUser: AuthUser = {
-        id: currentAuthUser.id,
-        email: currentAuthUser.email || '',
-        user_metadata: currentAuthUser.user_metadata || {},
-        created_at: currentAuthUser.created_at,
-        updated_at: currentAuthUser.updated_at || currentAuthUser.created_at,
-        last_sign_in_at: currentAuthUser.last_sign_in_at || null,
-        role: (currentAuthUser.user_metadata?.role as UserRole) || 'user',
-        status: 'active'
-      };
-      setUsers([fallbackUser]);
-      console.log('🔄 Using fallback: showing current user only');
-    } else {
-      setUsers([]);
-    }
-  } catch (fallbackError) {
-    console.error('❌ Fallback also failed:', fallbackError);
-    setUsers([]);
-  }
-};
-  // Real-time updates
-  useEffect(() => {
-    if (!isOpen) return;
-
-    loadUsers();
-
-    // Poll for user status updates every 30 seconds
-    const interval = setInterval(() => {
-      loadUsers();
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [isOpen]);
 
   // Modal helper functions
   const showSuccess = (message: string) => {
@@ -168,30 +78,103 @@ const loadFallbackUsers = async () => {
     setShowConfirmModal(true);
   };
 
-  // Update user role via Auth API
-  const handleRoleUpdate = async (userId: string, newRole: string) => {
-    const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
-    if (!validRoles.includes(newRole as UserRole)) {
-      console.error('Invalid role:', newRole);
-      return;
+  // Load users function
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      
+      console.log('🔍 Loading users via API route...');
+      
+      const usersData = await authAPI.getAllUsers();
+      
+      if (usersData && Array.isArray(usersData)) {
+        // Properly type the users
+        const typedUsers: AuthUser[] = usersData.map(user => ({
+          ...user,
+          user_metadata: {
+            ...user.user_metadata,
+            role: user.user_metadata?.role ? toUserRole(user.user_metadata.role) : 'user'
+          },
+          role: toUserRole(user.role || user.user_metadata?.role || 'user'),
+          status: toUserStatus(user.status || 'active')
+        }));
+        
+        setUsers(typedUsers);
+        console.log('✅ Loaded users:', typedUsers.length);
+      } else {
+        throw new Error('Invalid response from server');
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Error loading users:', error);
+      
+      if (error.message?.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+        showError('Admin access not configured. Please check environment variables.');
+      } else if (error.message?.includes('Admin access required')) {
+        showError('You need admin privileges to view users.');
+      } else if (error.message?.includes('Authentication required')) {
+        showError('Please log in to view users.');
+      } else {
+        showError('Failed to load users: ' + error.message);
+      }
+      
+      await loadFallbackUsers();
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const loadFallbackUsers = async () => {
+    try {
+      const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
+      if (currentAuthUser) {
+        const fallbackUser: AuthUser = {
+          id: currentAuthUser.id,
+          email: currentAuthUser.email || '',
+          user_metadata: {
+            ...currentAuthUser.user_metadata,
+            role: toUserRole(currentAuthUser.user_metadata?.role || 'user')
+          },
+          created_at: currentAuthUser.created_at,
+          updated_at: currentAuthUser.updated_at || currentAuthUser.created_at,
+          last_sign_in_at: currentAuthUser.last_sign_in_at || null,
+          role: toUserRole(currentAuthUser.user_metadata?.role || 'user'),
+          status: 'active'
+        };
+        setUsers([fallbackUser]);
+      } else {
+        setUsers([]);
+      }
+    } catch (fallbackError) {
+      console.error('Fallback also failed:', fallbackError);
+      setUsers([]);
+    }
+  };
+
+  // Update user role
+  const handleRoleUpdate = async (userId: string, newRole: string) => {
+    const validRole = toUserRole(newRole);
 
     try {
       setUpdating(userId);
       
-      const success = await authAPI.updateUserRole(userId, newRole as UserRole);
+      const success = await authAPI.updateUserRole(userId, validRole);
       
       if (success) {
-        // Update local state
-        setUsers(prev => prev.map(u => 
-          u.id === userId 
-            ? { 
-                ...u, 
-                user_metadata: { ...u.user_metadata, role: newRole as UserRole },
-                role: newRole as UserRole
-              }
-            : u
-        ));
+        // Proper state update with consistent typing
+        setUsers(prev => prev.map(u => {
+          if (u.id === userId) {
+            return {
+              ...u,
+              user_metadata: {
+                ...u.user_metadata,
+                role: validRole
+              },
+              role: validRole
+            };
+          }
+          return u;
+        }));
         
         showSuccess('User role updated successfully!');
       } else {
@@ -205,28 +188,23 @@ const loadFallbackUsers = async () => {
     }
   };
 
-  // Update user status via Auth API
+  // Update user status
   const handleStatusUpdate = async (userId: string, newStatus: string) => {
-    const validStatuses: UserStatus[] = ['pending', 'active', 'suspended'];
-    if (!validStatuses.includes(newStatus as UserStatus)) {
-      console.error('Invalid status:', newStatus);
-      return;
-    }
+    const validStatus = toUserStatus(newStatus);
 
     try {
       setUpdating(userId);
       
-      const success = await authAPI.updateUserStatus(userId, newStatus as UserStatus);
+      const success = await authAPI.updateUserStatus(userId, validStatus);
       
       if (success) {
-        // Update local state
         setUsers(prev => prev.map(u => 
           u.id === userId 
-            ? { ...u, status: newStatus as UserStatus }
+            ? { ...u, status: validStatus }
             : u
         ));
         
-        showSuccess(`User status updated to ${newStatus}!`);
+        showSuccess(`User status updated to ${validStatus}!`);
       } else {
         throw new Error('Failed to update user status');
       }
@@ -238,7 +216,7 @@ const loadFallbackUsers = async () => {
     }
   };
 
-  // Suspend user via Auth API
+  // Suspend user
   const handleDeleteUser = async (userId: string, userEmail: string) => {
     showConfirmation(
       `Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`,
@@ -249,10 +227,9 @@ const loadFallbackUsers = async () => {
           const success = await authAPI.updateUserStatus(userId, 'suspended');
           
           if (success) {
-            // Update local state
             setUsers(prev => prev.map(u => 
               u.id === userId 
-                ? { ...u, status: 'suspended' as UserStatus }
+                ? { ...u, status: 'suspended' }
                 : u
             ));
             
@@ -270,68 +247,90 @@ const loadFallbackUsers = async () => {
     );
   };
 
-  // Enhanced user status with timestamp
-  const getUserStatusWithTimestamp = (user: AuthUser) => {
-    const isOnline = user.status === 'active';
-    const lastSeen = user.last_sign_in_at ? new Date(user.last_sign_in_at) : null;
-    
-    return (
-      <div className="flex items-center space-x-2">
-        <div className={`w-2 h-2 rounded-full ${
-          isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
-        }`}></div>
-        <div className="text-xs">
-          <div className="text-gray-400">
-            {user.status === 'active' ? 'Online' : 
-             user.status === 'pending' ? 'Pending Approval' :
-             user.status === 'suspended' ? 'Suspended' : 'Offline'}
-          </div>
-          {lastSeen && (
-            <div className="text-gray-500">
-              Last seen: {lastSeen.toLocaleDateString()} {lastSeen.toLocaleTimeString()}
-            </div>
-          )}
-        </div>
-      </div>
+  // Approve user
+  const handleApproveUser = async (userId: string) => {
+    try {
+      setUpdating(userId);
+      
+      const success = await authAPI.updateUserStatus(userId, 'active');
+      
+      if (success) {
+        setUsers(prev => prev.map(u => 
+          u.id === userId 
+            ? { ...u, status: 'active' }
+            : u
+        ));
+        
+        showSuccess('User approved successfully!');
+      } else {
+        throw new Error('Failed to approve user');
+      }
+    } catch (error) {
+      console.error('Error approving user:', error);
+      showError('Error approving user. Please try again.');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  // Reactivate user
+  const handleReactivateUser = async (userId: string) => {
+    showConfirmation(
+      'Are you sure you want to reactivate this user?',
+      async () => {
+        try {
+          setUpdating(userId);
+          
+          const success = await authAPI.updateUserStatus(userId, 'active');
+          
+          if (success) {
+            setUsers(prev => prev.map(u => 
+              u.id === userId 
+                ? { ...u, status: 'active' }
+                : u
+            ));
+            
+            showSuccess('User reactivated successfully');
+          } else {
+            throw new Error('Failed to reactivate user');
+          }
+        } catch (error) {
+          console.error('Error reactivating user:', error);
+          showError('Error reactivating user. Please try again.');
+        } finally {
+          setUpdating(null);
+        }
+      }
     );
   };
 
-  // Enhanced filtering
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = 
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.user_metadata?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (user.user_metadata?.role || 'user').toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesRole = !filters.role || (user.user_metadata?.role || 'user') === filters.role;
-    const matchesStatus = !filters.status || user.status === filters.status;
-    
-    return matchesSearch && matchesRole && matchesStatus;
-  });
-
-  // Bulk role update via Auth API
-  const handleBulkRoleUpdate = async (newRole: UserRole) => {
+  // Bulk role update
+  const handleBulkRoleUpdate = async (newRole: string) => {
     if (selectedUsers.length === 0) return;
 
+    const validRole = toUserRole(newRole);
+
     try {
-      // Update each user
       for (const userId of selectedUsers) {
-        await authAPI.updateUserRole(userId, newRole);
+        await authAPI.updateUserRole(userId, validRole);
       }
 
-      // Update local state
-      setUsers(prev => prev.map(u => 
-        selectedUsers.includes(u.id) 
-          ? { 
-              ...u, 
-              user_metadata: { ...u.user_metadata, role: newRole },
-              role: newRole
-            }
-          : u
-      ));
+      setUsers(prev => prev.map(u => {
+        if (selectedUsers.includes(u.id)) {
+          return {
+            ...u,
+            user_metadata: {
+              ...u.user_metadata,
+              role: validRole
+            },
+            role: validRole
+          };
+        }
+        return u;
+      }));
       
       setSelectedUsers([]);
-      showSuccess(`Updated ${selectedUsers.length} users to ${newRole} role`);
+      showSuccess(`Updated ${selectedUsers.length} users to ${validRole} role`);
     } catch (error) {
       console.error('Error in bulk role update:', error);
       showError('Error updating users. Please try again.');
@@ -354,7 +353,7 @@ const loadFallbackUsers = async () => {
     }
   };
 
-  // Create user via Auth API
+  // Create user
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -374,7 +373,6 @@ const loadFallbackUsers = async () => {
       });
 
       if (newUser) {
-        // Refresh users to get updated data
         await loadUsers();
       }
 
@@ -395,15 +393,15 @@ const loadFallbackUsers = async () => {
   };
 
   const handleEditUser = (user: AuthUser) => {
-  setSelectedUser(user);
-  setEditUserName(user.user_metadata?.full_name || '');
-  setEditUserRole((user.user_metadata?.role as UserRole) || 'user');
-  setEditUserStatus(user.status || 'active'); // This should work now since status is UserStatus
-  setEditUserPassword('');
-  setIsEditUserModalOpen(true);
-};
+    setSelectedUser(user);
+    setEditUserName(user.user_metadata?.full_name || '');
+    setEditUserRole(user.role);
+    setEditUserStatus(user.status);
+    setEditUserPassword('');
+    setIsEditUserModalOpen(true);
+  };
 
-  // Update user via Auth API
+  // Update user
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -413,7 +411,7 @@ const loadFallbackUsers = async () => {
       setEditingUser(true);
 
       // Update role if changed
-      if (editUserRole !== selectedUser.user_metadata?.role) {
+      if (editUserRole !== selectedUser.role) {
         await authAPI.updateUserRole(selectedUser.id, editUserRole);
       }
 
@@ -442,63 +440,9 @@ const loadFallbackUsers = async () => {
     }
   };
 
-  // Approve user by updating status via Auth API
-  const handleApproveUser = async (userId: string) => {
-    try {
-      setUpdating(userId);
-      
-      const success = await authAPI.updateUserStatus(userId, 'active');
-      
-      if (success) {
-        // Update local state
-        setUsers(prev => prev.map(u => 
-          u.id === userId 
-            ? { ...u, status: 'active' as UserStatus }
-            : u
-        ));
-        
-        showSuccess('User approved successfully!');
-      } else {
-        throw new Error('Failed to approve user');
-      }
-    } catch (error) {
-      console.error('Error approving user:', error);
-      showError('Error approving user. Please try again.');
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  // Reactivate user by updating status via Auth API
-  const handleReactivateUser = async (userId: string) => {
-    showConfirmation(
-      'Are you sure you want to reactivate this user?',
-      async () => {
-        try {
-          setUpdating(userId);
-          
-          const success = await authAPI.updateUserStatus(userId, 'active');
-          
-          if (success) {
-            // Update local state
-            setUsers(prev => prev.map(u => 
-              u.id === userId 
-                ? { ...u, status: 'active' as UserStatus }
-                : u
-            ));
-            
-            showSuccess('User reactivated successfully');
-          } else {
-            throw new Error('Failed to reactivate user');
-          }
-        } catch (error) {
-          console.error('Error reactivating user:', error);
-          showError('Error reactivating user. Please try again.');
-        } finally {
-          setUpdating(null);
-        }
-      }
-    );
+  // Helper function to get user role
+  const getUserRole = (user: AuthUser): UserRole => {
+    return user.role || toUserRole(user.user_metadata?.role || 'user');
   };
 
   // Helper function to get user display name
@@ -506,10 +450,25 @@ const loadFallbackUsers = async () => {
     return user.user_metadata?.full_name || user.email.split('@')[0] || 'No Name';
   };
 
-  // Helper function to get user role
-  const getUserRole = (user: AuthUser) => {
-    return user.user_metadata?.role || 'user';
-  };
+  // Enhanced filtering
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = 
+      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      getUserDisplayName(user).toLowerCase().includes(searchTerm.toLowerCase()) ||
+      getUserRole(user).toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesRole = !filters.role || getUserRole(user) === filters.role;
+    const matchesStatus = !filters.status || user.status === filters.status;
+    
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  // Load users on mount
+  useEffect(() => {
+    if (isOpen) {
+      loadUsers();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -531,9 +490,6 @@ const loadFallbackUsers = async () => {
               <div>
                 <h2 className="text-2xl font-bold text-white">User Management</h2>
                 <p className="text-gray-400 mt-1">Manage user roles, status, and permissions</p>
-                <p className="text-green-500 text-sm mt-1">
-                  Admin Access: Viewing all users from Supabase Auth
-                </p>
               </div>
               <div className="flex items-center space-x-3">
                 <button
@@ -560,8 +516,6 @@ const loadFallbackUsers = async () => {
             <div className="mb-6 space-y-4">
               <input
                 type="text"
-                id="user-search"
-                name="user-search"
                 placeholder="Search users by email, name, or role..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -570,8 +524,6 @@ const loadFallbackUsers = async () => {
               
               <div className="flex flex-wrap gap-4">
                 <select
-                  id="role-filter"
-                  name="role-filter"
                   value={filters.role}
                   onChange={(e) => setFilters(prev => ({ ...prev, role: e.target.value }))}
                   className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -584,8 +536,6 @@ const loadFallbackUsers = async () => {
                 </select>
 
                 <select
-                  id="status-filter"
-                  name="status-filter"
                   value={filters.status}
                   onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
                   className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -603,9 +553,7 @@ const loadFallbackUsers = async () => {
                       {selectedUsers.length} selected
                     </span>
                     <select
-                      id="bulk-role-action"
-                      name="bulk-role-action"
-                      onChange={(e) => handleBulkRoleUpdate(e.target.value as UserRole)}
+                      onChange={(e) => handleBulkRoleUpdate(e.target.value)}
                       className="px-3 py-1 bg-blue-600 border border-blue-500 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Bulk Role</option>
@@ -633,8 +581,6 @@ const loadFallbackUsers = async () => {
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                           <input
                             type="checkbox"
-                            id="select-all-users"
-                            name="select-all-users"
                             checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
                             onChange={handleSelectAll}
                             className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
@@ -653,8 +599,6 @@ const loadFallbackUsers = async () => {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <input
                               type="checkbox"
-                              id={`user-select-${user.id}`}
-                              name={`user-select-${user.id}`}
                               checked={selectedUsers.includes(user.id)}
                               onChange={() => handleUserSelection(user.id)}
                               className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
@@ -674,13 +618,17 @@ const loadFallbackUsers = async () => {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {getUserStatusWithTimestamp(user)}
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              user.status === 'active' ? 'bg-green-500/20 text-green-300' :
+                              user.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300' :
+                              'bg-red-500/20 text-red-300'
+                            }`}>
+                              {user.status}
+                            </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">
                               <select
-                                id={`user-role-${user.id}`}
-                                name={`user-role-${user.id}`}
                                 value={getUserRole(user)}
                                 onChange={(e) => handleRoleUpdate(user.id, e.target.value)}
                                 disabled={updating === user.id || user.id === currentUser.id}
@@ -829,7 +777,6 @@ const loadFallbackUsers = async () => {
                   <input
                     type="email"
                     id="new-user-email"
-                    name="new-user-email"
                     value={newUserEmail}
                     onChange={(e) => setNewUserEmail(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -845,7 +792,6 @@ const loadFallbackUsers = async () => {
                   <input
                     type="password"
                     id="new-user-password"
-                    name="new-user-password"
                     value={newUserPassword}
                     onChange={(e) => setNewUserPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -862,7 +808,6 @@ const loadFallbackUsers = async () => {
                   <input
                     type="text"
                     id="new-user-name"
-                    name="new-user-name"
                     value={newUserName}
                     onChange={(e) => setNewUserName(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -876,9 +821,8 @@ const loadFallbackUsers = async () => {
                   </label>
                   <select
                     id="new-user-role"
-                    name="new-user-role"
                     value={newUserRole}
-                    onChange={(e) => setNewUserRole(e.target.value as UserRole)}
+                    onChange={(e) => setNewUserRole(toUserRole(e.target.value))}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   >
                     <option value="user">User</option>
@@ -949,7 +893,6 @@ const loadFallbackUsers = async () => {
                   <input
                     type="email"
                     id="edit-user-email"
-                    name="edit-user-email"
                     value={selectedUser.email}
                     disabled
                     className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-gray-400 cursor-not-allowed"
@@ -964,7 +907,6 @@ const loadFallbackUsers = async () => {
                   <input
                     type="text"
                     id="edit-user-name"
-                    name="edit-user-name"
                     value={editUserName}
                     onChange={(e) => setEditUserName(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -978,9 +920,8 @@ const loadFallbackUsers = async () => {
                   </label>
                   <select
                     id="edit-user-role"
-                    name="edit-user-role"
                     value={editUserRole}
-                    onChange={(e) => setEditUserRole(e.target.value as UserRole)}
+                    onChange={(e) => setEditUserRole(toUserRole(e.target.value))}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   >
                     <option value="user">User</option>
@@ -995,16 +936,15 @@ const loadFallbackUsers = async () => {
                     Status
                   </label>
                   <select
-          id="edit-user-status"
-          name="edit-user-status"
-          value={editUserStatus}
-          onChange={(e) => setEditUserStatus(e.target.value as UserStatus)} 
-          className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-        >
-          <option value="active">Active</option>
-          <option value="pending">Pending</option>
-          <option value="suspended">Suspended</option>
-        </select>
+                    id="edit-user-status"
+                    value={editUserStatus}
+                    onChange={(e) => setEditUserStatus(toUserStatus(e.target.value))}
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  >
+                    <option value="active">Active</option>
+                    <option value="pending">Pending</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
                 </div>
 
                 <div>
@@ -1014,7 +954,6 @@ const loadFallbackUsers = async () => {
                   <input
                     type="password"
                     id="edit-user-password"
-                    name="edit-user-password"
                     value={editUserPassword}
                     onChange={(e) => setEditUserPassword(e.target.value)}
                     className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
@@ -1055,44 +994,42 @@ const loadFallbackUsers = async () => {
         </div>
       )}
 
-      {/* Success Confirmation Modal */}
-<ConfirmationModal
-  isOpen={showSuccessModal}
-  onClose={() => setShowSuccessModal(false)}
-  title="Success"
-  message={successMessage}
-  variant="success" // Changed from 'type' to 'variant'
-  confirmText="OK"
-  showCancel={false}
-/>
+      {/* Confirmation Modals */}
+      <ConfirmationModal
+        isOpen={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        title="Success"
+        message={successMessage}
+        variant="success"
+        confirmText="OK"
+        showCancel={false}
+      />
 
-{/* Error Modal */}
-<ConfirmationModal
-  isOpen={showErrorModal}
-  onClose={() => setShowErrorModal(false)}
-  title="Error"
-  message={errorMessage}
-  variant="error" // Changed from 'type' to 'variant'
-  confirmText="OK"
-  showCancel={false}
-/>
+      <ConfirmationModal
+        isOpen={showErrorModal}
+        onClose={() => setShowErrorModal(false)}
+        title="Error"
+        message={errorMessage}
+        variant="error"
+        confirmText="OK"
+        showCancel={false}
+      />
 
-{/* Confirmation Modal for Actions */}
-<ConfirmationModal
-  isOpen={showConfirmModal}
-  onClose={() => setShowConfirmModal(false)}
-  onConfirm={() => {
-    if (confirmAction) {
-      confirmAction();
-    }
-    setShowConfirmModal(false);
-  }}
-  title="Confirm Action"
-  message={confirmMessage}
-  variant="warning" // Changed from 'type' to 'variant'
-  confirmText="Confirm"
-  cancelText="Cancel"
-/>
+      <ConfirmationModal
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={() => {
+          if (confirmAction) {
+            confirmAction();
+          }
+          setShowConfirmModal(false);
+        }}
+        title="Confirm Action"
+        message={confirmMessage}
+        variant="warning"
+        confirmText="Confirm"
+        cancelText="Cancel"
+      />
     </>
   );
 }

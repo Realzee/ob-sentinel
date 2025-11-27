@@ -1,464 +1,106 @@
 // lib/supabase.ts
 import { createClient } from '@supabase/supabase-js';
-import { User } from '@supabase/supabase-js';
 
 // Types
+export type ReportStatus = 'active' | 'pending' | 'resolved' | 'rejected' | 'recovered';
 export type UserRole = 'admin' | 'moderator' | 'controller' | 'user';
-export type UserStatus = 'pending' | 'active' | 'suspended';
+export type UserStatus = 'active' | 'pending' | 'suspended';
 
-export interface AuthUser {
-  id: string;
-  email: string;
-  user_metadata: {
-    role?: UserRole;
-    full_name?: string;
-    [key: string]: any;
-  };
-  created_at: string;
-  updated_at: string;
-  last_sign_in_at: string | null;
-  role: UserRole;
-  status: UserStatus;
-}
-
-export interface CreateUserData {
-  email: string;
-  password: string;
-  full_name?: string;
-  role?: UserRole;
-}
-
-export interface UpdateUserData {
-  email?: string;
-  password?: string;
-  full_name?: string;
-  role?: UserRole;
-  status?: UserStatus;
-}
-
-// Report types for ControlRoomDashboard
 export interface VehicleAlert {
   id: string;
   license_plate: string;
-  alert_type: string;
-  status: 'active' | 'resolved' | 'closed';
-  location: string;
+  vehicle_make: string;
+  vehicle_model: string;
+  vehicle_color: string;
+  year?: number;
+  reason: string;
+  last_seen_location: string;
+  last_seen_time?: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: ReportStatus;
+  notes?: string;
+  evidence_images?: string[];
+  reported_by: string;
+  ob_number?: string;
   created_at: string;
   updated_at: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  description?: string;
 }
 
 export interface CrimeReport {
   id: string;
   title: string;
   description: string;
-  status: 'open' | 'investigating' | 'closed' | 'resolved';
-  priority: 'low' | 'medium' | 'high' | 'critical';
   location: string;
+  incident_time?: string;
+  report_type: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: ReportStatus;
+  witness_info?: string;
+  evidence_images?: string[];
+  contact_allowed: boolean;
+  reported_by: string;
+  ob_number?: string;
   created_at: string;
   updated_at: string;
-  assigned_officer?: string;
-  severity?: 'low' | 'medium' | 'high' | 'critical';
 }
 
-export interface DashboardStats {
-  total_alerts: number;
-  active_alerts: number;
-  total_reports: number;
-  open_reports: number;
-  resolved_today: number;
+export interface Profile {
+  id: string;
+  email: string;
+  full_name?: string;
+  role: UserRole;
+  status: UserStatus;
+  created_at: string;
+  updated_at: string;
+  last_seen_at?: string;
 }
 
-// Initialize Supabase client with fallbacks for build time
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key';
+export interface AuthUser {
+  id: string;
+  email: string;
+  user_metadata: {
+    full_name?: string;
+    role?: UserRole;
+  };
+  created_at: string;
+  updated_at: string;
+  last_sign_in_at?: string | null;
+  role: UserRole;
+  status: UserStatus;
+}
+
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true,
-  },
-});
-
-// Admin client for server-side operations
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
-
-// Helper function to transform Supabase User to AuthUser
-const transformUserToAuthUser = (user: User): AuthUser => {
-  let status: UserStatus = 'active';
-  
-  if (!user.email_confirmed_at) {
-    status = 'pending';
+    detectSessionInUrl: true
   }
+});
 
-  return {
-    id: user.id,
-    email: user.email || '',
-    user_metadata: user.user_metadata || {},
-    created_at: user.created_at,
-    updated_at: user.updated_at || user.created_at,
-    last_sign_in_at: user.last_sign_in_at || null,
-    role: (user.user_metadata?.role as UserRole) || 'user',
-    status: status
-  };
-};
-
-export const safeDateParse = (dateString: string | null): Date => {
-  if (!dateString) return new Date();
-  
+// Utility functions
+export const formatDateForDateTimeLocal = (dateString: string): string => {
   try {
     const date = new Date(dateString);
-    return isNaN(date.getTime()) ? new Date() : date;
-  } catch {
-    return new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return '';
   }
 };
 
-
-// Utility functions that were missing
-export const formatDateForDateTimeLocal = (date: Date | string): string => {
-  const dateObj = typeof date === 'string' ? safeDateParse(date) : date;
-  return dateObj.toISOString().slice(0, 16);
-};
-
-export const isVehicleAlert = (item: any): item is VehicleAlert => {
-  return item && typeof item === 'object' && 'license_plate' in item && 'alert_type' in item;
-};
-
-export const isCrimeReport = (item: any): item is CrimeReport => {
-  return item && typeof item === 'object' && 'title' in item && 'description' in item && 'priority' in item;
-};
-
-// Auth API methods
-export const authAPI = {
-  // Get all users (admin only)
-  getAllUsers: async (): Promise<AuthUser[]> => {
-    try {
-      // Get current user to verify admin status
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !currentUser) {
-        throw new Error('Authentication required');
-      }
-
-      // Check if current user is admin
-      const userRole = currentUser.user_metadata?.role;
-      if (userRole !== 'admin') {
-        throw new Error('Admin access required');
-      }
-
-      // Use API route to get users
-      const response = await fetch('/api/admin/users', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch users');
-      }
-
-      const users = await response.json();
-      return users;
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      
-      // Fallback: Try direct Supabase call as backup
-      try {
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        if (currentUser) {
-          const fallbackUser: AuthUser = transformUserToAuthUser(currentUser);
-          return [fallbackUser];
-        }
-      } catch (fallbackError) {
-        console.error('Fallback also failed:', fallbackError);
-      }
-      
-      throw error;
-    }
-  },
-
-  // Create new user
-  createUser: async (userData: CreateUserData): Promise<AuthUser> => {
-    try {
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !currentUser) {
-        throw new Error('Authentication required');
-      }
-
-      // Check if current user is admin
-      const userRole = currentUser.user_metadata?.role;
-      if (userRole !== 'admin') {
-        throw new Error('Admin access required');
-      }
-
-      const response = await fetch('/api/admin/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-        body: JSON.stringify(userData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create user');
-      }
-
-      const newUser = await response.json();
-      return newUser;
-    } catch (error) {
-      console.error('Error creating user:', error);
-      throw error;
-    }
-  },
-
-  // Update user role
-  updateUserRole: async (userId: string, role: UserRole): Promise<boolean> => {
-    try {
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !currentUser) {
-        throw new Error('Authentication required');
-      }
-
-      // Check if current user is admin
-      const userRole = currentUser.user_metadata?.role;
-      if (userRole !== 'admin') {
-        throw new Error('Admin access required');
-      }
-
-      const response = await fetch('/api/admin/users', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-        body: JSON.stringify({
-          userId,
-          updates: { role }
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update user role');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error updating user role:', error);
-      throw error;
-    }
-  },
-
-  // Update user status
-  updateUserStatus: async (userId: string, status: UserStatus): Promise<boolean> => {
-    try {
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !currentUser) {
-        throw new Error('Authentication required');
-      }
-
-      // Check if current user is admin
-      const userRole = currentUser.user_metadata?.role;
-      if (userRole !== 'admin') {
-        throw new Error('Admin access required');
-      }
-
-      const response = await fetch('/api/admin/users', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-        body: JSON.stringify({
-          userId,
-          updates: { status }
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update user status');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error updating user status:', error);
-      throw error;
-    }
-  },
-
-  // Update user data (multiple fields)
-  updateUser: async (userId: string, updates: Partial<UpdateUserData>): Promise<boolean> => {
-    try {
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !currentUser) {
-        throw new Error('Authentication required');
-      }
-
-      // Check if current user is admin
-      const userRole = currentUser.user_metadata?.role;
-      if (userRole !== 'admin') {
-        throw new Error('Admin access required');
-      }
-
-      const response = await fetch('/api/admin/users', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-        body: JSON.stringify({
-          userId,
-          updates
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update user');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error updating user:', error);
-      throw error;
-    }
-  },
-
-  // Delete user (suspend)
-  deleteUser: async (userId: string): Promise<boolean> => {
-    try {
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !currentUser) {
-        throw new Error('Authentication required');
-      }
-
-      // Check if current user is admin
-      const userRole = currentUser.user_metadata?.role;
-      if (userRole !== 'admin') {
-        throw new Error('Admin access required');
-      }
-
-      const response = await fetch('/api/admin/users', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-        body: JSON.stringify({ userId }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete user');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error deleting user:', error);
-      throw error;
-    }
-  },
-
-  // Get user by ID
-  getUserById: async (userId: string): Promise<AuthUser | null> => {
-    try {
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !currentUser) {
-        throw new Error('Authentication required');
-      }
-
-      // Check if current user is admin
-      const userRole = currentUser.user_metadata?.role;
-      if (userRole !== 'admin') {
-        throw new Error('Admin access required');
-      }
-
-      const response = await fetch(`/api/admin/users?id=${userId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch user');
-      }
-
-      const user = await response.json();
-      return user;
-    } catch (error) {
-      console.error('Error fetching user:', error);
-      throw error;
-    }
-  },
-
-  // Bulk update users
-  bulkUpdateUsers: async (userIds: string[], updates: Partial<UpdateUserData>): Promise<boolean> => {
-    try {
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !currentUser) {
-        throw new Error('Authentication required');
-      }
-
-      // Check if current user is admin
-      const userRole = currentUser.user_metadata?.role;
-      if (userRole !== 'admin') {
-        throw new Error('Admin access required');
-      }
-
-      const response = await fetch('/api/admin/users/bulk', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-        body: JSON.stringify({
-          userIds,
-          updates
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to bulk update users');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error in bulk update:', error);
-      throw error;
-    }
-  }
-};
-
-// Reports API (for ControlRoomDashboard)
+// Reports API
 export const reportsAPI = {
   // Vehicle Reports
-  createVehicleAlert: async (reportData: any) => {
+  createVehicleAlert: async (reportData: any): Promise<VehicleAlert> => {
     try {
       const { data, error } = await supabase
         .from('vehicle_alerts')
@@ -478,7 +120,7 @@ export const reportsAPI = {
     }
   },
 
-  getVehicleAlerts: async () => {
+  getVehicleAlerts: async (): Promise<VehicleAlert[]> => {
     try {
       const { data, error } = await supabase
         .from('vehicle_alerts')
@@ -493,7 +135,7 @@ export const reportsAPI = {
     }
   },
 
-  updateVehicleAlert: async (id: string, updates: any) => {
+  updateVehicleAlert: async (id: string, updates: any): Promise<VehicleAlert> => {
     try {
       const { data, error } = await supabase
         .from('vehicle_alerts')
@@ -513,8 +155,22 @@ export const reportsAPI = {
     }
   },
 
-  // Crime Reports (similar structure)
-  createCrimeReport: async (reportData: any) => {
+  deleteVehicleAlert: async (id: string): Promise<void> => {
+    try {
+      const { error } = await supabase
+        .from('vehicle_alerts')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting vehicle alert:', error);
+      throw error;
+    }
+  },
+
+  // Crime Reports
+  createCrimeReport: async (reportData: any): Promise<CrimeReport> => {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
@@ -534,7 +190,7 @@ export const reportsAPI = {
     }
   },
 
-  getCrimeReports: async () => {
+  getCrimeReports: async (): Promise<CrimeReport[]> => {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
@@ -549,7 +205,7 @@ export const reportsAPI = {
     }
   },
 
-  updateCrimeReport: async (id: string, updates: any) => {
+  updateCrimeReport: async (id: string, updates: any): Promise<CrimeReport> => {
     try {
       const { data, error } = await supabase
         .from('crime_reports')
@@ -569,8 +225,22 @@ export const reportsAPI = {
     }
   },
 
+  deleteCrimeReport: async (id: string): Promise<void> => {
+    try {
+      const { error } = await supabase
+        .from('crime_reports')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting crime report:', error);
+      throw error;
+    }
+  },
+
   // Dashboard Stats
-  getDashboardStats: async () => {
+  getDashboardStats: async (): Promise<any> => {
     try {
       const [vehiclesData, crimesData] = await Promise.all([
         reportsAPI.getVehicleAlerts(),
@@ -580,61 +250,323 @@ export const reportsAPI = {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const todayVehicles = vehiclesData.filter((report: any) => 
+      const todayVehicles = vehiclesData.filter((report: VehicleAlert) => 
         new Date(report.created_at) >= today
       );
-      const todayCrimes = crimesData.filter((report: any) => 
+      const todayCrimes = crimesData.filter((report: CrimeReport) => 
         new Date(report.created_at) >= today
+      );
+
+      const activeVehicles = vehiclesData.filter((v: VehicleAlert) => 
+        ['active', 'pending'].includes(v.status)
+      );
+      const activeCrimes = crimesData.filter((c: CrimeReport) => 
+        ['active', 'pending'].includes(c.status)
       );
 
       return {
         todayReports: todayVehicles.length + todayCrimes.length,
-        activeReports: vehiclesData.length + crimesData.length,
-        resolvedVehicles: vehiclesData.filter((v: any) => v.status === 'resolved').length,
-        resolvedCrimes: crimesData.filter((c: any) => c.status === 'resolved').length
+        activeReports: activeVehicles.length + activeCrimes.length,
+        totalVehicles: vehiclesData.length,
+        totalCrimes: crimesData.length,
+        resolvedVehicles: vehiclesData.filter((v: VehicleAlert) => v.status === 'resolved' || v.status === 'recovered').length,
+        resolvedCrimes: crimesData.filter((c: CrimeReport) => c.status === 'resolved').length
       };
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
       return {
         todayReports: 0,
         activeReports: 0,
+        totalVehicles: 0,
+        totalCrimes: 0,
         resolvedVehicles: 0,
         resolvedCrimes: 0
       };
     }
-  }
-};
-
-// Helper functions
-export const authHelpers = {
-  // Check if current user is admin
-  isAdmin: async (): Promise<boolean> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.user_metadata?.role === 'admin';
   },
 
-  // Check if current user has specific role
-  hasRole: async (role: UserRole): Promise<boolean> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.user_metadata?.role === role;
+  // Search and Filter
+  searchVehicleAlerts: async (query: string): Promise<VehicleAlert[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('vehicle_alerts')
+        .select('*')
+        .or(`license_plate.ilike.%${query}%,vehicle_make.ilike.%${query}%,vehicle_model.ilike.%${query}%`)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error searching vehicle alerts:', error);
+      return [];
+    }
   },
 
-  // Get current user with full data
-  getCurrentUser: async (): Promise<AuthUser | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) return null;
+  searchCrimeReports: async (query: string): Promise<CrimeReport[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('crime_reports')
+        .select('*')
+        .or(`title.ilike.%${query}%,description.ilike.%${query}%,location.ilike.%${query}%`)
+        .order('created_at', { ascending: false });
 
-    return transformUserToAuthUser(user);
-  },
-
-  // Ensure user has admin access
-  requireAdmin: async (): Promise<void> => {
-    const isAdmin = await authHelpers.isAdmin();
-    if (!isAdmin) {
-      throw new Error('Admin access required');
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error searching crime reports:', error);
+      return [];
     }
   }
 };
 
+// Auth API
+export const authAPI = {
+  // Get all users (requires service role key via API route)
+  getAllUsers: async (): Promise<AuthUser[]> => {
+    try {
+      const response = await fetch('/api/admin/users/');
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      throw error;
+    }
+  },
+
+  // Update user role
+  updateUserRole: async (userId: string, newRole: UserRole): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role: newRole }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      return data.success;
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      throw error;
+    }
+  },
+
+  // Update user status
+  updateUserStatus: async (userId: string, newStatus: UserStatus): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      return data.success;
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      throw error;
+    }
+  },
+
+  // Create user
+  createUser: async (userData: {
+    email: string;
+    password: string;
+    full_name?: string;
+    role?: UserRole;
+  }): Promise<any> => {
+    try {
+      const response = await fetch('/api/admin/users/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw error;
+    }
+  },
+
+  // Delete user (suspend)
+  deleteUser: async (userId: string): Promise<boolean> => {
+    try {
+      // For safety, we'll just update status to suspended instead of deleting
+      return await authAPI.updateUserStatus(userId, 'suspended');
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  },
+
+  // Get user profile
+  getUserProfile: async (userId: string): Promise<Profile | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      return null;
+    }
+  },
+
+  // Update user profile
+  updateUserProfile: async (userId: string, updates: Partial<Profile>): Promise<Profile> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating user profile:', error);
+      throw error;
+    }
+  }
+};
+
+// Image handling utilities
+export const imageUtils = {
+  // Convert file to base64 data URL
+  fileToDataURL: (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read image file'));
+      reader.readAsDataURL(file);
+    });
+  },
+
+  // Validate image file
+  validateImage: (file: File): { valid: boolean; error?: string } => {
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+
+    if (!allowedTypes.includes(file.type)) {
+      return { valid: false, error: 'Invalid image format. Please use JPEG, PNG, GIF, or WebP.' };
+    }
+
+    if (file.size > maxSize) {
+      return { valid: false, error: 'Image size too large. Maximum size is 5MB.' };
+    }
+
+    return { valid: true };
+  },
+
+  // Process multiple images
+  processImages: async (files: FileList): Promise<string[]> => {
+    const dataUrls: string[] = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const validation = imageUtils.validateImage(file);
+      
+      if (validation.valid) {
+        try {
+          const dataUrl = await imageUtils.fileToDataURL(file);
+          dataUrls.push(dataUrl);
+        } catch (error) {
+          console.warn(`Failed to process image ${file.name}:`, error);
+        }
+      } else {
+        console.warn(`Skipping invalid image ${file.name}:`, validation.error);
+      }
+    }
+
+    return dataUrls;
+  }
+};
+
+// Real-time subscriptions
+export const realtimeAPI = {
+  // Subscribe to vehicle alerts
+  subscribeToVehicleAlerts: (callback: (payload: any) => void) => {
+    return supabase
+      .channel('vehicle_alerts')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'vehicle_alerts'
+        },
+        callback
+      )
+      .subscribe();
+  },
+
+  // Subscribe to crime reports
+  subscribeToCrimeReports: (callback: (payload: any) => void) => {
+    return supabase
+      .channel('crime_reports')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'crime_reports'
+        },
+        callback
+      )
+      .subscribe();
+  },
+
+  // Subscribe to user updates
+  subscribeToUsers: (callback: (payload: any) => void) => {
+    return supabase
+      .channel('profiles')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles'
+        },
+        callback
+      )
+      .subscribe();
+  }
+};
+
+// Export everything
 export default supabase;
