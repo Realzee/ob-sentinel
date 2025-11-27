@@ -64,6 +64,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     
     // Use the API method that goes through our route
     const usersData = await authAPI.getAllUsers();
+    
+    if (!usersData) {
+      throw new Error('Failed to load users - service key may be missing');
+    }
+    
     setUsers(usersData || []);
     
     console.log('✅ Loaded users:', usersData?.length);
@@ -73,7 +78,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     
     // More detailed error handling
     if (error instanceof Error) {
-      if (error.message.includes('Admin access required')) {
+      if (error.message.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+        showError('Admin access not configured. Please check environment variables.');
+      } else if (error.message.includes('Admin access required')) {
         showError('You need admin privileges to view users.');
       } else if (error.message.includes('Authentication required')) {
         showError('Please log in to view users.');
@@ -84,7 +91,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       showError('Failed to load users. Please try again.');
     }
     
-    // Fallback: show current user only with proper typing
+    // Fallback: show current user only
     try {
       const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
       if (currentAuthUser) {
