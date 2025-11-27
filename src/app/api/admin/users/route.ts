@@ -4,18 +4,25 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    console.log('Starting admin users API call...');
-    
-    // Check if environment variables are set
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('Missing environment variables');
+    console.log('Environment check:', {
+      hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY
+    });
+
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
       return NextResponse.json(
-        { error: 'Server configuration error' }, 
+        { error: 'Missing SUPABASE_URL environment variable' },
         { status: 500 }
       );
     }
 
-    // Initialize Supabase with service role key
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json(
+        { error: 'Missing SUPABASE_SERVICE_ROLE_KEY environment variable' },
+        { status: 500 }
+      );
+    }
+
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -27,22 +34,16 @@ export async function GET() {
       }
     );
 
-    console.log('Supabase admin client created, fetching users...');
-
-    // Get all users
     const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
     
     if (error) {
-      console.error('Supabase admin error:', error);
+      console.error('Supabase error details:', error);
       return NextResponse.json(
-        { error: `Failed to fetch users: ${error.message}` }, 
+        { error: `Database error: ${error.message}` },
         { status: 500 }
       );
     }
 
-    console.log(`Successfully fetched ${users.length} users`);
-
-    // Transform data
     const safeUsers = users.map((user: any) => ({
       id: user.id,
       email: user.email,
@@ -55,9 +56,9 @@ export async function GET() {
 
     return NextResponse.json(safeUsers);
   } catch (error) {
-    console.error('Unexpected error in admin users API:', error);
+    console.error('Unexpected API error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' }, 
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
