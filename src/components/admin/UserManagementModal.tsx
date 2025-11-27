@@ -66,55 +66,75 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     const usersData = await authAPI.getAllUsers();
     
     if (!usersData) {
-      throw new Error('Failed to load users - service key may be missing');
+      throw new Error('Failed to load users - no data returned');
     }
     
-    setUsers(usersData || []);
+    setUsers(usersData);
     
-    console.log('✅ Loaded users:', usersData?.length);
+    console.log('✅ Loaded users:', usersData.length);
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Error loading users:', error);
     
-    // More detailed error handling
-    if (error instanceof Error) {
-      if (error.message.includes('SUPABASE_SERVICE_ROLE_KEY')) {
-        showError('Admin access not configured. Please check environment variables.');
-      } else if (error.message.includes('Admin access required')) {
-        showError('You need admin privileges to view users.');
-      } else if (error.message.includes('Authentication required')) {
-        showError('Please log in to view users.');
-      } else {
-        showError('Failed to load users: ' + error.message);
-      }
+    // More specific error handling
+    const errorMessage = error?.message || 'Unknown error occurred';
+    
+    if (errorMessage.includes('SUPABASE_SERVICE_ROLE_KEY') || 
+        errorMessage.includes('service role key') ||
+        errorMessage.includes('500') || 
+        errorMessage.includes('Internal Server Error')) {
+      showError('Admin access not properly configured. Please check environment variables in Vercel settings.');
+    } else if (errorMessage.includes('Admin access required') || 
+               errorMessage.includes('403') || 
+               errorMessage.includes('Forbidden')) {
+      showError('You need administrator privileges to view all users.');
+    } else if (errorMessage.includes('Authentication required') || 
+               errorMessage.includes('401') || 
+               errorMessage.includes('Unauthorized')) {
+      showError('Please log in to access user management.');
+    } else if (errorMessage.includes('Failed to load users')) {
+      showError('Unable to load user data. Please try again later.');
     } else {
-      showError('Failed to load users. Please try again.');
+      showError(`Failed to load users: ${errorMessage}`);
     }
     
-    // Fallback: show current user only
-    try {
-      const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
-      if (currentAuthUser) {
-        const fallbackUser: AuthUser = {
-          id: currentAuthUser.id,
-          email: currentAuthUser.email || '',
-          user_metadata: currentAuthUser.user_metadata || {},
-          created_at: currentAuthUser.created_at,
-          updated_at: currentAuthUser.updated_at || currentAuthUser.created_at,
-          last_sign_in_at: currentAuthUser.last_sign_in_at || null,
-          role: (currentAuthUser.user_metadata?.role as UserRole) || 'user',
-          status: 'active'
-        };
-        setUsers([fallbackUser]);
-      } else {
-        setUsers([]);
-      }
-    } catch (fallbackError) {
-      console.error('Fallback also failed:', fallbackError);
-      setUsers([]);
-    }
+    // Enhanced fallback: show current user only with better typing
+    await loadFallbackUsers();
   } finally {
     setLoading(false);
+  }
+};
+
+// Separate fallback function for better organization
+const loadFallbackUsers = async () => {
+  try {
+    const { data: { user: currentAuthUser }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError) {
+      console.warn('⚠️ Error getting current user for fallback:', userError);
+      setUsers([]);
+      return;
+    }
+
+    if (currentAuthUser) {
+      const fallbackUser: AuthUser = {
+        id: currentAuthUser.id,
+        email: currentAuthUser.email || '',
+        user_metadata: currentAuthUser.user_metadata || {},
+        created_at: currentAuthUser.created_at,
+        updated_at: currentAuthUser.updated_at || currentAuthUser.created_at,
+        last_sign_in_at: currentAuthUser.last_sign_in_at || null,
+        role: (currentAuthUser.user_metadata?.role as UserRole) || 'user',
+        status: 'active'
+      };
+      setUsers([fallbackUser]);
+      console.log('🔄 Using fallback: showing current user only');
+    } else {
+      setUsers([]);
+    }
+  } catch (fallbackError) {
+    console.error('❌ Fallback also failed:', fallbackError);
+    setUsers([]);
   }
 };
   // Real-time updates
