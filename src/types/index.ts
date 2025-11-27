@@ -213,3 +213,23 @@ export interface Notification {
   related_entity_id?: string;
   related_entity_type?: 'VEHICLE' | 'CRIME_REPORT' | 'USER';
 }
+
+// types/index.ts (if you have one)
+export interface Report {
+  id: string;
+  license_plate?: string;
+  title?: string;
+  last_seen_location?: string;
+  location?: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  latitude?: number;
+  longitude?: number;
+  created_at: string;
+  // Vehicle specific properties
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vehicle_color?: string;
+  // Crime specific properties
+  report_type?: string;
+  status?: string;
+}

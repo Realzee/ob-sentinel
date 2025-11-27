@@ -28,10 +28,10 @@ export default function Header() {
               <>
                 <div className="text-sm text-gray-700">
                   <div className="font-medium">
-                    {user.profile?.full_name || user.email}
+                    {user.user_metadata?.full_name || user.email}
                   </div>
                   <div className="text-gray-500 capitalize">
-                    {user.profile?.role} • {user.profile?.status}
+                    {user.user_metadata?.role || 'user'} • {user.user_metadata?.status || 'active'}
                   </div>
                 </div>
                 <Button
