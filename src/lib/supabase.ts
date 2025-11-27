@@ -41,11 +41,11 @@ export interface VehicleAlert {
   id: string;
   license_plate: string;
   alert_type: string;
-  status: 'active' | 'resolved' | 'closed'; // Added 'resolved' and 'closed'
+  status: 'active' | 'resolved' | 'closed';
   location: string;
   created_at: string;
   updated_at: string;
-  severity: 'low' | 'medium' | 'high' | 'critical'; // Added 'critical'
+  severity: 'low' | 'medium' | 'high' | 'critical';
   description?: string;
 }
 
@@ -53,13 +53,13 @@ export interface CrimeReport {
   id: string;
   title: string;
   description: string;
-  status: 'open' | 'investigating' | 'closed' | 'resolved'; // Added 'resolved'
-  priority: 'low' | 'medium' | 'high' | 'critical'; // Added 'critical'
+  status: 'open' | 'investigating' | 'closed' | 'resolved';
+  priority: 'low' | 'medium' | 'high' | 'critical';
   location: string;
   created_at: string;
   updated_at: string;
   assigned_officer?: string;
-  severity?: 'low' | 'medium' | 'high' | 'critical'; // Added severity for crime reports
+  severity?: 'low' | 'medium' | 'high' | 'critical';
 }
 
 export interface DashboardStats {
@@ -70,10 +70,10 @@ export interface DashboardStats {
   resolved_today: number;
 }
 
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Initialize Supabase client with fallbacks for build time
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -93,26 +93,35 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 
 // Helper function to transform Supabase User to AuthUser
 const transformUserToAuthUser = (user: User): AuthUser => {
-  // Check user status based on available properties
-  let status: UserStatus = 'active'; // Default to active
+  let status: UserStatus = 'active';
   
-  // You might need to adjust this based on your actual user status tracking
-  // This is a simplified version - adjust according to your auth setup
   if (!user.email_confirmed_at) {
     status = 'pending';
   }
-  // Add other status checks as needed
 
   return {
     id: user.id,
     email: user.email || '',
     user_metadata: user.user_metadata || {},
     created_at: user.created_at,
-    updated_at: user.updated_at || user.created_at, // Fallback to created_at if updated_at is undefined
+    updated_at: user.updated_at || user.created_at,
     last_sign_in_at: user.last_sign_in_at || null,
     role: (user.user_metadata?.role as UserRole) || 'user',
     status: status
   };
+};
+
+// Utility functions that were missing
+export const formatDateForDateTimeLocal = (date: Date): string => {
+  return date.toISOString().slice(0, 16);
+};
+
+export const isVehicleAlert = (item: any): item is VehicleAlert => {
+  return item && typeof item === 'object' && 'license_plate' in item && 'alert_type' in item;
+};
+
+export const isCrimeReport = (item: any): item is CrimeReport => {
+  return item && typeof item === 'object' && 'title' in item && 'description' in item && 'priority' in item;
 };
 
 // Auth API methods
@@ -438,7 +447,6 @@ export const reportsAPI = {
   // Get all reports
   getReports: async (): Promise<any[]> => {
     try {
-      // Implementation for getting reports
       const { data, error } = await supabase
         .from('reports')
         .select('*')
@@ -522,8 +530,6 @@ export const reportsAPI = {
   // Get dashboard stats
   getDashboardStats: async (): Promise<DashboardStats> => {
     try {
-      // This would typically aggregate data from multiple tables
-      // For now, returning mock data - implement based on your actual database structure
       const { data: alerts } = await supabase
         .from('vehicle_alerts')
         .select('id, status');
@@ -537,7 +543,6 @@ export const reportsAPI = {
       const totalReports = reports?.length || 0;
       const openReports = reports?.filter(r => r.status === 'open').length || 0;
       
-      // Calculate resolved today (mock implementation)
       const today = new Date().toISOString().split('T')[0];
       const resolvedToday = reports?.filter(r => 
         (r.status === 'closed' || r.status === 'resolved') && r.created_at.startsWith(today)
@@ -552,7 +557,6 @@ export const reportsAPI = {
       };
     } catch (error) {
       console.error('Error getting dashboard stats:', error);
-      // Return default stats on error
       return {
         total_alerts: 0,
         active_alerts: 0,
