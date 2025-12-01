@@ -1045,7 +1045,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       />
 
       {/* Confirmation Modals */}
-      // Delete confirmation modal (around line 1057)
+      
 <ConfirmationModal
   isOpen={showDeleteConfirmModal}
   onClose={() => {
@@ -1060,7 +1060,6 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   cancelText="Cancel"
 />
 
-// Success modal (around line 1067)
 <ConfirmationModal
   isOpen={showSuccessModal}
   onClose={() => setShowSuccessModal(false)}
@@ -1071,7 +1070,6 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   showCancel={false}
 />
 
-// Error modal (around line 1077)
 <ConfirmationModal
   isOpen={showErrorModal}
   onClose={() => setShowErrorModal(false)}
