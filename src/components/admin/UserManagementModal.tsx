@@ -19,12 +19,14 @@ const ADMIN_EMAILS = [
 ];
 
 // Helper function to validate and cast to UserRole
-const toUserRole = (role: string): UserRole => {
-  const validRoles: string[] = ['admin', 'moderator', 'controller', 'user'];
-  const normalizedRole = role.toLowerCase().trim();
+const toUserRole = (role: string | undefined): UserRole => {
+  if (!role) return 'user';
+  
+  const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
+  const normalizedRole = role.toLowerCase().trim() as UserRole;
   
   if (validRoles.includes(normalizedRole)) {
-    return normalizedRole as UserRole;
+    return normalizedRole;
   }
   
   return 'user';
@@ -47,7 +49,7 @@ const getUserRole = (user: any): UserRole => {
   if (!user) return 'user';
   
   // Check multiple possible locations for the role
-  let role = user.role;
+  let role: string | undefined = user.role;
   
   if (!role && user.user_metadata) {
     role = user.user_metadata.role;
@@ -58,7 +60,7 @@ const getUserRole = (user: any): UserRole => {
     role = 'admin';
   }
   
-  // Default to 'user' if no role found
+  // Use the helper function to ensure we return a valid UserRole
   return toUserRole(role || 'user');
 };
 
