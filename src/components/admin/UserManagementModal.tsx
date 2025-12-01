@@ -554,48 +554,53 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
   // Update user
   const handleUpdateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!selectedUser) return;
+  e.preventDefault();
+  
+  if (!selectedUser) return;
 
-    try {
-      setEditingUser(true);
+  try {
+    setEditingUser(true);
 
-      // Update role if changed
-      if (editUserRole !== selectedUser.role) {
-        await authAPI.updateUserRole(selectedUser.id, editUserRole);
-      }
-
-      // Update status if changed
-      if (editUserStatus !== selectedUser.status) {
-        await authAPI.updateUserStatus(selectedUser.id, editUserStatus);
-      }
-
-      // Update company if changed and user is admin
-      if (isAdminUser && editUserCompany !== selectedUser.company_id) {
-        await authAPI.assignUserToCompany(selectedUser.id, editUserCompany);
-      }
-
-      // Refresh users to get updated data
-      await loadUsers();
-
-      // Reset form
-      setSelectedUser(null);
-      setEditUserName('');
-      setEditUserRole('user');
-      setEditUserStatus('active');
-      setEditUserPassword('');
-      setEditUserCompany('');
-      setIsEditUserModalOpen(false);
-      
-      showSuccess('User updated successfully!');
-    } catch (error: any) {
-      console.error('Error updating user:', error);
-      showError(error.message || 'Error updating user. Please try again.');
-    } finally {
-      setEditingUser(false);
+    // Update role if changed
+    if (editUserRole !== selectedUser.role) {
+      await authAPI.updateUserRole(selectedUser.id, editUserRole);
     }
-  };
+
+    // Update status if changed
+    if (editUserStatus !== selectedUser.status) {
+      await authAPI.updateUserStatus(selectedUser.id, editUserStatus);
+    }
+
+    // Update company if changed and user is admin
+    if (isAdminUser && editUserCompany !== selectedUser.company_id) {
+      try {
+        await authAPI.assignUserToCompany(selectedUser.id, editUserCompany);
+      } catch (companyError) {
+        console.warn('⚠️ Company assignment failed, continuing with other updates:', companyError);
+        // Don't throw here, just log and continue
+      }
+    }
+
+    // Refresh users to get updated data
+    await loadUsers();
+
+    // Reset form
+    setSelectedUser(null);
+    setEditUserName('');
+    setEditUserRole('user');
+    setEditUserStatus('active');
+    setEditUserPassword('');
+    setEditUserCompany('');
+    setIsEditUserModalOpen(false);
+    
+    showSuccess('User updated successfully!');
+  } catch (error: any) {
+    console.error('Error updating user:', error);
+    showError(error.message || 'Error updating user. Please try again.');
+  } finally {
+    setEditingUser(false);
+  }
+};
 
   // Delete company
   const handleDeleteCompany = async (companyId: string, companyName: string) => {

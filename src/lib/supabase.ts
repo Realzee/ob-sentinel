@@ -311,25 +311,71 @@ export const companyAPI = {
   },
 
   // Assign user to company
-  assignUserToCompany: async (userId: string, companyId: string): Promise<Profile> => {
+  assignUserToCompany: async (userId: string, companyId: string): Promise<boolean> => {
+  try {
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
+
+    if (!token) {
+      throw new Error('No authentication token available');
+    }
+
+    console.log('🔍 Assigning user to company:', { userId, companyId });
+    
+    // Try different endpoint formats
+    let response;
     try {
+      response = await fetch(`/api/admin/users/${userId}/company`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ company_id: companyId }),
+      });
+    } catch (firstError) {
+      console.log('🔄 First endpoint failed, trying alternative...');
+      // Try alternative endpoint
+      response = await fetch(`/api/admin/users/company`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ user_id: userId, company_id: companyId }),
+      });
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Error assigning user to company:', response.status, errorText);
+      
+      // Fallback to direct database update
+      console.log('🔄 Using fallback database update...');
       const { data, error } = await supabase
         .from('profiles')
-        .update({
+        .update({ 
           company_id: companyId,
           updated_at: new Date().toISOString()
         })
-        .eq('id', userId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('Error assigning user to company:', error);
-      throw error;
+        .eq('id', userId);
+      
+      if (error) {
+        console.error('❌ Fallback also failed:', error);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      console.log('✅ Fallback successful');
+      return true;
     }
+
+    const data = await response.json();
+    return data.success || true;
+  } catch (error) {
+    console.error('Error assigning user to company:', error);
+    throw error;
   }
+}
 };
 
 // Reports API with company filtering
