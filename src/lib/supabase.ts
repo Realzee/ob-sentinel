@@ -602,20 +602,31 @@ export const authAPI = {
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        console.error('❌ Users API error:', response.status, errorText);
+        
+        // Return empty array instead of throwing
+        return [];
       }
       
-      let data = await response.json();
+      const data = await response.json();
+      
+      // Check if data has the expected format
+      if (!Array.isArray(data)) {
+        console.error('❌ Users API returned non-array data:', data);
+        return [];
+      }
       
       // Filter users by company for moderators
+      let filteredData = data;
       if (currentUserRole === 'moderator' && currentUserCompanyId) {
-        data = data.filter((user: AuthUser) => user.company_id === currentUserCompanyId);
+        filteredData = data.filter((user: AuthUser) => user.company_id === currentUserCompanyId);
       }
       
-      return data;
+      return filteredData;
     } catch (error) {
       console.error('Error fetching users:', error);
-      throw error;
+      // Return empty array instead of throwing
+      return [];
     }
   },
 

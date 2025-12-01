@@ -7,6 +7,8 @@ import { headers } from 'next/headers';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  console.log('🔍 API /admin/users called');
+  
   try {
     // Get authorization header using next/headers
     const headersList = headers();
@@ -64,8 +66,15 @@ export async function GET(request: NextRequest) {
       .eq('id', currentUser.id)
       .single();
 
+    console.log('📋 User profile:', {
+      userId: currentUser.id,
+      profileRole: userProfile?.role,
+      hasProfile: !!userProfile,
+      profileError: profileError?.message
+    });
+
     if (profileError || !userProfile) {
-      console.error('Profile error:', profileError);
+      console.error('❌ Profile error:', profileError);
       return NextResponse.json(
         { error: 'User profile not found' },
         { status: 404 }
@@ -76,7 +85,15 @@ export async function GET(request: NextRequest) {
     const isSuperAdmin = userProfile.role === 'admin' || userProfile.role === 'administrator';
     const isCompanyAdmin = userProfile.role === 'company_admin';
     
+    console.log('🔐 Role validation:', {
+      profileRole: userProfile.role,
+      isSuperAdmin,
+      isCompanyAdmin,
+      canAccess: isSuperAdmin || isCompanyAdmin
+    });
+    
     if (!isSuperAdmin && !isCompanyAdmin) {
+      console.log('🚫 Access denied - not admin');
       return NextResponse.json(
         { error: 'Admin access required' },
         { status: 403 }
