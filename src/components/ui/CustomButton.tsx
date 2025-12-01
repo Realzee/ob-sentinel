@@ -1,4 +1,4 @@
-// components/ui/CustomButton.tsx
+// components/ui/CustomButton.tsx - UPDATED VERSION
 interface CustomButtonProps {
   children: React.ReactNode;
   onClick?: () => void;
@@ -6,6 +6,7 @@ interface CustomButtonProps {
   variant?: 'primary' | 'secondary' | 'success' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  loading?: boolean; // Add this line
 }
 
 export default function CustomButton({ 
@@ -14,7 +15,8 @@ export default function CustomButton({
   disabled = false,
   variant = 'primary',
   size = 'md',
-  className = ''
+  className = '',
+  loading = false // Add this line
 }: CustomButtonProps) {
   const baseClasses = 'rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900';
   
@@ -34,12 +36,19 @@ export default function CustomButton({
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
       className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className} ${
-        disabled ? 'opacity-50 cursor-not-allowed' : ''
+        disabled || loading ? 'opacity-50 cursor-not-allowed' : ''
       }`}
     >
-      {children}
+      {loading ? (
+        <div className="flex items-center justify-center space-x-2">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+          <span>Loading...</span>
+        </div>
+      ) : (
+        children
+      )}
     </button>
   );
 }

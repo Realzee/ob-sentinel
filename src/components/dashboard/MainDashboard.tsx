@@ -233,36 +233,40 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     ]);
     
     // Filter out rejected/deleted reports and only show active/resolved
-    const activeVehicles = vehiclesData.filter(vehicle => 
-      vehicle.status !== 'rejected'
-    );
+    const activeVehicles = Array.isArray(vehiclesData) 
+      ? vehiclesData.filter(vehicle => vehicle.status !== 'rejected')
+      : [];
     
-    const activeCrimes = crimesData.filter(crime => 
-      crime.status !== 'rejected'
-    );
+    const activeCrimes = Array.isArray(crimesData) 
+      ? crimesData.filter(crime => crime.status !== 'rejected')
+      : [];
     
     // Create a map of user profiles for quick lookup
     const userProfilesMap = new Map();
-    allUsers.forEach((user: any) => {
-      // Handle both AuthUser and Profile types
-      if ('full_name' in user) {
-        // It's a Profile
-        userProfilesMap.set(user.id, user);
-      } else if ('user_metadata' in user) {
-        // It's an AuthUser - convert to Profile format
-        const profile = {
-          id: user.id,
-          email: user.email,
-          full_name: user.user_metadata?.full_name || null,
-          role: user.user_metadata?.role || 'user',
-          status: user.status || 'active',
-          created_at: user.created_at,
-          updated_at: user.updated_at || user.created_at,
-          last_seen_at: user.last_sign_in_at || user.created_at
-        };
-        userProfilesMap.set(user.id, profile);
-      }
-    });
+    
+    // Check if allUsers is an array
+    if (Array.isArray(allUsers)) {
+      allUsers.forEach((user: any) => {
+        // Handle both AuthUser and Profile types
+        if ('full_name' in user) {
+          // It's a Profile
+          userProfilesMap.set(user.id, user);
+        } else if ('user_metadata' in user) {
+          // It's an AuthUser - convert to Profile format
+          const profile = {
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || null,
+            role: user.user_metadata?.role || 'user',
+            status: user.status || 'active',
+            created_at: user.created_at,
+            updated_at: user.updated_at || user.created_at,
+            last_seen_at: user.last_sign_in_at || user.created_at
+          };
+          userProfilesMap.set(user.id, profile);
+        }
+      });
+    }
 
     // Enhance reports with reporter information
     const vehiclesWithReporters = activeVehicles.map(vehicle => ({
@@ -277,7 +281,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         updated_at: new Date().toISOString()
       },
       ob_number: vehicle.ob_number || generateShortOBNumber('V')
-    }));
+    })) as VehicleAlertWithImages[];
     
     const crimesWithReporters = activeCrimes.map(crime => ({
       ...crime,
@@ -291,16 +295,20 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         updated_at: new Date().toISOString()
       },
       ob_number: crime.ob_number || generateShortOBNumber('C')
-    }));
+    })) as CrimeReportWithImages[];
     
-    setVehicleReports(vehiclesWithReporters as VehicleAlertWithImages[]);
-    setCrimeReports(crimesWithReporters as CrimeReportWithImages[]);
+    setVehicleReports(vehiclesWithReporters);
+    setCrimeReports(crimesWithReporters);
     
     console.log(`✅ Loaded ${vehiclesWithReporters.length} vehicle reports and ${crimesWithReporters.length} crime reports`);
     
   } catch (error) {
     console.error('Error loading reports:', error);
     showError('Failed to load reports. Please try refreshing the page.');
+    
+    // Set empty arrays on error
+    setVehicleReports([]);
+    setCrimeReports([]);
   } finally {
     setReportsLoading(false);
   }
@@ -803,18 +811,18 @@ export default function MainDashboard({ user }: MainDashboardProps) {
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <CustomButton
-            onClick={handleRefresh}
-            disabled={loading}
-            variant="secondary"
-            size="md"
-            loading={loading}
-            className="flex items-center justify-center space-x-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            <span>{loading ? 'Refreshing...' : 'Refresh & Clear Cache'}</span>
-          </CustomButton>
+  onClick={handleRefresh}
+  disabled={loading}
+  variant="secondary"
+  size="md"
+  loading={loading} // Now this will work
+  className="flex items-center justify-center space-x-2"
+>
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+  </svg>
+  <span>Refresh & Clear Cache</span>
+</CustomButton>
         </div>
 
         {/* Reports List */}
@@ -1037,40 +1045,42 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       />
 
       {/* Confirmation Modals */}
-      <ConfirmationModal
-        isOpen={showDeleteConfirmModal}
-        onClose={() => {
-          setShowDeleteConfirmModal(false);
-          setReportToDelete(null);
-        }}
-        onConfirm={confirmDeleteReport}
-        title="Confirm Deletion"
-        message="Are you sure you want to delete this report? This action cannot be undone."
-        type="warning"
-        confirmText="Delete Report"
-        cancelText="Cancel"
-      />
+      // Delete confirmation modal (around line 1057)
+<ConfirmationModal
+  isOpen={showDeleteConfirmModal}
+  onClose={() => {
+    setShowDeleteConfirmModal(false);
+    setReportToDelete(null);
+  }}
+  onConfirm={confirmDeleteReport}
+  title="Confirm Deletion"
+  message="Are you sure you want to delete this report? This action cannot be undone."
+  variant="warning" // Use 'warning' instead of 'type'
+  confirmText="Delete Report"
+  cancelText="Cancel"
+/>
 
-      <ConfirmationModal
-        isOpen={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
-        title="Success"
-        message={successMessage}
-        type="success"
-        confirmText="OK"
-        showCancel={false}
-      />
+// Success modal (around line 1067)
+<ConfirmationModal
+  isOpen={showSuccessModal}
+  onClose={() => setShowSuccessModal(false)}
+  title="Success"
+  message={successMessage}
+  variant="success" // Use 'success' instead of 'type'
+  confirmText="OK"
+  showCancel={false}
+/>
 
-      <ConfirmationModal
-        isOpen={showErrorModal}
-        onClose={() => setShowErrorModal(false)}
-        title="Error"
-        message={errorMessage}
-        type="error"
-        confirmText="OK"
-        showCancel={false}
-      />
-
+// Error modal (around line 1077)
+<ConfirmationModal
+  isOpen={showErrorModal}
+  onClose={() => setShowErrorModal(false)}
+  title="Error"
+  message={errorMessage}
+  variant="error" // Use 'error' instead of 'type' (note: ConfirmationModal has 'error' variant, not 'danger')
+  confirmText="OK"
+  showCancel={false}
+/>
       {/* Mobile Floating Action Button */}
       <div className="sm:hidden fixed bottom-6 right-6 z-50">
         <CustomButton
