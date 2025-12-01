@@ -6,6 +6,21 @@ export type ReportStatus = 'active' | 'pending' | 'resolved' | 'rejected' | 'rec
 export type UserRole = 'admin' | 'moderator' | 'controller' | 'user';
 export type UserStatus = 'active' | 'pending' | 'suspended';
 
+export interface Company {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+export interface UserCompany {
+  id: string;
+  user_id: string;
+  company_id: string;
+  companies: Company;
+}
+
 export interface VehicleAlert {
   id: string;
   license_plate: string;
@@ -22,6 +37,7 @@ export interface VehicleAlert {
   evidence_images?: string[];
   reported_by: string;
   ob_number?: string;
+  company_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +56,7 @@ export interface CrimeReport {
   contact_allowed: boolean;
   reported_by: string;
   ob_number?: string;
+  company_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -53,6 +70,7 @@ export interface Profile {
   created_at: string;
   updated_at: string;
   last_seen_at?: string;
+  company_id?: string;
 }
 
 export interface AuthUser {
@@ -61,12 +79,14 @@ export interface AuthUser {
   user_metadata: {
     full_name?: string;
     role?: UserRole;
+    company_id?: string;
   };
   created_at: string;
   updated_at: string;
   last_sign_in_at?: string | null;
   role: UserRole;
   status: UserStatus;
+  company_id?: string;
 }
 
 // Initialize Supabase client
@@ -114,9 +134,140 @@ export const formatDateForDateTimeLocal = (dateString: string): string => {
   }
 };
 
-// Reports API
+// Company API
+export const companyAPI = {
+  // Get all companies (admin only)
+  getAllCompanies: async (): Promise<Company[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+      return [];
+    }
+  },
+
+  // Get company by ID
+  getCompanyById: async (companyId: string): Promise<Company | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', companyId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error fetching company:', error);
+      return null;
+    }
+  },
+
+  // Create company
+  createCompany: async (companyData: { name: string; created_by: string }): Promise<Company> => {
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .insert([{
+          ...companyData,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating company:', error);
+      throw error;
+    }
+  },
+
+  // Update company
+  updateCompany: async (companyId: string, updates: Partial<Company>): Promise<Company> => {
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', companyId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating company:', error);
+      throw error;
+    }
+  },
+
+  // Delete company
+  deleteCompany: async (companyId: string): Promise<void> => {
+    try {
+      const { error } = await supabase
+        .from('companies')
+        .delete()
+        .eq('id', companyId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting company:', error);
+      throw error;
+    }
+  },
+
+  // Get users by company
+  getUsersByCompany: async (companyId: string): Promise<Profile[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching company users:', error);
+      return [];
+    }
+  },
+
+  // Assign user to company
+  assignUserToCompany: async (userId: string, companyId: string): Promise<Profile> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          company_id: companyId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error assigning user to company:', error);
+      throw error;
+    }
+  }
+};
+
+// Reports API with company filtering
 export const reportsAPI = {
-  // Vehicle Reports
+  // Vehicle Reports with company filtering
   createVehicleAlert: async (reportData: any): Promise<VehicleAlert> => {
     try {
       const { data, error } = await supabase
@@ -137,12 +288,19 @@ export const reportsAPI = {
     }
   },
 
-  getVehicleAlerts: async (): Promise<VehicleAlert[]> => {
+  getVehicleAlerts: async (userRole?: UserRole, companyId?: string): Promise<VehicleAlert[]> => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('vehicle_alerts')
         .select('*')
         .order('created_at', { ascending: false });
+
+      // Apply company filtering for non-admin users
+      if (userRole !== 'admin' && companyId) {
+        query = query.eq('company_id', companyId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return data || [];
@@ -186,7 +344,7 @@ export const reportsAPI = {
     }
   },
 
-  // Crime Reports
+  // Crime Reports with company filtering
   createCrimeReport: async (reportData: any): Promise<CrimeReport> => {
     try {
       const { data, error } = await supabase
@@ -207,12 +365,19 @@ export const reportsAPI = {
     }
   },
 
-  getCrimeReports: async (): Promise<CrimeReport[]> => {
+  getCrimeReports: async (userRole?: UserRole, companyId?: string): Promise<CrimeReport[]> => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('crime_reports')
         .select('*')
         .order('created_at', { ascending: false });
+
+      // Apply company filtering for non-admin users
+      if (userRole !== 'admin' && companyId) {
+        query = query.eq('company_id', companyId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return data || [];
@@ -256,12 +421,12 @@ export const reportsAPI = {
     }
   },
 
-  // Dashboard Stats
-  getDashboardStats: async (): Promise<any> => {
+  // Dashboard Stats with company filtering
+  getDashboardStats: async (userRole?: UserRole, companyId?: string): Promise<any> => {
     try {
       const [vehiclesData, crimesData] = await Promise.all([
-        reportsAPI.getVehicleAlerts(),
-        reportsAPI.getCrimeReports()
+        reportsAPI.getVehicleAlerts(userRole, companyId),
+        reportsAPI.getCrimeReports(userRole, companyId)
       ]);
 
       const today = new Date();
@@ -302,14 +467,21 @@ export const reportsAPI = {
     }
   },
 
-  // Search and Filter
-  searchVehicleAlerts: async (query: string): Promise<VehicleAlert[]> => {
+  // Search and Filter with company filtering
+  searchVehicleAlerts: async (query: string, userRole?: UserRole, companyId?: string): Promise<VehicleAlert[]> => {
     try {
-      const { data, error } = await supabase
+      let dbQuery = supabase
         .from('vehicle_alerts')
         .select('*')
         .or(`license_plate.ilike.%${query}%,vehicle_make.ilike.%${query}%,vehicle_model.ilike.%${query}%`)
         .order('created_at', { ascending: false });
+
+      // Apply company filtering for non-admin users
+      if (userRole !== 'admin' && companyId) {
+        dbQuery = dbQuery.eq('company_id', companyId);
+      }
+
+      const { data, error } = await dbQuery;
 
       if (error) throw error;
       return data || [];
@@ -319,13 +491,20 @@ export const reportsAPI = {
     }
   },
 
-  searchCrimeReports: async (query: string): Promise<CrimeReport[]> => {
+  searchCrimeReports: async (query: string, userRole?: UserRole, companyId?: string): Promise<CrimeReport[]> => {
     try {
-      const { data, error } = await supabase
+      let dbQuery = supabase
         .from('crime_reports')
         .select('*')
         .or(`title.ilike.%${query}%,description.ilike.%${query}%,location.ilike.%${query}%`)
         .order('created_at', { ascending: false });
+
+      // Apply company filtering for non-admin users
+      if (userRole !== 'admin' && companyId) {
+        dbQuery = dbQuery.eq('company_id', companyId);
+      }
+
+      const { data, error } = await dbQuery;
 
       if (error) throw error;
       return data || [];
@@ -336,10 +515,10 @@ export const reportsAPI = {
   }
 };
 
-// Auth API
+// Auth API with company support
 export const authAPI = {
-  // Get all users (requires service role key via API route)
-  getAllUsers: async (): Promise<AuthUser[]> => {
+  // Get all users (admin sees all, moderators see only their company users)
+  getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
     try {
       const response = await fetch('/api/admin/users/');
       
@@ -348,7 +527,13 @@ export const authAPI = {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
       
-      const data = await response.json();
+      let data = await response.json();
+      
+      // Filter users by company for moderators
+      if (currentUserRole === 'moderator' && currentUserCompanyId) {
+        data = data.filter((user: AuthUser) => user.company_id === currentUserCompanyId);
+      }
+      
       return data;
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -404,12 +589,13 @@ export const authAPI = {
     }
   },
 
-  // Create user
+  // Create user with company assignment
   createUser: async (userData: {
     email: string;
     password: string;
     full_name?: string;
     role?: UserRole;
+    company_id?: string;
   }): Promise<any> => {
     try {
       const response = await fetch('/api/admin/users/create', {
@@ -432,11 +618,23 @@ export const authAPI = {
     }
   },
 
-  // Delete user (suspend)
+  // Delete user (permanent deletion - admin only)
   deleteUser: async (userId: string): Promise<boolean> => {
     try {
-      // For safety, we'll just update status to suspended instead of deleting
-      return await authAPI.updateUserStatus(userId, 'suspended');
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      return data.success;
     } catch (error) {
       console.error('Error deleting user:', error);
       throw error;
@@ -477,6 +675,30 @@ export const authAPI = {
       return data;
     } catch (error) {
       console.error('Error updating user profile:', error);
+      throw error;
+    }
+  },
+
+  // Assign user to company
+  assignUserToCompany: async (userId: string, companyId: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/company`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ company_id: companyId }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      return data.success;
+    } catch (error) {
+      console.error('Error assigning user to company:', error);
       throw error;
     }
   }
@@ -578,6 +800,22 @@ export const realtimeAPI = {
           event: '*',
           schema: 'public',
           table: 'profiles'
+        },
+        callback
+      )
+      .subscribe();
+  },
+
+  // Subscribe to company updates
+  subscribeToCompanies: (callback: (payload: any) => void) => {
+    return supabase
+      .channel('companies')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'companies'
         },
         callback
       )

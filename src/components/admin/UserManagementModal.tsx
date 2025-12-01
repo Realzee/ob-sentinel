@@ -2,20 +2,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { authAPI, AuthUser, UserRole, UserStatus, supabase } from '@/lib/supabase';
+import { authAPI, AuthUser, UserRole, UserStatus, supabase, companyAPI, Company } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 
 interface UserManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: any;
-}
-
-interface Company {
-  id: string;
-  name: string;
-  created_at: string;
-  user_count?: number;
 }
 
 // Helper function to validate and cast to UserRole
@@ -40,7 +33,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isAddCompanyModalOpen, setIsAddCompanyModalOpen] = useState(false);
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
+  const [isEditCompanyModalOpen, setIsEditCompanyModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AuthUser | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   
   const [filters, setFilters] = useState({
     role: '',
@@ -70,9 +65,12 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [editUserPassword, setEditUserPassword] = useState('');
   const [editUserCompany, setEditUserCompany] = useState('');
   
+  const [editCompanyName, setEditCompanyName] = useState('');
+  
   const [addingUser, setAddingUser] = useState(false);
   const [addingCompany, setAddingCompany] = useState(false);
   const [editingUser, setEditingUser] = useState(false);
+  const [editingCompany, setEditingCompany] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState('');
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -94,14 +92,14 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setShowConfirmModal(true);
   };
 
-  // Load users function
+  // Load users function with company filtering
   const loadUsers = async () => {
     try {
       setLoading(true);
       
       console.log('🔍 Loading users via API route...');
       
-      const usersData = await authAPI.getAllUsers();
+      const usersData = await authAPI.getAllUsers(currentUser.role, currentUser.company_id);
       
       if (usersData && Array.isArray(usersData)) {
         // Properly type the users
@@ -123,64 +121,30 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       
     } catch (error: any) {
       console.error('❌ Error loading users:', error);
-      
-      if (error.message?.includes('SUPABASE_SERVICE_ROLE_KEY')) {
-        showError('Admin access not configured. Please check environment variables.');
-      } else if (error.message?.includes('Admin access required')) {
-        showError('You need admin privileges to view users.');
-      } else if (error.message?.includes('Authentication required')) {
-        showError('Please log in to view users.');
-      } else {
-        showError('Failed to load users: ' + error.message);
-      }
-      
-      await loadFallbackUsers();
+      showError('Failed to load users: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Load companies function
+  // Load companies function with admin check
   const loadCompanies = async () => {
     try {
-      // This is a placeholder - you'll need to implement your company data fetching
-      // For now, we'll create some mock data
-      const mockCompanies: Company[] = [
-        { id: '1', name: 'Acme Corp', created_at: new Date().toISOString(), user_count: 5 },
-        { id: '2', name: 'Globex Inc', created_at: new Date().toISOString(), user_count: 3 },
-        { id: '3', name: 'Wayne Enterprises', created_at: new Date().toISOString(), user_count: 8 },
-      ];
-      setCompanies(mockCompanies);
+      setLoading(true);
+      const companiesData = await companyAPI.getAllCompanies();
+      
+      // Filter companies for moderators
+      if (currentUser.role === 'moderator' && currentUser.company_id) {
+        const userCompany = companiesData.find(company => company.id === currentUser.company_id);
+        setCompanies(userCompany ? [userCompany] : []);
+      } else {
+        setCompanies(companiesData);
+      }
     } catch (error) {
       console.error('Error loading companies:', error);
       showError('Failed to load companies');
-    }
-  };
-
-  const loadFallbackUsers = async () => {
-    try {
-      const { data: { user: currentAuthUser } } = await supabase.auth.getUser();
-      if (currentAuthUser) {
-        const fallbackUser: AuthUser = {
-          id: currentAuthUser.id,
-          email: currentAuthUser.email || '',
-          user_metadata: {
-            ...currentAuthUser.user_metadata,
-            role: toUserRole(currentAuthUser.user_metadata?.role || 'user')
-          },
-          created_at: currentAuthUser.created_at,
-          updated_at: currentAuthUser.updated_at || currentAuthUser.created_at,
-          last_sign_in_at: currentAuthUser.last_sign_in_at || null,
-          role: toUserRole(currentAuthUser.user_metadata?.role || 'user'),
-          status: 'active'
-        };
-        setUsers([fallbackUser]);
-      } else {
-        setUsers([]);
-      }
-    } catch (fallbackError) {
-      console.error('Fallback also failed:', fallbackError);
-      setUsers([]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -250,7 +214,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   };
 
   // Suspend user
-  const handleDeleteUser = async (userId: string, userEmail: string) => {
+  const handleSuspendUser = async (userId: string, userEmail: string) => {
     showConfirmation(
       `Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`,
       async () => {
@@ -337,6 +301,32 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     );
   };
 
+  // Delete user permanently
+  const handleDeleteUser = async (userId: string, userEmail: string) => {
+    showConfirmation(
+      `Are you sure you want to permanently delete user ${userEmail}? This action cannot be undone.`,
+      async () => {
+        try {
+          setUpdating(userId);
+          
+          const success = await authAPI.deleteUser(userId);
+          
+          if (success) {
+            setUsers(prev => prev.filter(u => u.id !== userId));
+            showSuccess('User deleted successfully');
+          } else {
+            throw new Error('Failed to delete user');
+          }
+        } catch (error) {
+          console.error('Error deleting user:', error);
+          showError('Error deleting user. Please try again.');
+        } finally {
+          setUpdating(null);
+        }
+      }
+    );
+  };
+
   // Bulk role update
   const handleBulkRoleUpdate = async (newRole: string) => {
     if (selectedUsers.length === 0) return;
@@ -402,7 +392,8 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         email: newUserEmail,
         password: newUserPassword,
         full_name: newUserName || '',
-        role: newUserRole
+        role: newUserRole,
+        company_id: newUserCompany || currentUser.company_id
       });
 
       if (newUser) {
@@ -438,13 +429,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setAddingCompany(true);
       
-      // This is a placeholder - implement your company creation logic
-      const newCompany: Company = {
-        id: Date.now().toString(),
+      const newCompany = await companyAPI.createCompany({
         name: newCompanyName,
-        created_at: new Date().toISOString(),
-        user_count: 0
-      };
+        created_by: currentUser.id
+      });
       
       setCompanies(prev => [...prev, newCompany]);
       
@@ -467,7 +455,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setEditUserRole(user.role);
     setEditUserStatus(user.status);
     setEditUserPassword('');
-    setEditUserCompany('');
+    setEditUserCompany(user.company_id || '');
     setIsEditUserModalOpen(true);
   };
 
@@ -488,6 +476,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       // Update status if changed
       if (editUserStatus !== selectedUser.status) {
         await authAPI.updateUserStatus(selectedUser.id, editUserStatus);
+      }
+
+      // Update company if changed and user is admin
+      if (currentUser.role === 'admin' && editUserCompany !== selectedUser.company_id) {
+        await authAPI.assignUserToCompany(selectedUser.id, editUserCompany);
       }
 
       // Refresh users to get updated data
@@ -511,6 +504,63 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
+  // Delete company
+  const handleDeleteCompany = async (companyId: string, companyName: string) => {
+    showConfirmation(
+      `Are you sure you want to delete company "${companyName}"? This will remove all associated data and cannot be undone.`,
+      async () => {
+        try {
+          setUpdating(companyId);
+          
+          await companyAPI.deleteCompany(companyId);
+          
+          setCompanies(prev => prev.filter(c => c.id !== companyId));
+          showSuccess('Company deleted successfully');
+        } catch (error) {
+          console.error('Error deleting company:', error);
+          showError('Error deleting company. Please try again.');
+        } finally {
+          setUpdating(null);
+        }
+      }
+    );
+  };
+
+  // Edit company
+  const handleEditCompany = (company: Company) => {
+    setSelectedCompany(company);
+    setEditCompanyName(company.name);
+    setIsEditCompanyModalOpen(true);
+  };
+
+  // Update company
+  const handleUpdateCompany = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedCompany) return;
+
+    try {
+      setEditingCompany(true);
+
+      await companyAPI.updateCompany(selectedCompany.id, {
+        name: editCompanyName
+      });
+
+      await loadCompanies();
+
+      setSelectedCompany(null);
+      setEditCompanyName('');
+      setIsEditCompanyModalOpen(false);
+      
+      showSuccess('Company updated successfully!');
+    } catch (error: any) {
+      console.error('Error updating company:', error);
+      showError(error.message || 'Error updating company. Please try again.');
+    } finally {
+      setEditingCompany(false);
+    }
+  };
+
   // Helper function to get user role
   const getUserRole = (user: AuthUser): UserRole => {
     return user.role || toUserRole(user.user_metadata?.role || 'user');
@@ -521,7 +571,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     return user.user_metadata?.full_name || user.email.split('@')[0] || 'No Name';
   };
 
-  // Enhanced filtering
+  // Enhanced filtering with company support
   const filteredUsers = users.filter(user => {
     const matchesSearch = 
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -530,8 +580,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     
     const matchesRole = !filters.role || getUserRole(user) === filters.role;
     const matchesStatus = !filters.status || user.status === filters.status;
+    const matchesCompany = !filters.company || user.company_id === filters.company;
     
-    return matchesSearch && matchesRole && matchesStatus;
+    return matchesSearch && matchesRole && matchesStatus && matchesCompany;
   });
 
   // Load data on mount
@@ -562,11 +613,17 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
               <div>
                 <h2 className="text-2xl font-bold text-white">Admin Panel</h2>
                 <p className="text-gray-400 mt-1">Manage users, companies, and system settings</p>
+                {currentUser.role === 'moderator' && (
+                  <p className="text-sm text-blue-400 mt-1">
+                    Moderator View: {companies[0]?.name || 'Your Company'}
+                  </p>
+                )}
               </div>
               <div className="flex items-center space-x-3">
                 <button
                   onClick={() => activeTab === 'users' ? setIsAddUserModalOpen(true) : setIsAddCompanyModalOpen(true)}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
+                  disabled={activeTab === 'companies' && currentUser.role !== 'admin'}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -603,9 +660,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     activeTab === 'companies'
                       ? 'border-blue-500 text-blue-400'
                       : 'border-transparent text-gray-400 hover:text-gray-300'
-                  }`}
+                  } ${currentUser.role !== 'admin' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={currentUser.role !== 'admin'}
                 >
-                  Company Management
+                  Company Management {currentUser.role !== 'admin' && '(Admin Only)'}
                 </button>
               </div>
             </div>
@@ -646,6 +704,19 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                       <option value="pending">Pending</option>
                       <option value="suspended">Suspended</option>
                     </select>
+
+                    {currentUser.role === 'admin' && (
+                      <select
+                        value={filters.company}
+                        onChange={(e) => setFilters(prev => ({ ...prev, company: e.target.value }))}
+                        className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">All Companies</option>
+                        {companies.map(company => (
+                          <option key={company.id} value={company.id}>{company.name}</option>
+                        ))}
+                      </select>
+                    )}
 
                     {/* Bulk Actions */}
                     {selectedUsers.length > 0 && (
@@ -690,6 +761,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                             <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
                             <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
                             <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
+                            {currentUser.role === 'admin' && (
+                              <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Company</th>
+                            )}
                             <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Joined</th>
                             <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                           </tr>
@@ -745,6 +819,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                                   )}
                                 </div>
                               </td>
+                              {currentUser.role === 'admin' && (
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                                  {user.company_id ? companies.find(c => c.id === user.company_id)?.name || 'Unknown' : 'No Company'}
+                                </td>
+                              )}
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                                 {new Date(user.created_at).toLocaleDateString()}
                               </td>
@@ -777,11 +856,20 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                                   )}
                                   {user.id !== currentUser.id && user.status !== 'suspended' && (
                                     <button
+                                      onClick={() => handleSuspendUser(user.id, user.email)}
+                                      disabled={updating === user.id}
+                                      className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                    >
+                                      Suspend
+                                    </button>
+                                  )}
+                                  {currentUser.role === 'admin' && user.id !== currentUser.id && (
+                                    <button
                                       onClick={() => handleDeleteUser(user.id, user.email)}
                                       disabled={updating === user.id}
                                       className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
                                     >
-                                      Suspend
+                                      Delete
                                     </button>
                                   )}
                                 </div>
@@ -822,8 +910,8 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
               </>
             )}
 
-            {/* Companies Tab Content */}
-            {activeTab === 'companies' && (
+            {/* Companies Tab Content (Admin Only) */}
+            {activeTab === 'companies' && currentUser.role === 'admin' && (
               <>
                 {/* Companies List */}
                 <div className="bg-gray-800/50 rounded-xl border border-gray-700">
@@ -852,7 +940,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span className="px-2 py-1 text-xs bg-blue-500/20 text-blue-300 rounded-full">
-                                  {company.user_count || 0} users
+                                  {users.filter(u => u.company_id === company.id).length} users
                                 </span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
@@ -860,10 +948,18 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center space-x-2">
-                                  <button className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors">
+                                  <button
+                                    onClick={() => handleEditCompany(company)}
+                                    disabled={updating === company.id}
+                                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                  >
                                     Edit
                                   </button>
-                                  <button className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors">
+                                  <button
+                                    onClick={() => handleDeleteCompany(company.id, company.name)}
+                                    disabled={updating === company.id}
+                                    className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                  >
                                     Delete
                                   </button>
                                 </div>
@@ -890,13 +986,13 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   </div>
                   <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                     <div className="text-2xl font-bold text-white">
-                      {companies.reduce((total, company) => total + (company.user_count || 0), 0)}
+                      {users.length}
                     </div>
-                    <div className="text-sm text-gray-400">Total Company Users</div>
+                    <div className="text-sm text-gray-400">Total Users</div>
                   </div>
                   <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
                     <div className="text-2xl font-bold text-white">
-                      {companies.length > 0 ? Math.round(companies.reduce((total, company) => total + (company.user_count || 0), 0) / companies.length) : 0}
+                      {companies.length > 0 ? Math.round(users.length / companies.length) : 0}
                     </div>
                     <div className="text-sm text-gray-400">Avg Users per Company</div>
                   </div>
@@ -1020,22 +1116,28 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   </select>
                 </div>
 
-                <div>
-                  <label htmlFor="new-user-company" className="block text-sm font-medium text-gray-300 mb-2">
-                    Company (Optional)
-                  </label>
-                  <select
-                    id="new-user-company"
-                    value={newUserCompany}
-                    onChange={(e) => setNewUserCompany(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                  >
-                    <option value="">Select Company</option>
-                    {companies.map(company => (
-                      <option key={company.id} value={company.id}>{company.name}</option>
-                    ))}
-                  </select>
-                </div>
+                {(currentUser.role === 'admin' || newUserRole === 'user' || newUserRole === 'controller') && (
+                  <div>
+                    <label htmlFor="new-user-company" className="block text-sm font-medium text-gray-300 mb-2">
+                      Company {currentUser.role === 'admin' ? '(Optional)' : ''}
+                    </label>
+                    <select
+                      id="new-user-company"
+                      value={newUserCompany}
+                      onChange={(e) => setNewUserCompany(e.target.value)}
+                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                      required={currentUser.role !== 'admin'}
+                    >
+                      <option value="">Select Company</option>
+                      {companies.map(company => (
+                        <option key={company.id} value={company.id}>{company.name}</option>
+                      ))}
+                    </select>
+                    {currentUser.role !== 'admin' && (
+                      <p className="text-xs text-gray-500 mt-1">Users and controllers must be assigned to a company</p>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex space-x-3 pt-4">
                   <button
@@ -1232,22 +1334,24 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   </select>
                 </div>
 
-                <div>
-                  <label htmlFor="edit-user-company" className="block text-sm font-medium text-gray-300 mb-2">
-                    Company
-                  </label>
-                  <select
-                    id="edit-user-company"
-                    value={editUserCompany}
-                    onChange={(e) => setEditUserCompany(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                  >
-                    <option value="">Select Company</option>
-                    {companies.map(company => (
-                      <option key={company.id} value={company.id}>{company.name}</option>
-                    ))}
-                  </select>
-                </div>
+                {currentUser.role === 'admin' && (
+                  <div>
+                    <label htmlFor="edit-user-company" className="block text-sm font-medium text-gray-300 mb-2">
+                      Company
+                    </label>
+                    <select
+                      id="edit-user-company"
+                      value={editUserCompany}
+                      onChange={(e) => setEditUserCompany(e.target.value)}
+                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                    >
+                      <option value="">No Company</option>
+                      {companies.map(company => (
+                        <option key={company.id} value={company.id}>{company.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <label htmlFor="edit-user-password" className="block text-sm font-medium text-gray-300 mb-2">
@@ -1286,6 +1390,75 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                         <span>Update User</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Company Modal */}
+      {isEditCompanyModalOpen && selectedCompany && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div 
+              className="fixed inset-0 transition-opacity bg-black bg-opacity-75" 
+              onClick={() => setIsEditCompanyModalOpen(false)}
+            ></div>
+            
+            <div className="relative inline-block w-full max-w-md px-4 pt-5 pb-4 overflow-hidden text-left align-bottom transition-all transform bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl sm:my-8 sm:align-middle sm:p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">Edit Company</h3>
+                <button
+                  onClick={() => setIsEditCompanyModalOpen(false)}
+                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateCompany} className="space-y-4">
+                <div>
+                  <label htmlFor="edit-company-name" className="block text-sm font-medium text-gray-300 mb-2">
+                    Company Name *
+                  </label>
+                  <input
+                    type="text"
+                    id="edit-company-name"
+                    value={editCompanyName}
+                    onChange={(e) => setEditCompanyName(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                    placeholder="Enter company name"
+                    required
+                  />
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditCompanyModalOpen(false)}
+                    className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editingCompany}
+                    className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
+                  >
+                    {editingCompany ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Update Company</span>
                       </>
                     )}
                   </button>
