@@ -51,17 +51,31 @@ const getUserRole = (user: any): UserRole => {
   // Check multiple possible locations for the role
   let role: string | undefined = user.role;
   
-  if ((!role || role === 'authenticated') && user.user_metadata) {
-    role = user.user_metadata.role;
+  console.log('🔍 Debug getUserRole - initial role:', role);
+  
+  // Always check user_metadata first for role (it's more accurate)
+  if (user.user_metadata) {
+    const metadataRole = user.user_metadata.role;
+    console.log('🔍 Debug getUserRole - metadata role:', metadataRole);
+    
+    if (metadataRole && metadataRole !== 'authenticated') {
+      role = metadataRole;
+    }
   }
   
+  console.log('🔍 Debug getUserRole - role after metadata check:', role);
+  
   // Check if email is in admin list (hardcoded admin detection)
-  if (!role && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+  if ((!role || role === 'authenticated') && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) {
     role = 'admin';
+    console.log('🔍 Debug getUserRole - set as admin via email list');
   }
   
   // Use the helper function to ensure we return a valid UserRole
-  return toUserRole(role || 'user');
+  const finalRole = toUserRole(role || 'user');
+  console.log('🔍 Debug getUserRole - final role:', finalRole);
+  
+  return finalRole;
 };
 
 export default function UserManagementModal({ isOpen, onClose, currentUser }: UserManagementModalProps) {
@@ -157,6 +171,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     // FIX: currentUserRole is now UserRole type, so it matches getAllUsers parameter type
     const usersData = await authAPI.getAllUsers(currentUserRole, currentUser.company_id);
     
+    console.log('🔍 Got users data:', usersData);
+    console.log('🔍 Is array?', Array.isArray(usersData));
+    console.log('🔍 Length:', usersData?.length || 0);
+    
     if (usersData && Array.isArray(usersData)) {
       // Properly type the users
       const typedUsers: AuthUser[] = usersData.map(user => {
@@ -166,12 +184,12 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         const statusFromUser = user.status || '';
         
         // Convert to string explicitly
-const roleString = String(roleFromUser || roleFromMetadata || 'user');
-const statusString = String(statusFromUser || 'active');
-
-// Use type assertion to handle the type mismatch
-const finalRole = toUserRole(roleString);
-const finalStatus = toUserStatus(statusString);
+        const roleString = String(roleFromUser || roleFromMetadata || 'user');
+        const statusString = String(statusFromUser || 'active');
+        
+        // Use type assertion to handle the type mismatch
+        const finalRole = toUserRole(roleString);
+        const finalStatus = toUserStatus(statusString);
         
         return {
           ...user,
@@ -187,12 +205,16 @@ const finalStatus = toUserStatus(statusString);
       setUsers(typedUsers);
       console.log('✅ Loaded users:', typedUsers.length);
     } else {
-      throw new Error('Invalid response from server');
+      console.error('❌ Invalid response from getAllUsers:', usersData);
+      // Set empty array to clear any previous data
+      setUsers([]);
     }
     
   } catch (error: any) {
     console.error('❌ Error loading users:', error);
     showError('Failed to load users: ' + error.message);
+    // Set empty array on error
+    setUsers([]);
   } finally {
     setLoading(false);
   }

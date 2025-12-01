@@ -585,51 +585,92 @@ export const reportsAPI = {
 // Auth API with company support
 export const authAPI = {
   // Get all users (admin sees all, moderators see only their company users)
-  getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
-    try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
+  // Get all users (admin sees all, moderators see only their company users)
+getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
+  try {
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
 
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
+    if (!token) {
+      throw new Error('No authentication token available');
+    }
 
-      const response = await fetch('/api/admin/users/', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+    const response = await fetch('/api/admin/users/', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    // First check the response status
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Users API error:', response.status, errorText);
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Users API error:', response.status, errorText);
-        
-        // Return empty array instead of throwing
-        return [];
+      // Try to parse error as JSON
+      try {
+        const errorData = JSON.parse(errorText);
+        console.error('❌ Users API error details:', errorData);
+      } catch {
+        // Not JSON, use raw text
       }
       
-      const data = await response.json();
-      
-      // Check if data has the expected format
-      if (!Array.isArray(data)) {
-        console.error('❌ Users API returned non-array data:', data);
-        return [];
-      }
-      
-      // Filter users by company for moderators
-      let filteredData = data;
-      if (currentUserRole === 'moderator' && currentUserCompanyId) {
-        filteredData = data.filter((user: AuthUser) => user.company_id === currentUserCompanyId);
-      }
-      
-      return filteredData;
-    } catch (error) {
-      console.error('Error fetching users:', error);
       // Return empty array instead of throwing
       return [];
     }
-  },
-
+    
+    // Get response text first to see what we're getting
+    const responseText = await response.text();
+    console.log('🔍 Users API raw response:', responseText);
+    
+    // Try to parse as JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse API response as JSON:', parseError);
+      return [];
+    }
+    
+    // Check if data has the expected format
+    if (!data || typeof data !== 'object') {
+      console.error('❌ Users API returned non-object data:', data);
+      return [];
+    }
+    
+    // Check if it's an error object
+    if (data.error || data.message) {
+      console.error('❌ Users API returned error object:', data);
+      return [];
+    }
+    
+    // Check if data is an array, or if it has a data property that's an array
+    let usersArray: AuthUser[] = [];
+    
+    if (Array.isArray(data)) {
+      usersArray = data;
+    } else if (data.data && Array.isArray(data.data)) {
+      usersArray = data.data;
+    } else if (data.users && Array.isArray(data.users)) {
+      usersArray = data.users;
+    } else {
+      console.error('❌ Users API returned unexpected data format:', data);
+      return [];
+    }
+    
+    // Filter users by company for moderators
+    let filteredData = usersArray;
+    if (currentUserRole === 'moderator' && currentUserCompanyId) {
+      filteredData = usersArray.filter((user: AuthUser) => user.company_id === currentUserCompanyId);
+    }
+    
+    console.log('✅ Users API successful, returning:', filteredData.length, 'users');
+    return filteredData;
+  } catch (error) {
+    console.error('💥 Error fetching users:', error);
+    // Return empty array instead of throwing
+    return [];
+  }
+},
   // Update user role
   updateUserRole: async (userId: string, newRole: UserRole): Promise<boolean> => {
     try {
