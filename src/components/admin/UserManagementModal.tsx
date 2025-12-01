@@ -11,16 +11,55 @@ interface UserManagementModalProps {
   currentUser: any;
 }
 
+// Admin emails list for hardcoded admin detection
+const ADMIN_EMAILS = [
+  'zweli@msn.com',
+  'clint@rapid911.co.za', 
+  'zwell@msn.com'
+];
+
 // Helper function to validate and cast to UserRole
 const toUserRole = (role: string): UserRole => {
-  const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
-  return validRoles.includes(role as UserRole) ? (role as UserRole) : 'user';
+  const validRoles: string[] = ['admin', 'moderator', 'controller', 'user'];
+  const normalizedRole = role.toLowerCase().trim();
+  
+  if (validRoles.includes(normalizedRole)) {
+    return normalizedRole as UserRole;
+  }
+  
+  return 'user';
 };
 
-// Helper function to validate and cast to UserStatus
+// And for toUserStatus
 const toUserStatus = (status: string): UserStatus => {
-  const validStatuses: UserStatus[] = ['pending', 'active', 'suspended'];
-  return validStatuses.includes(status as UserStatus) ? (status as UserStatus) : 'active';
+  const validStatuses: string[] = ['pending', 'active', 'suspended'];
+  const normalizedStatus = status.toLowerCase().trim();
+  
+  if (validStatuses.includes(normalizedStatus)) {
+    return normalizedStatus as UserStatus;
+  }
+  
+  return 'active';
+};
+
+// Helper function to get user role consistently
+const getUserRole = (user: any): UserRole => {
+  if (!user) return 'user';
+  
+  // Check multiple possible locations for the role
+  let role = user.role;
+  
+  if (!role && user.user_metadata) {
+    role = user.user_metadata.role;
+  }
+  
+  // Check if email is in admin list (hardcoded admin detection)
+  if (!role && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+    role = 'admin';
+  }
+  
+  // Default to 'user' if no role found
+  return toUserRole(role || 'user');
 };
 
 export default function UserManagementModal({ isOpen, onClose, currentUser }: UserManagementModalProps) {
@@ -75,6 +114,20 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   const [errorMessage, setErrorMessage] = useState('');
   const [showErrorModal, setShowErrorModal] = useState(false);
 
+  // Get current user's role - now returns UserRole type
+  const currentUserRole = getUserRole(currentUser);
+  const isAdminUser = currentUserRole === 'admin';
+  
+  // Debug current user
+  console.log('🔍 UserManagementModal - Current User:', {
+    email: currentUser?.email,
+    role: currentUser?.role,
+    user_metadata: currentUser?.user_metadata,
+    detectedRole: currentUserRole,
+    isAdminUser: isAdminUser,
+    inAdminList: currentUser?.email ? ADMIN_EMAILS.includes(currentUser.email.toLowerCase()) : false
+  });
+
   // Modal helper functions
   const showSuccess = (message: string) => {
     setSuccessMessage(message);
@@ -94,38 +147,54 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
 
   // Load users function with company filtering
   const loadUsers = async () => {
-    try {
-      setLoading(true);
-      
-      console.log('🔍 Loading users via API route...');
-      
-      const usersData = await authAPI.getAllUsers(currentUser.role, currentUser.company_id);
-      
-      if (usersData && Array.isArray(usersData)) {
-        // Properly type the users
-        const typedUsers: AuthUser[] = usersData.map(user => ({
+  try {
+    setLoading(true);
+    
+    console.log('🔍 Loading users via API route...');
+    
+    // FIX: currentUserRole is now UserRole type, so it matches getAllUsers parameter type
+    const usersData = await authAPI.getAllUsers(currentUserRole, currentUser.company_id);
+    
+    if (usersData && Array.isArray(usersData)) {
+      // Properly type the users
+      const typedUsers: AuthUser[] = usersData.map(user => {
+        // Ensure we always have a string for role
+        const roleFromMetadata = user.user_metadata?.role || '';
+        const roleFromUser = user.role || '';
+        const statusFromUser = user.status || '';
+        
+        // Convert to string explicitly
+        const roleString = String(roleFromUser || roleFromMetadata || 'user');
+        const statusString = String(statusFromUser || 'active');
+        
+        // Use type assertion to handle the type mismatch
+        const finalRole = toUserRole(roleString);
+        const finalStatus = toUserStatus(statusString);
+        
+        return {
           ...user,
           user_metadata: {
             ...user.user_metadata,
-            role: user.user_metadata?.role ? toUserRole(user.user_metadata.role) : 'user'
+            role: finalRole
           },
-          role: toUserRole(user.role || user.user_metadata?.role || 'user'),
-          status: toUserStatus(user.status || 'active')
-        }));
-        
-        setUsers(typedUsers);
-        console.log('✅ Loaded users:', typedUsers.length);
-      } else {
-        throw new Error('Invalid response from server');
-      }
+          role: finalRole,
+          status: finalStatus
+        };
+      });
       
-    } catch (error: any) {
-      console.error('❌ Error loading users:', error);
-      showError('Failed to load users: ' + error.message);
-    } finally {
-      setLoading(false);
+      setUsers(typedUsers);
+      console.log('✅ Loaded users:', typedUsers.length);
+    } else {
+      throw new Error('Invalid response from server');
     }
-  };
+    
+  } catch (error: any) {
+    console.error('❌ Error loading users:', error);
+    showError('Failed to load users: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Load companies function with admin check
   const loadCompanies = async () => {
@@ -134,7 +203,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       const companiesData = await companyAPI.getAllCompanies();
       
       // Filter companies for moderators
-      if (currentUser.role === 'moderator' && currentUser.company_id) {
+      if (currentUserRole === 'moderator' && currentUser.company_id) {
         const userCompany = companiesData.find(company => company.id === currentUser.company_id);
         setCompanies(userCompany ? [userCompany] : []);
       } else {
@@ -479,7 +548,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
       }
 
       // Update company if changed and user is admin
-      if (currentUser.role === 'admin' && editUserCompany !== selectedUser.company_id) {
+      if (isAdminUser && editUserCompany !== selectedUser.company_id) {
         await authAPI.assignUserToCompany(selectedUser.id, editUserCompany);
       }
 
@@ -561,9 +630,24 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Helper function to get user role
-  const getUserRole = (user: AuthUser): UserRole => {
-    return user.role || toUserRole(user.user_metadata?.role || 'user');
+  // Helper function to get user role from AuthUser object
+  const getUserRoleFromAuthUser = (user: AuthUser): UserRole => {
+    if (user.role) {
+      return user.role;
+    }
+    
+    const roleFromMetadata = user.user_metadata?.role;
+    if (roleFromMetadata) {
+      return toUserRole(roleFromMetadata);
+    }
+    
+    return 'user';
+  };
+
+  // Helper to get role as string for display/filtering
+  const getUserRoleString = (user: AuthUser): string => {
+    const role = getUserRoleFromAuthUser(user);
+    return role;
   };
 
   // Helper function to get user display name
@@ -576,9 +660,9 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     const matchesSearch = 
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       getUserDisplayName(user).toLowerCase().includes(searchTerm.toLowerCase()) ||
-      getUserRole(user).toLowerCase().includes(searchTerm.toLowerCase());
+      getUserRoleString(user).toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesRole = !filters.role || getUserRole(user) === filters.role;
+    const matchesRole = !filters.role || getUserRoleString(user) === filters.role;
     const matchesStatus = !filters.status || user.status === filters.status;
     const matchesCompany = !filters.company || user.company_id === filters.company;
     
@@ -613,7 +697,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
               <div>
                 <h2 className="text-2xl font-bold text-white">Admin Panel</h2>
                 <p className="text-gray-400 mt-1">Manage users, companies, and system settings</p>
-                {currentUser.role === 'moderator' && (
+                <p className="text-sm text-blue-400 mt-1">
+                  Logged in as: {currentUser?.email} | Role: {currentUserRole} | 
+                  {isAdminUser ? ' ✓ Admin Access' : ' ✗ Limited Access'}
+                </p>
+                {currentUserRole === 'moderator' && (
                   <p className="text-sm text-blue-400 mt-1">
                     Moderator View: {companies[0]?.name || 'Your Company'}
                   </p>
@@ -623,7 +711,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 <button
                   onClick={() => activeTab === 'users' ? setIsAddUserModalOpen(true) : setIsAddCompanyModalOpen(true)}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
-                  disabled={activeTab === 'companies' && currentUser.role !== 'admin'}
+                  disabled={activeTab === 'companies' && !isAdminUser}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -641,74 +729,58 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
               </div>
             </div>
 
-            <div className="flex items-center space-x-3">
-  {/* Debug Button */}
-  <button
-    onClick={async () => {
-      try {
-        const token = await getSessionToken();
-        if (!token) {
-          console.error('❌ No session token available');
-          showError('Not authenticated. Please log in again.');
-          return;
-        }
-        
-        console.log('🔍 Fetching debug info...');
-        const response = await fetch('/api/admin/debug', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-        }
-        
-        const debugInfo = await response.json();
-        console.log('🔍 Debug Info:', debugInfo);
-        alert('Debug info logged to console. Check browser console for details.');
-        
-        // Also show key info in alert
-        const companiesInfo = debugInfo.tables?.companies;
-        alert(
-          `Debug Results:\n` +
-          `- User Role: ${debugInfo.user?.role}\n` +
-          `- Companies Table: ${companiesInfo?.exists ? 'EXISTS' : 'NOT FOUND'}\n` +
-          `- Companies Count: ${companiesInfo?.count || 0}\n` +
-          `- Profiles Count: ${debugInfo.tables?.profiles?.count || 0}`
-        );
-      } catch (error: any) {
-        console.error('❌ Debug failed:', error);
-        showError(`Debug failed: ${error.message}`);
-      }
-    }}
-    className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
-  >
-    Debug
-  </button>
-  
-  {/* Add User/Company Button */}
-  <button
-    onClick={() => activeTab === 'users' ? setIsAddUserModalOpen(true) : setIsAddCompanyModalOpen(true)}
-    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
-    disabled={activeTab === 'companies' && currentUser.role !== 'admin'}
-  >
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-    </svg>
-    <span>Add {activeTab === 'users' ? 'User' : 'Company'}</span>
-  </button>
-  
-  {/* Close Button */}
-  <button
-    onClick={onClose}
-    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-  >
-    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  </button>
-</div>
+            {/* Debug Section */}
+            <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-400">
+                  Debug Info: Your role is "{currentUserRole}" • Admin Access: {isAdminUser ? '✓ GRANTED' : '✗ DENIED'}
+                </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      const token = await getSessionToken();
+                      if (!token) {
+                        console.error('❌ No session token available');
+                        showError('Not authenticated. Please log in again.');
+                        return;
+                      }
+                      
+                      console.log('🔍 Fetching debug info...');
+                      const response = await fetch('/api/admin/debug', {
+                        headers: {
+                          'Authorization': `Bearer ${token}`
+                        }
+                      });
+                      
+                      if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                      }
+                      
+                      const debugInfo = await response.json();
+                      console.log('🔍 Debug Info:', debugInfo);
+                      alert('Debug info logged to console. Check browser console for details.');
+                      
+                      // Also show key info in alert
+                      const companiesInfo = debugInfo.tables?.companies;
+                      alert(
+                        `Debug Results:\n` +
+                        `- User Role: ${debugInfo.user?.role}\n` +
+                        `- Companies Table: ${companiesInfo?.exists ? 'EXISTS' : 'NOT FOUND'}\n` +
+                        `- Companies Count: ${companiesInfo?.count || 0}\n` +
+                        `- Profiles Count: ${debugInfo.tables?.profiles?.count || 0}`
+                      );
+                    } catch (error: any) {
+                      console.error('❌ Debug failed:', error);
+                      showError(`Debug failed: ${error.message}`);
+                    }
+                  }}
+                  className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors text-sm"
+                >
+                  Debug API
+                </button>
+              </div>
+            </div>
+
             {/* Tab Navigation */}
             <div className="mb-6 border-b border-gray-700">
               <div className="flex space-x-8">
@@ -728,10 +800,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                     activeTab === 'companies'
                       ? 'border-blue-500 text-blue-400'
                       : 'border-transparent text-gray-400 hover:text-gray-300'
-                  } ${currentUser.role !== 'admin' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  disabled={currentUser.role !== 'admin'}
+                  } ${!isAdminUser ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={!isAdminUser}
+                  title={!isAdminUser ? `Your role: ${currentUserRole}. Admin access required.` : ''}
                 >
-                  Company Management {currentUser.role !== 'admin' && '(Admin Only)'}
+                  Company Management {!isAdminUser && `(Admin Only - Your role: ${currentUserRole})`}
                 </button>
               </div>
             </div>
@@ -773,7 +846,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                       <option value="suspended">Suspended</option>
                     </select>
 
-                    {currentUser.role === 'admin' && (
+                    {isAdminUser && (
                       <select
                         value={filters.company}
                         onChange={(e) => setFilters(prev => ({ ...prev, company: e.target.value }))}
@@ -829,7 +902,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                             <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
                             <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
                             <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
-                            {currentUser.role === 'admin' && (
+                            {isAdminUser && (
                               <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Company</th>
                             )}
                             <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Joined</th>
@@ -872,7 +945,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="flex items-center space-x-2">
                                   <select
-                                    value={getUserRole(user)}
+                                    value={getUserRoleFromAuthUser(user)}
                                     onChange={(e) => handleRoleUpdate(user.id, e.target.value)}
                                     disabled={updating === user.id || user.id === currentUser.id}
                                     className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -887,7 +960,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                                   )}
                                 </div>
                               </td>
-                              {currentUser.role === 'admin' && (
+                              {isAdminUser && (
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                                   {user.company_id ? companies.find(c => c.id === user.company_id)?.name || 'Unknown' : 'No Company'}
                                 </td>
@@ -931,7 +1004,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                                       Suspend
                                     </button>
                                   )}
-                                  {currentUser.role === 'admin' && user.id !== currentUser.id && (
+                                  {isAdminUser && user.id !== currentUser.id && (
                                     <button
                                       onClick={() => handleDeleteUser(user.id, user.email)}
                                       disabled={updating === user.id}
@@ -959,11 +1032,11 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                 {/* Stats and Footer */}
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
                   <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                    <div className="text-2xl font-bold text-white">{users.filter(u => getUserRole(u) === 'admin').length}</div>
+                    <div className="text-2xl font-bold text-white">{users.filter(u => getUserRoleString(u) === 'admin').length}</div>
                     <div className="text-sm text-gray-400">Admins</div>
                   </div>
                   <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                    <div className="text-2xl font-bold text-white">{users.filter(u => getUserRole(u) === 'moderator').length}</div>
+                    <div className="text-2xl font-bold text-white">{users.filter(u => getUserRoleString(u) === 'moderator').length}</div>
                     <div className="text-sm text-gray-400">Moderators</div>
                   </div>
                   <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
@@ -979,7 +1052,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
             )}
 
             {/* Companies Tab Content (Admin Only) */}
-            {activeTab === 'companies' && currentUser.role === 'admin' && (
+            {activeTab === 'companies' && isAdminUser && (
               <>
                 {/* Companies List */}
                 <div className="bg-gray-800/50 rounded-xl border border-gray-700">
@@ -1184,24 +1257,24 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   </select>
                 </div>
 
-                {(currentUser.role === 'admin' || newUserRole === 'user' || newUserRole === 'controller') && (
+                {(isAdminUser || newUserRole === 'user' || newUserRole === 'controller') && (
                   <div>
                     <label htmlFor="new-user-company" className="block text-sm font-medium text-gray-300 mb-2">
-                      Company {currentUser.role === 'admin' ? '(Optional)' : ''}
+                      Company {isAdminUser ? '(Optional)' : ''}
                     </label>
                     <select
                       id="new-user-company"
                       value={newUserCompany}
                       onChange={(e) => setNewUserCompany(e.target.value)}
                       className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                      required={currentUser.role !== 'admin'}
+                      required={!isAdminUser}
                     >
                       <option value="">Select Company</option>
                       {companies.map(company => (
                         <option key={company.id} value={company.id}>{company.name}</option>
                       ))}
                     </select>
-                    {currentUser.role !== 'admin' && (
+                    {!isAdminUser && (
                       <p className="text-xs text-gray-500 mt-1">Users and controllers must be assigned to a company</p>
                     )}
                   </div>
@@ -1402,7 +1475,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   </select>
                 </div>
 
-                {currentUser.role === 'admin' && (
+                {isAdminUser && (
                   <div>
                     <label htmlFor="edit-user-company" className="block text-sm font-medium text-gray-300 mb-2">
                       Company
