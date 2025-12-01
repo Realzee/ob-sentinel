@@ -48,7 +48,8 @@ const isCrimeReport = (report: AnyReport): report is CrimeReportWithImages => {
 const ADMIN_EMAILS = [
   'zweli@msn.com',
   'clint@rapid911.co.za', 
-  'zwell@msn.com'
+  'test@example.com',
+  'admin@example.com'
 ];
 
 // Generate short OB number
@@ -94,9 +95,21 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const router = useRouter();
 
   // FIXED: Enhanced user role and status detection
-  const isAdmin = user?.role === 'admin' || ADMIN_EMAILS.includes(user?.email?.toLowerCase());
-  const isModerator = user?.role === 'moderator';
-  const isController = user?.role === 'controller';
+  const userEmail = user?.email?.toLowerCase();
+const profileRole = user?.role;
+const isHardcodedAdmin = ADMIN_EMAILS.includes(userEmail || '');
+const isAdmin = profileRole === 'admin' || profileRole === 'administrator' || isHardcodedAdmin;
+const isModerator = profileRole === 'moderator';
+const isController = profileRole === 'controller';
+
+console.log('🔍 Enhanced User Role Debug:', {
+  email: userEmail,
+  profileRole: profileRole,
+  isHardcodedAdmin: isHardcodedAdmin,
+  isAdmin: isAdmin,
+  canManageUsers: isAdmin,
+  inAdminList: ADMIN_EMAILS.includes(userEmail || '')
+});
 
   // FIX: Add missing canDelete variable
   const canDelete = isAdmin || isModerator;
