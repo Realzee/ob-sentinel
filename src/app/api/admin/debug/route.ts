@@ -34,7 +34,16 @@ interface DebugInfo {
   };
 }
 
+interface TableCheckResult {
+  exists: boolean;
+  error?: string;
+  count?: number;
+  data?: any[];
+}
+
 export async function GET(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     // Get authorization header using next/headers
     const headersList = headers();
@@ -162,67 +171,39 @@ export async function GET(request: NextRequest) {
       };
     }
 
+    // Helper function to check tables
+    const checkTable = async (tableName: string, columns: string = '*', limit: number = 5): Promise<TableCheckResult> => {
+      try {
+        const { data, error, count } = await supabase
+          .from(tableName)
+          .select(columns, { count: 'exact' })
+          .limit(limit);
+
+        return {
+          exists: !error,
+          error: error?.message,
+          count: count || data?.length || 0,
+          data: data || []
+        };
+      } catch (e) {
+        return {
+          exists: false,
+          error: (e as Error).message
+        };
+      }
+    };
+
     // Check companies table
-    try {
-      const { data: companies, error: companiesError, count: companiesCount } = await supabase
-        .from('companies')
-        .select('*', { count: 'exact', head: false })
-        .limit(10);
-
-      debugInfo.tables.companies = {
-        exists: !companiesError,
-        error: companiesError?.message,
-        count: companiesCount || companies?.length || 0,
-        data: companies?.slice(0, 3) || []
-      };
-    } catch (e) {
-      debugInfo.tables.companies = {
-        exists: false,
-        error: (e as Error).message
-      };
-    }
-
+    debugInfo.tables.companies = await checkTable('companies', '*', 10);
+    
     // Check profiles table
-    try {
-      const { data: profiles, error: profilesError, count: profilesCount } = await supabase
-        .from('profiles')
-        .select('id, email, role, company_id, created_at', { count: 'exact' })
-        .limit(5);
-
-      debugInfo.tables.profiles = {
-        exists: !profilesError,
-        error: profilesError?.message,
-        count: profilesCount || 0,
-        data: profiles || []
-      };
-    } catch (e) {
-      debugInfo.tables.profiles = {
-        exists: false,
-        error: (e as Error).message
-      };
-    }
+    debugInfo.tables.profiles = await checkTable('profiles', 'id, email, role, company_id, created_at', 5);
 
     // Check for other important tables
     const tablesToCheck = ['invitations', 'audit_logs', 'user_sessions'];
     
     for (const tableName of tablesToCheck) {
-      try {
-        const { data, error } = await supabase
-          .from(tableName)
-          .select('*')
-          .limit(2);
-
-        debugInfo.tables[tableName] = {
-          exists: !error,
-          error: error?.message,
-          count: data?.length || 0
-        };
-      } catch (e) {
-        debugInfo.tables[tableName] = {
-          exists: false,
-          error: (e as Error).message
-        };
-      }
+      debugInfo.tables[tableName] = await checkTable(tableName, '*', 2);
     }
 
     // Check RLS policies (if accessible)
@@ -244,19 +225,26 @@ export async function GET(request: NextRequest) {
       };
     }
 
+    // Calculate response time
+    const responseTime = Date.now() - startTime;
+
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
+      responseTime: `${responseTime}ms`,
       ...debugInfo
     });
 
   } catch (error: any) {
+    const responseTime = Date.now() - startTime;
+    
     console.error('Debug API error:', error);
     return NextResponse.json(
       { 
         success: false,
         error: 'Debug failed',
         message: error.message,
+        responseTime: `${responseTime}ms`,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       },
       { status: 500 }
