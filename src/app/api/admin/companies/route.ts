@@ -9,17 +9,25 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function GET(request: NextRequest) {
   try {
-    // Check authorization
+    console.log('🔍 Companies API called');
+    
     const authHeader = request.headers.get('Authorization');
     if (!authHeader) {
+      console.log('❌ No authorization header');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    const token = authHeader.replace('Bearer ', '');
+    console.log('🔑 Token present:', !!token);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     
     if (authError || !user) {
+      console.log('❌ Auth error:', authError?.message);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    console.log('👤 User authenticated:', user.email);
 
     // Get user profile to check role
     const { data: profile, error: profileError } = await supabase
@@ -29,26 +37,40 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (profileError) {
+      console.log('❌ Profile error:', profileError.message);
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
     }
 
+    console.log('🎯 User role:', profile.role, 'Company ID:', profile.company_id);
+
     let query = supabase.from('companies').select('*');
+    let queryDescription = 'all companies';
 
     // If user is moderator, only show their company
     if (profile.role === 'moderator' && profile.company_id) {
       query = query.eq('id', profile.company_id);
+      queryDescription = `company ${profile.company_id}`;
     }
 
+    console.log('📋 Executing query for:', queryDescription);
     const { data: companies, error } = await query.order('name');
 
     if (error) {
-      console.error('Error fetching companies:', error);
+      console.error('❌ Database error:', error);
+      
+      // If table doesn't exist, return empty array instead of error
+      if (error.message.includes('does not exist')) {
+        console.log('📊 Companies table does not exist, returning empty array');
+        return NextResponse.json([]);
+      }
+      
       return NextResponse.json({ error: 'Failed to fetch companies' }, { status: 500 });
     }
 
-    return NextResponse.json(companies);
+    console.log('✅ Companies fetched:', companies?.length || 0);
+    return NextResponse.json(companies || []);
   } catch (error) {
-    console.error('Error in companies API:', error);
+    console.error('💥 Unexpected error in companies API:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
