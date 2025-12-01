@@ -1,7 +1,7 @@
 // components/admin/UserManagementModal.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { authAPI, AuthUser, UserRole, UserStatus, supabase, companyAPI, Company, getSessionToken } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 
@@ -51,7 +51,7 @@ const getUserRole = (user: any): UserRole => {
   // Check multiple possible locations for the role
   let role: string | undefined = user.role;
   
-  if (!role && user.user_metadata) {
+  if ((!role || role === 'authenticated') && user.user_metadata) {
     role = user.user_metadata.role;
   }
   
@@ -142,10 +142,10 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   };
 
   const showConfirmation = (message: string, action: () => void) => {
-    setConfirmMessage(message);
-    setConfirmAction(() => action);
-    setShowConfirmModal(true);
-  };
+  setConfirmMessage(message);
+  setConfirmAction(() => action);
+  setShowConfirmModal(true);
+};
 
   // Load users function with company filtering
   const loadUsers = async () => {
@@ -166,12 +166,12 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
         const statusFromUser = user.status || '';
         
         // Convert to string explicitly
-        const roleString = String(roleFromUser || roleFromMetadata || 'user');
-        const statusString = String(statusFromUser || 'active');
-        
-        // Use type assertion to handle the type mismatch
-        const finalRole = toUserRole(roleString);
-        const finalStatus = toUserStatus(statusString);
+const roleString = String(roleFromUser || roleFromMetadata || 'user');
+const statusString = String(statusFromUser || 'active');
+
+// Use type assertion to handle the type mismatch
+const finalRole = toUserRole(roleString);
+const finalStatus = toUserStatus(statusString);
         
         return {
           ...user,

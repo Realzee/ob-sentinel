@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import Image from 'next/image';
+import { supabase } from '@/lib/supabase';
 
 export default function AuthScreen() {
   const [isLogin, setIsLogin] = useState(true);
@@ -10,27 +11,46 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { signIn, signUp } = useAuth();
+  const { user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  e.preventDefault();
+  setLoading(true);
+  setError('');
 
-    try {
-      const result = isLogin 
-        ? await signIn(email, password)
-        : await signUp(email, password);
-
-      if (result.error) {
-        setError(result.error.message);
+  try {
+    if (isLogin) {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        setError(error.message);
       }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
+    } else {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            email: email,
+          },
+        },
+      });
+      
+      if (error) {
+        setError(error.message);
+      } else {
+        setError('Sign up successful! Please check your email for verification.');
+      }
     }
-  };
+  } catch (err: any) {
+    setError(err.message || 'An error occurred');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
