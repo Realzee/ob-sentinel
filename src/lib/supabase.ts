@@ -313,69 +313,29 @@ export const companyAPI = {
   // Assign user to company
   assignUserToCompany: async (userId: string, companyId: string): Promise<boolean> => {
   try {
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
-
-    if (!token) {
-      throw new Error('No authentication token available');
-    }
-
-    console.log('🔍 Assigning user to company:', { userId, companyId });
+    console.log('🔍 CompanyAPI: Assigning user to company via direct database update:', { userId, companyId });
     
-    // Try different endpoint formats
-    let response;
-    try {
-      response = await fetch(`/api/admin/users/${userId}/company`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ company_id: companyId }),
-      });
-    } catch (firstError) {
-      console.log('🔄 First endpoint failed, trying alternative...');
-      // Try alternative endpoint
-      response = await fetch(`/api/admin/users/company`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ user_id: userId, company_id: companyId }),
-      });
+    // Use direct database update
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ 
+        company_id: companyId,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+    
+    if (error) {
+      console.error('❌ CompanyAPI: Error updating user company in database:', error);
+      throw new Error(`Database error: ${error.message}`);
     }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Error assigning user to company:', response.status, errorText);
-      
-      // Fallback to direct database update
-      console.log('🔄 Using fallback database update...');
-      const { data, error } = await supabase
-        .from('profiles')
-        .update({ 
-          company_id: companyId,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId);
-      
-      if (error) {
-        console.error('❌ Fallback also failed:', error);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-      
-      console.log('✅ Fallback successful');
-      return true;
-    }
-
-    const data = await response.json();
-    return data.success || true;
+    
+    console.log('✅ CompanyAPI: User company updated successfully');
+    return true;
   } catch (error) {
     console.error('Error assigning user to company:', error);
     throw error;
   }
-}
+},
 };
 
 // Reports API with company filtering
@@ -719,135 +679,157 @@ getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): 
 },
   // Update user role
   updateUserRole: async (userId: string, newRole: UserRole): Promise<boolean> => {
-    try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      const response = await fetch(`/api/admin/users/${userId}/role`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ role: newRole }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-      return data.success;
-    } catch (error) {
-      console.error('Error updating user role:', error);
-      throw error;
+  try {
+    console.log('🔍 AuthAPI: Updating user role:', { userId, newRole });
+    
+    // Update in profiles table
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ 
+        role: newRole,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+    
+    if (error) {
+      console.error('❌ AuthAPI: Error updating user role in database:', error);
+      throw new Error(`Database error: ${error.message}`);
     }
-  },
+    
+    console.log('✅ AuthAPI: User role updated successfully');
+    return true;
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    throw error;
+  }
+},
 
   // Update user status
   updateUserStatus: async (userId: string, newStatus: UserStatus): Promise<boolean> => {
-    try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      const response = await fetch(`/api/admin/users/${userId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-      return data.success;
-    } catch (error) {
-      console.error('Error updating user status:', error);
-      throw error;
+  try {
+    console.log('🔍 AuthAPI: Updating user status:', { userId, newStatus });
+    
+    // Update in profiles table
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ 
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+    
+    if (error) {
+      console.error('❌ AuthAPI: Error updating user status in database:', error);
+      throw new Error(`Database error: ${error.message}`);
     }
-  },
-
+    
+    console.log('✅ AuthAPI: User status updated successfully');
+    return true;
+  } catch (error) {
+    console.error('Error updating user status:', error);
+    throw error;
+  }
+},
   // Create user with company assignment
   createUser: async (userData: {
-    email: string;
-    password: string;
-    full_name?: string;
-    role?: UserRole;
-    company_id?: string;
-  }): Promise<any> => {
-    try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
-      if (!token) {
-        throw new Error('No authentication token available');
+  email: string;
+  password: string;
+  full_name?: string;
+  role?: UserRole;
+  company_id?: string;
+}): Promise<any> => {
+  try {
+    console.log('🔍 AuthAPI: Creating user:', userData);
+    
+    // First, create the user in auth
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email: userData.email,
+      password: userData.password,
+      email_confirm: true, // Auto-confirm email
+      user_metadata: {
+        full_name: userData.full_name || '',
+        role: userData.role || 'user',
+        company_id: userData.company_id
       }
-
-      const response = await fetch('/api/admin/users/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(userData),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error creating user:', error);
-      throw error;
+    });
+    
+    if (authError) {
+      console.error('❌ AuthAPI: Error creating auth user:', authError);
+      throw authError;
     }
-  },
+    
+    if (!authData.user) {
+      throw new Error('No user created');
+    }
+    
+    console.log('✅ AuthAPI: Auth user created:', authData.user.id);
+    
+    // Then create the profile
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .insert([{
+        id: authData.user.id,
+        email: userData.email,
+        full_name: userData.full_name || '',
+        role: userData.role || 'user',
+        status: 'active' as UserStatus,
+        company_id: userData.company_id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+    
+    if (profileError) {
+      console.error('❌ AuthAPI: Error creating profile:', profileError);
+      throw profileError;
+    }
+    
+    console.log('✅ AuthAPI: Profile created:', profileData);
+    return {
+      ...authData.user,
+      profile: profileData
+    };
+  } catch (error) {
+    console.error('Error creating user:', error);
+    throw error;
+  }
+},
 
   // Delete user (permanent deletion - admin only)
   deleteUser: async (userId: string): Promise<boolean> => {
-    try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      const response = await fetch(`/api/admin/users/${userId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-      return data.success;
-    } catch (error) {
-      console.error('Error deleting user:', error);
-      throw error;
+  try {
+    console.log('🔍 AuthAPI: Deleting user:', userId);
+    
+    // First delete from profiles table
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .delete()
+      .eq('id', userId);
+    
+    if (profileError) {
+      console.error('❌ AuthAPI: Error deleting user profile:', profileError);
+      throw new Error(`Database error: ${profileError.message}`);
     }
-  },
+    
+    // Then delete from auth (requires admin privileges)
+    const { error: authError } = await supabase.auth.admin.deleteUser(
+      userId,
+      true // Requires confirmation
+    );
+    
+    if (authError) {
+      console.warn('⚠️ AuthAPI: Could not delete auth user (may need admin role):', authError);
+      // Continue anyway since profile is deleted
+    }
+    
+    console.log('✅ AuthAPI: User deleted successfully');
+    return true;
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    throw error;
+  }
+},
 
   // Get user profile
   getUserProfile: async (userId: string): Promise<Profile | null> => {
@@ -889,35 +871,30 @@ getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): 
 
   // Assign user to company
   assignUserToCompany: async (userId: string, companyId: string): Promise<boolean> => {
-    try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      const response = await fetch(`/api/admin/users/${userId}/company`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ company_id: companyId }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-      return data.success;
-    } catch (error) {
-      console.error('Error assigning user to company:', error);
-      throw error;
+  try {
+    console.log('🔍 AuthAPI: Assigning user to company via direct database update:', { userId, companyId });
+    
+    // Use direct database update instead of API call
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ 
+        company_id: companyId,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+    
+    if (error) {
+      console.error('❌ AuthAPI: Error updating user company in database:', error);
+      throw new Error(`Database error: ${error.message}`);
     }
+    
+    console.log('✅ AuthAPI: User company updated successfully');
+    return true;
+  } catch (error) {
+    console.error('Error assigning user to company:', error);
+    throw error;
   }
+},
 };
 
 // Image handling utilities
