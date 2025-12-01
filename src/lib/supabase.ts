@@ -81,6 +81,23 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
+// Type guard functions
+export const isVehicleAlert = (report: any): report is VehicleAlert => {
+  return report && 
+         typeof report.license_plate === 'string' &&
+         typeof report.vehicle_make === 'string' &&
+         typeof report.vehicle_model === 'string' &&
+         typeof report.vehicle_color === 'string';
+};
+
+export const isCrimeReport = (report: any): report is CrimeReport => {
+  return report && 
+         typeof report.title === 'string' &&
+         typeof report.description === 'string' &&
+         typeof report.location === 'string' &&
+         typeof report.report_type === 'string';
+};
+
 // Utility functions
 export const formatDateForDateTimeLocal = (dateString: string): string => {
   try {
