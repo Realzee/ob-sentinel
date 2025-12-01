@@ -138,36 +138,55 @@ export const formatDateForDateTimeLocal = (dateString: string): string => {
 export const companyAPI = {
   // Get all companies (admin only)
   getAllCompanies: async (): Promise<Company[]> => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
 
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
 
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      const response = await fetch('/api/admin/companies', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-      return data || [];
-    } catch (error) {
-      console.error('Error fetching companies:', error);
-      return [];
+    if (!token) {
+      throw new Error('No authentication token available');
     }
-  },
 
+    console.log('🔍 Fetching companies from API...');
+    const response = await fetch('/api/admin/companies', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Companies API error:', response.status, errorText);
+      
+      // Fallback: Try direct database query
+      console.log('🔄 Trying fallback database query...');
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .order('name');
+      
+      if (error) {
+        console.error('❌ Fallback also failed:', error);
+        throw new Error(`API: HTTP ${response.status}, DB: ${error.message}`);
+      }
+      
+      console.log('✅ Fallback successful, companies:', data?.length || 0);
+      return data || [];
+    }
+
+    const data = await response.json();
+    console.log('✅ Companies API successful, companies:', data?.length || 0);
+    return data || [];
+  } catch (error) {
+    console.error('💥 Error fetching companies:', error);
+    
+    // Ultimate fallback - return empty array
+    console.log('🔄 Using ultimate fallback - empty array');
+    return [];
+  }
+},
   // Get company by ID
   getCompanyById: async (companyId: string): Promise<Company | null> => {
     try {
@@ -951,6 +970,8 @@ export const isUserAdmin = async (): Promise<boolean> => {
     return false;
   }
 };
+
+
 
 // Helper function to get user's company ID
 export const getUserCompanyId = async (): Promise<string | null> => {

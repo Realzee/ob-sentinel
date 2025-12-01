@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { authAPI, AuthUser, UserRole, UserStatus, supabase, companyAPI, Company } from '@/lib/supabase';
+import { authAPI, AuthUser, UserRole, UserStatus, supabase, companyAPI, Company, getSessionToken } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 
 interface UserManagementModalProps {
@@ -641,6 +641,74 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
               </div>
             </div>
 
+            <div className="flex items-center space-x-3">
+  {/* Debug Button */}
+  <button
+    onClick={async () => {
+      try {
+        const token = await getSessionToken();
+        if (!token) {
+          console.error('❌ No session token available');
+          showError('Not authenticated. Please log in again.');
+          return;
+        }
+        
+        console.log('🔍 Fetching debug info...');
+        const response = await fetch('/api/admin/debug', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        
+        const debugInfo = await response.json();
+        console.log('🔍 Debug Info:', debugInfo);
+        alert('Debug info logged to console. Check browser console for details.');
+        
+        // Also show key info in alert
+        const companiesInfo = debugInfo.tables?.companies;
+        alert(
+          `Debug Results:\n` +
+          `- User Role: ${debugInfo.user?.role}\n` +
+          `- Companies Table: ${companiesInfo?.exists ? 'EXISTS' : 'NOT FOUND'}\n` +
+          `- Companies Count: ${companiesInfo?.count || 0}\n` +
+          `- Profiles Count: ${debugInfo.tables?.profiles?.count || 0}`
+        );
+      } catch (error: any) {
+        console.error('❌ Debug failed:', error);
+        showError(`Debug failed: ${error.message}`);
+      }
+    }}
+    className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
+  >
+    Debug
+  </button>
+  
+  {/* Add User/Company Button */}
+  <button
+    onClick={() => activeTab === 'users' ? setIsAddUserModalOpen(true) : setIsAddCompanyModalOpen(true)}
+    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
+    disabled={activeTab === 'companies' && currentUser.role !== 'admin'}
+  >
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+    </svg>
+    <span>Add {activeTab === 'users' ? 'User' : 'Company'}</span>
+  </button>
+  
+  {/* Close Button */}
+  <button
+    onClick={onClose}
+    className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+  >
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  </button>
+</div>
             {/* Tab Navigation */}
             <div className="mb-6 border-b border-gray-700">
               <div className="flex space-x-8">
