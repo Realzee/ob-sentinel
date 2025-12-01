@@ -139,12 +139,28 @@ export const companyAPI = {
   // Get all companies (admin only)
   getAllCompanies: async (): Promise<Company[]> => {
     try {
-      const { data, error } = await supabase
-        .from('companies')
-        .select('*')
-        .order('name');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
 
-      if (error) throw error;
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
+      const response = await fetch('/api/admin/companies', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
       return data || [];
     } catch (error) {
       console.error('Error fetching companies:', error);
@@ -172,18 +188,28 @@ export const companyAPI = {
   // Create company
   createCompany: async (companyData: { name: string; created_by: string }): Promise<Company> => {
     try {
-      const { data, error } = await supabase
-        .from('companies')
-        .insert([{
-          ...companyData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
 
-      if (error) throw error;
-      return data;
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
+      const response = await fetch('/api/admin/companies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(companyData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      return await response.json();
     } catch (error) {
       console.error('Error creating company:', error);
       throw error;
@@ -193,18 +219,28 @@ export const companyAPI = {
   // Update company
   updateCompany: async (companyId: string, updates: Partial<Company>): Promise<Company> => {
     try {
-      const { data, error } = await supabase
-        .from('companies')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', companyId)
-        .select()
-        .single();
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
 
-      if (error) throw error;
-      return data;
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
+      const response = await fetch(`/api/admin/companies/${companyId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(updates),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      return await response.json();
     } catch (error) {
       console.error('Error updating company:', error);
       throw error;
@@ -214,12 +250,24 @@ export const companyAPI = {
   // Delete company
   deleteCompany: async (companyId: string): Promise<void> => {
     try {
-      const { error } = await supabase
-        .from('companies')
-        .delete()
-        .eq('id', companyId);
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
 
-      if (error) throw error;
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
+      const response = await fetch(`/api/admin/companies/${companyId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
     } catch (error) {
       console.error('Error deleting company:', error);
       throw error;
@@ -520,7 +568,18 @@ export const authAPI = {
   // Get all users (admin sees all, moderators see only their company users)
   getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
     try {
-      const response = await fetch('/api/admin/users/');
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
+      const response = await fetch('/api/admin/users/', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -544,10 +603,18 @@ export const authAPI = {
   // Update user role
   updateUserRole: async (userId: string, newRole: UserRole): Promise<boolean> => {
     try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
       const response = await fetch(`/api/admin/users/${userId}/role`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ role: newRole }),
       });
@@ -568,10 +635,18 @@ export const authAPI = {
   // Update user status
   updateUserStatus: async (userId: string, newStatus: UserStatus): Promise<boolean> => {
     try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
       const response = await fetch(`/api/admin/users/${userId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ status: newStatus }),
       });
@@ -598,10 +673,18 @@ export const authAPI = {
     company_id?: string;
   }): Promise<any> => {
     try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
       const response = await fetch('/api/admin/users/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(userData),
       });
@@ -621,10 +704,18 @@ export const authAPI = {
   // Delete user (permanent deletion - admin only)
   deleteUser: async (userId: string): Promise<boolean> => {
     try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
       const response = await fetch(`/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
       });
 
@@ -682,10 +773,18 @@ export const authAPI = {
   // Assign user to company
   assignUserToCompany: async (userId: string, companyId: string): Promise<boolean> => {
     try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
       const response = await fetch(`/api/admin/users/${userId}/company`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ company_id: companyId }),
       });
@@ -820,6 +919,55 @@ export const realtimeAPI = {
         callback
       )
       .subscribe();
+  }
+};
+
+// Helper function to get current user's session token
+export const getSessionToken = async (): Promise<string | null> => {
+  try {
+    const session = await supabase.auth.getSession();
+    return session.data.session?.access_token || null;
+  } catch (error) {
+    console.error('Error getting session token:', error);
+    return null;
+  }
+};
+
+// Helper function to check if user has admin role
+export const isUserAdmin = async (): Promise<boolean> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    return profile?.role === 'admin';
+  } catch (error) {
+    console.error('Error checking user role:', error);
+    return false;
+  }
+};
+
+// Helper function to get user's company ID
+export const getUserCompanyId = async (): Promise<string | null> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('company_id')
+      .eq('id', user.id)
+      .single();
+
+    return profile?.company_id || null;
+  } catch (error) {
+    console.error('Error getting user company ID:', error);
+    return null;
   }
 };
 
