@@ -89,10 +89,9 @@ export interface AuthUser {
   company_id?: string;
 }
 
-// Initialize Supabase clients
+// Initialize regular Supabase client (for browser use)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -102,16 +101,37 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-export const supabaseAdmin = createClient(
-  supabaseUrl,
-  supabaseServiceKey,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
+// Initialize admin client ONLY on server-side
+let supabaseAdmin: ReturnType<typeof createClient> | null = null;
+
+if (typeof window === 'undefined') {
+  // Server-side only - safe to use service role key
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (supabaseServiceKey) {
+    supabaseAdmin = createClient(
+      supabaseUrl,
+      supabaseServiceKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    );
+  } else {
+    console.warn('⚠️ SUPABASE_SERVICE_ROLE_KEY not set on server');
   }
-);
+}
+
+// Helper to get admin client (returns null in browser)
+export const getSupabaseAdmin = () => {
+  if (typeof window !== 'undefined') {
+    console.error('❌ Cannot use admin client in browser');
+    return null;
+  }
+  return supabaseAdmin;
+};
 
 // Type guard functions
 export const isVehicleAlert = (report: any): report is VehicleAlert => {
@@ -146,39 +166,37 @@ export const formatDateForDateTimeLocal = (dateString: string): string => {
   }
 };
 
-// Company API - Keep using API routes for company management
+// Company API
 export const companyAPI = {
-  // Get all companies (admin only)
+  // Get all companies (admin sees all, moderators see only their company)
   getAllCompanies: async (): Promise<Company[]> => {
     try {
-      const token = await getSessionToken();
-      if (!token) throw new Error('Not authenticated');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
 
-      const response = await fetch('/api/admin/companies', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      // Get user's role to determine what companies to show
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, company_id')
+        .eq('id', user.id)
+        .single();
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Companies API error:', response.status, errorText);
-        
-        // Fallback: Try direct database query
-        const { data, error } = await supabaseAdmin
-          .from('companies')
-          .select('*')
-          .order('name');
-        
-        if (error) {
-          console.error('❌ Database fallback failed:', error);
-          return [];
-        }
-        
-        return data || [];
+      if (!profile) throw new Error('Profile not found');
+
+      let query = supabase.from('companies').select('*');
+      
+      // If user is moderator, only show their company
+      if (profile.role === 'moderator' && profile.company_id) {
+        query = query.eq('id', profile.company_id);
+      }
+      // Admins and controllers see all companies
+      else if (profile.role !== 'admin' && profile.role !== 'controller') {
+        return []; // Regular users see no companies
       }
 
-      const data = await response.json();
+      const { data, error } = await query.order('name');
+      
+      if (error) throw error;
       return data || [];
     } catch (error) {
       console.error('Error fetching companies:', error);
@@ -189,7 +207,7 @@ export const companyAPI = {
   // Get company by ID
   getCompanyById: async (companyId: string): Promise<Company | null> => {
     try {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await supabase
         .from('companies')
         .select('*')
         .eq('id', companyId)
@@ -203,83 +221,111 @@ export const companyAPI = {
     }
   },
 
-  // Create company
-  createCompany: async (companyData: { name: string; created_by: string }): Promise<Company> => {
+  // Create company - only admins
+  createCompany: async (companyData: { name: string; }): Promise<Company> => {
     try {
-      const token = await getSessionToken();
-      if (!token) {
-        throw new Error('Not authenticated');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Verify user is admin
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profile?.role !== 'admin') {
+        throw new Error('Admin access required');
       }
 
-      const response = await fetch('/api/admin/companies', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(companyData),
-      });
+      const { data, error } = await supabase
+        .from('companies')
+        .insert([{
+          name: companyData.name,
+          created_by: user.id,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      return await response.json();
+      if (error) throw error;
+      return data;
     } catch (error) {
       console.error('Error creating company:', error);
       throw error;
     }
   },
 
-  // Update company
+  // Update company - only admins
   updateCompany: async (companyId: string, updates: Partial<Company>): Promise<Company> => {
     try {
-      const token = await getSessionToken();
-      if (!token) {
-        throw new Error('Not authenticated');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Verify user is admin
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profile?.role !== 'admin') {
+        throw new Error('Admin access required');
       }
 
-      const response = await fetch(`/api/admin/companies/${companyId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(updates),
-      });
+      const { data, error } = await supabase
+        .from('companies')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', companyId)
+        .select()
+        .single();
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      return await response.json();
+      if (error) throw error;
+      return data;
     } catch (error) {
       console.error('Error updating company:', error);
       throw error;
     }
   },
 
-  // Delete company
+  // Delete company - only admins
   deleteCompany: async (companyId: string): Promise<void> => {
     try {
-      const token = await getSessionToken();
-      if (!token) {
-        throw new Error('Not authenticated');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Verify user is admin
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profile?.role !== 'admin') {
+        throw new Error('Admin access required');
       }
 
-      const response = await fetch(`/api/admin/companies/${companyId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-      });
+      // Check if company has users
+      const { data: users } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('company_id', companyId)
+        .limit(1);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      if (users && users.length > 0) {
+        throw new Error('Cannot delete company with existing users');
       }
+
+      const { error } = await supabase
+        .from('companies')
+        .delete()
+        .eq('id', companyId);
+
+      if (error) throw error;
     } catch (error) {
       console.error('Error deleting company:', error);
       throw error;
@@ -289,7 +335,7 @@ export const companyAPI = {
   // Get users by company
   getUsersByCompany: async (companyId: string): Promise<Profile[]> => {
     try {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('company_id', companyId)
@@ -306,7 +352,30 @@ export const companyAPI = {
   // Assign user to company
   assignUserToCompany: async (userId: string, companyId: string): Promise<boolean> => {
     try {
-      const { error } = await supabaseAdmin
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+
+      // Verify current user has permission
+      const { data: currentUserProfile } = await supabase
+        .from('profiles')
+        .select('role, company_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!currentUserProfile) return false;
+
+      // Admins can assign to any company, moderators only to their own company
+      if (currentUserProfile.role === 'moderator') {
+        if (companyId !== currentUserProfile.company_id) {
+          console.error('❌ Moderators can only assign users to their own company');
+          return false;
+        }
+      } else if (currentUserProfile.role !== 'admin') {
+        console.error('❌ Admin or moderator access required');
+        return false;
+      }
+
+      const { error } = await supabase
         .from('profiles')
         .update({ 
           company_id: companyId,
@@ -315,14 +384,14 @@ export const companyAPI = {
         .eq('id', userId);
       
       if (error) {
-        console.error('Error updating user company:', error);
-        throw new Error(`Database error: ${error.message}`);
+        console.error('❌ Error updating user company:', error);
+        return false;
       }
       
       return true;
     } catch (error) {
       console.error('Error assigning user to company:', error);
-      throw error;
+      return false;
     }
   },
 };
@@ -577,31 +646,32 @@ export const reportsAPI = {
   }
 };
 
-// Auth API - ALL operations use supabaseAdmin for proper admin privileges
+// Auth API
 export const authAPI = {
   // Get all users (admin sees all, moderators see only their company users)
   getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
     try {
-      // Use service role for admin operations
-      const { data: profiles, error } = await supabaseAdmin
+      let query = supabase
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false });
+
+      // Apply company filtering for non-admin users
+      if (currentUserRole === 'moderator' && currentUserCompanyId) {
+        query = query.eq('company_id', currentUserCompanyId);
+      } else if (currentUserRole !== 'admin') {
+        // Regular users shouldn't see other users
+        return [];
+      }
+
+      const { data: profiles, error } = await query;
       
       if (error) {
         console.error('❌ Error fetching users:', error);
         return [];
       }
       
-      // Filter by company for moderators
-      let filteredData = profiles || [];
-      if (currentUserRole === 'moderator' && currentUserCompanyId) {
-        filteredData = filteredData.filter((profile: Profile) => 
-          profile.company_id === currentUserCompanyId
-        );
-      }
-      
-      return filteredData.map(profile => ({
+      return (profiles || []).map(profile => ({
         id: profile.id,
         email: profile.email,
         user_metadata: {
@@ -622,10 +692,25 @@ export const authAPI = {
     }
   },
   
-  // Update user role
+  // Update user role - only admins can do this
   updateUserRole: async (userId: string, role: UserRole): Promise<boolean> => {
     try {
-      const { error } = await supabaseAdmin
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+
+      // Verify current user is admin
+      const { data: adminProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (adminProfile?.role !== 'admin') {
+        console.error('❌ Admin access required to update user role');
+        return false;
+      }
+
+      const { error } = await supabase
         .from('profiles')
         .update({ 
           role: role,
@@ -645,10 +730,25 @@ export const authAPI = {
     }
   },
 
-  // Update user status
+  // Update user status - only admins can do this
   updateUserStatus: async (userId: string, status: UserStatus): Promise<boolean> => {
     try {
-      const { error } = await supabaseAdmin
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+
+      // Verify current user is admin
+      const { data: adminProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (adminProfile?.role !== 'admin') {
+        console.error('❌ Admin access required to update user status');
+        return false;
+      }
+
+      const { error } = await supabase
         .from('profiles')
         .update({ 
           status: status,
@@ -668,27 +768,39 @@ export const authAPI = {
     }
   },
 
-  // Delete user
+  // Delete user - only admins can do this
   deleteUser: async (userId: string): Promise<boolean> => {
     try {
-      // First delete from auth (requires admin privileges)
-      const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+
+      // Verify current user is admin
+      const { data: adminProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (adminProfile?.role !== 'admin') {
+        console.error('❌ Admin access required to delete users');
+        return false;
+      }
+
+      // Prevent self-deletion
+      if (userId === user.id) {
+        console.error('❌ Cannot delete yourself');
+        return false;
+      }
+
+      // Delete user profile (auth user will be handled by cascade or trigger)
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', userId);
       
-      if (authError) {
-        console.error('❌ Error deleting auth user:', authError);
-        
-        // If auth deletion fails, at least delete the profile
-        const { error: profileError } = await supabaseAdmin
-          .from('profiles')
-          .delete()
-          .eq('id', userId);
-        
-        if (profileError) {
-          console.error('❌ Error deleting profile:', profileError);
-          return false;
-        }
-        
-        return true;
+      if (error) {
+        console.error('❌ Error deleting user:', error);
+        return false;
       }
       
       return true;
@@ -698,10 +810,33 @@ export const authAPI = {
     }
   },
 
-  // Assign user to company
+  // Assign user to company - admins and moderators can do this
   assignUserToCompany: async (userId: string, companyId: string | null): Promise<boolean> => {
     try {
-      const { error } = await supabaseAdmin
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+
+      // Verify current user has permission
+      const { data: currentUserProfile } = await supabase
+        .from('profiles')
+        .select('role, company_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!currentUserProfile) return false;
+
+      // Admins can assign to any company, moderators only to their own company
+      if (currentUserProfile.role === 'moderator') {
+        if (companyId !== currentUserProfile.company_id) {
+          console.error('❌ Moderators can only assign users to their own company');
+          return false;
+        }
+      } else if (currentUserProfile.role !== 'admin') {
+        console.error('❌ Admin or moderator access required');
+        return false;
+      }
+
+      const { error } = await supabase
         .from('profiles')
         .update({ 
           company_id: companyId,
@@ -721,7 +856,7 @@ export const authAPI = {
     }
   },
 
-  // Create user with company assignment
+  // Create user with company assignment - only admins
   createUser: async (userData: {
     email: string;
     password: string;
@@ -730,8 +865,22 @@ export const authAPI = {
     company_id?: string;
   }): Promise<any> => {
     try {
-      // Create the user in auth using admin API
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Verify current user is admin
+      const { data: adminProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (adminProfile?.role !== 'admin') {
+        throw new Error('Admin access required to create users');
+      }
+
+      // Create the user in auth
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: userData.email,
         password: userData.password,
         email_confirm: true,
@@ -752,7 +901,7 @@ export const authAPI = {
       }
       
       // Create the profile
-      const { data: profileData, error: profileError } = await supabaseAdmin
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .insert([{
           id: authData.user.id,
@@ -785,7 +934,7 @@ export const authAPI = {
   // Get user profile
   getUserProfile: async (userId: string): Promise<Profile | null> => {
     try {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -802,7 +951,7 @@ export const authAPI = {
   // Update user profile
   updateUserProfile: async (userId: string, updates: Partial<Profile>): Promise<Profile> => {
     try {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await supabase
         .from('profiles')
         .update({
           ...updates,
@@ -819,6 +968,50 @@ export const authAPI = {
       throw error;
     }
   },
+
+  // Get current user profile
+  getCurrentUserProfile: async (): Promise<Profile | null> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error fetching current user profile:', error);
+      return null;
+    }
+  },
+
+  // Update current user profile
+  updateCurrentUserProfile: async (updates: Partial<Profile>): Promise<Profile> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating current user profile:', error);
+      throw error;
+    }
+  }
 };
 
 // Image handling utilities
@@ -970,6 +1163,44 @@ export const isUserAdmin = async (): Promise<boolean> => {
   }
 };
 
+// Helper function to check if user has moderator role
+export const isUserModerator = async (): Promise<boolean> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    return profile?.role === 'moderator';
+  } catch (error) {
+    console.error('Error checking user role:', error);
+    return false;
+  }
+};
+
+// Helper function to check if user has controller role
+export const isUserController = async (): Promise<boolean> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    return profile?.role === 'controller';
+  } catch (error) {
+    console.error('Error checking user role:', error);
+    return false;
+  }
+};
+
 // Helper function to get user's company ID
 export const getUserCompanyId = async (): Promise<string | null> => {
   try {
@@ -985,6 +1216,44 @@ export const getUserCompanyId = async (): Promise<string | null> => {
     return profile?.company_id || null;
   } catch (error) {
     console.error('Error getting user company ID:', error);
+    return null;
+  }
+};
+
+// Helper function to get user's role
+export const getUserRole = async (): Promise<UserRole | null> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    return profile?.role || null;
+  } catch (error) {
+    console.error('Error getting user role:', error);
+    return null;
+  }
+};
+
+// Helper function to get user's status
+export const getUserStatus = async (): Promise<UserStatus | null> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('status')
+      .eq('id', user.id)
+      .single();
+
+    return profile?.status || null;
+  } catch (error) {
+    console.error('Error getting user status:', error);
     return null;
   }
 };
