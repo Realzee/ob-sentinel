@@ -138,55 +138,56 @@ export const formatDateForDateTimeLocal = (dateString: string): string => {
 export const companyAPI = {
   // Get all companies (admin only)
   getAllCompanies: async (): Promise<Company[]> => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
 
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
 
-    if (!token) {
-      throw new Error('No authentication token available');
-    }
-
-    console.log('🔍 Fetching companies from API...');
-    const response = await fetch('/api/admin/companies', {
-      headers: {
-        'Authorization': `Bearer ${token}`
+      if (!token) {
+        throw new Error('No authentication token available');
       }
-    });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Companies API error:', response.status, errorText);
-      
-      // Fallback: Try direct database query
-      console.log('🔄 Trying fallback database query...');
-      const { data, error } = await supabase
-        .from('companies')
-        .select('*')
-        .order('name');
-      
-      if (error) {
-        console.error('❌ Fallback also failed:', error);
-        throw new Error(`API: HTTP ${response.status}, DB: ${error.message}`);
+      console.log('🔍 Fetching companies from API...');
+      const response = await fetch('/api/admin/companies', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Companies API error:', response.status, errorText);
+        
+        // Fallback: Try direct database query
+        console.log('🔄 Trying fallback database query...');
+        const { data, error } = await supabase
+          .from('companies')
+          .select('*')
+          .order('name');
+        
+        if (error) {
+          console.error('❌ Fallback also failed:', error);
+          throw new Error(`API: HTTP ${response.status}, DB: ${error.message}`);
+        }
+        
+        console.log('✅ Fallback successful, companies:', data?.length || 0);
+        return data || [];
       }
-      
-      console.log('✅ Fallback successful, companies:', data?.length || 0);
+
+      const data = await response.json();
+      console.log('✅ Companies API successful, companies:', data?.length || 0);
       return data || [];
+    } catch (error) {
+      console.error('💥 Error fetching companies:', error);
+      
+      // Ultimate fallback - return empty array
+      console.log('🔄 Using ultimate fallback - empty array');
+      return [];
     }
-
-    const data = await response.json();
-    console.log('✅ Companies API successful, companies:', data?.length || 0);
-    return data || [];
-  } catch (error) {
-    console.error('💥 Error fetching companies:', error);
-    
-    // Ultimate fallback - return empty array
-    console.log('🔄 Using ultimate fallback - empty array');
-    return [];
-  }
-},
+  },
+  
   // Get company by ID
   getCompanyById: async (companyId: string): Promise<Company | null> => {
     try {
@@ -312,30 +313,30 @@ export const companyAPI = {
 
   // Assign user to company
   assignUserToCompany: async (userId: string, companyId: string): Promise<boolean> => {
-  try {
-    console.log('🔍 CompanyAPI: Assigning user to company via direct database update:', { userId, companyId });
-    
-    // Use direct database update
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ 
-        company_id: companyId,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId);
-    
-    if (error) {
-      console.error('❌ CompanyAPI: Error updating user company in database:', error);
-      throw new Error(`Database error: ${error.message}`);
+    try {
+      console.log('🔍 CompanyAPI: Assigning user to company via direct database update:', { userId, companyId });
+      
+      // Use direct database update
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ 
+          company_id: companyId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+      
+      if (error) {
+        console.error('❌ CompanyAPI: Error updating user company in database:', error);
+        throw new Error(`Database error: ${error.message}`);
+      }
+      
+      console.log('✅ CompanyAPI: User company updated successfully');
+      return true;
+    } catch (error) {
+      console.error('Error assigning user to company:', error);
+      throw error;
     }
-    
-    console.log('✅ CompanyAPI: User company updated successfully');
-    return true;
-  } catch (error) {
-    console.error('Error assigning user to company:', error);
-    throw error;
-  }
-},
+  },
 };
 
 // Reports API with company filtering
@@ -591,245 +592,227 @@ export const reportsAPI = {
 // Auth API with company support
 export const authAPI = {
   // Get all users (admin sees all, moderators see only their company users)
-  // Get all users (admin sees all, moderators see only their company users)
-getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
-  try {
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
+  getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
 
-    if (!token) {
-      throw new Error('No authentication token available');
-    }
-
-    const response = await fetch('/api/admin/users/', {
-      headers: {
-        'Authorization': `Bearer ${token}`
+      if (!token) {
+        throw new Error('No authentication token available');
       }
-    });
-    
-    // First check the response status
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Users API error:', response.status, errorText);
+
+      const response = await fetch('/api/admin/users/', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
-      // Try to parse error as JSON
+      // First check the response status
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Users API error:', response.status, errorText);
+        
+        // Try to parse error as JSON
+        try {
+          const errorData = JSON.parse(errorText);
+          console.error('❌ Users API error details:', errorData);
+        } catch {
+          // Not JSON, use raw text
+        }
+        
+        // Return empty array instead of throwing
+        return [];
+      }
+      
+      // Get response text first to see what we're getting
+      const responseText = await response.text();
+      console.log('🔍 Users API raw response:', responseText);
+      
+      // Try to parse as JSON
+      let data;
       try {
-        const errorData = JSON.parse(errorText);
-        console.error('❌ Users API error details:', errorData);
-      } catch {
-        // Not JSON, use raw text
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('❌ Failed to parse API response as JSON:', parseError);
+        return [];
       }
       
+      // Check if data has the expected format
+      if (!data || typeof data !== 'object') {
+        console.error('❌ Users API returned non-object data:', data);
+        return [];
+      }
+      
+      // Check if it's an error object
+      if (data.error || data.message) {
+        console.error('❌ Users API returned error object:', data);
+        return [];
+      }
+      
+      // Check if data is an array, or if it has a data property that's an array
+      let usersArray: AuthUser[] = [];
+      
+      if (Array.isArray(data)) {
+        usersArray = data;
+      } else if (data.data && Array.isArray(data.data)) {
+        usersArray = data.data;
+      } else if (data.users && Array.isArray(data.users)) {
+        usersArray = data.users;
+      } else {
+        console.error('❌ Users API returned unexpected data format:', data);
+        return [];
+      }
+      
+      // Filter users by company for moderators
+      let filteredData = usersArray;
+      if (currentUserRole === 'moderator' && currentUserCompanyId) {
+        filteredData = usersArray.filter((user: AuthUser) => user.company_id === currentUserCompanyId);
+      }
+      
+      console.log('✅ Users API successful, returning:', filteredData.length, 'users');
+      return filteredData;
+    } catch (error) {
+      console.error('💥 Error fetching users:', error);
       // Return empty array instead of throwing
       return [];
     }
-    
-    // Get response text first to see what we're getting
-    const responseText = await response.text();
-    console.log('🔍 Users API raw response:', responseText);
-    
-    // Try to parse as JSON
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('❌ Failed to parse API response as JSON:', parseError);
-      return [];
-    }
-    
-    // Check if data has the expected format
-    if (!data || typeof data !== 'object') {
-      console.error('❌ Users API returned non-object data:', data);
-      return [];
-    }
-    
-    // Check if it's an error object
-    if (data.error || data.message) {
-      console.error('❌ Users API returned error object:', data);
-      return [];
-    }
-    
-    // Check if data is an array, or if it has a data property that's an array
-    let usersArray: AuthUser[] = [];
-    
-    if (Array.isArray(data)) {
-      usersArray = data;
-    } else if (data.data && Array.isArray(data.data)) {
-      usersArray = data.data;
-    } else if (data.users && Array.isArray(data.users)) {
-      usersArray = data.users;
-    } else {
-      console.error('❌ Users API returned unexpected data format:', data);
-      return [];
-    }
-    
-    // Filter users by company for moderators
-    let filteredData = usersArray;
-    if (currentUserRole === 'moderator' && currentUserCompanyId) {
-      filteredData = usersArray.filter((user: AuthUser) => user.company_id === currentUserCompanyId);
-    }
-    
-    console.log('✅ Users API successful, returning:', filteredData.length, 'users');
-    return filteredData;
-  } catch (error) {
-    console.error('💥 Error fetching users:', error);
-    // Return empty array instead of throwing
-    return [];
-  }
-},
+  },
+  
   // Update user role
-  updateUserRole: async (userId: string, newRole: UserRole): Promise<boolean> => {
-  try {
-    console.log('🔍 AuthAPI: Updating user role:', { userId, newRole });
-    
-    // Update in profiles table
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ 
-        role: newRole,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId);
-    
-    if (error) {
-      console.error('❌ AuthAPI: Error updating user role in database:', error);
-      throw new Error(`Database error: ${error.message}`);
+  updateUserRole: async (userId: string, role: UserRole): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getSessionToken()}`
+        },
+        body: JSON.stringify({ role })
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      return false;
     }
-    
-    console.log('✅ AuthAPI: User role updated successfully');
-    return true;
-  } catch (error) {
-    console.error('Error updating user role:', error);
-    throw error;
-  }
-},
+  },
 
   // Update user status
-  updateUserStatus: async (userId: string, newStatus: UserStatus): Promise<boolean> => {
-  try {
-    console.log('🔍 AuthAPI: Updating user status:', { userId, newStatus });
-    
-    // Update in profiles table
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ 
-        status: newStatus,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId);
-    
-    if (error) {
-      console.error('❌ AuthAPI: Error updating user status in database:', error);
-      throw new Error(`Database error: ${error.message}`);
+  updateUserStatus: async (userId: string, status: UserStatus): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getSessionToken()}`
+        },
+        body: JSON.stringify({ status })
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      return false;
     }
-    
-    console.log('✅ AuthAPI: User status updated successfully');
-    return true;
-  } catch (error) {
-    console.error('Error updating user status:', error);
-    throw error;
-  }
-},
+  },
+
+  // Delete user
+  deleteUser: async (userId: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${await getSessionToken()}`
+        }
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      return false;
+    }
+  },
+
+  // Assign user to company
+  assignUserToCompany: async (userId: string, companyId: string | null): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/company`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getSessionToken()}`
+        },
+        body: JSON.stringify({ companyId })
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Error assigning user to company:', error);
+      return false;
+    }
+  },
+
   // Create user with company assignment
   createUser: async (userData: {
-  email: string;
-  password: string;
-  full_name?: string;
-  role?: UserRole;
-  company_id?: string;
-}): Promise<any> => {
-  try {
-    console.log('🔍 AuthAPI: Creating user:', userData);
-    
-    // First, create the user in auth
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: userData.email,
-      password: userData.password,
-      email_confirm: true, // Auto-confirm email
-      user_metadata: {
-        full_name: userData.full_name || '',
-        role: userData.role || 'user',
-        company_id: userData.company_id
-      }
-    });
-    
-    if (authError) {
-      console.error('❌ AuthAPI: Error creating auth user:', authError);
-      throw authError;
-    }
-    
-    if (!authData.user) {
-      throw new Error('No user created');
-    }
-    
-    console.log('✅ AuthAPI: Auth user created:', authData.user.id);
-    
-    // Then create the profile
-    const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .insert([{
-        id: authData.user.id,
+    email: string;
+    password: string;
+    full_name?: string;
+    role?: UserRole;
+    company_id?: string;
+  }): Promise<any> => {
+    try {
+      console.log('🔍 AuthAPI: Creating user:', userData);
+      
+      // First, create the user in auth
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: userData.email,
-        full_name: userData.full_name || '',
-        role: userData.role || 'user',
-        status: 'active' as UserStatus,
-        company_id: userData.company_id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
-    
-    if (profileError) {
-      console.error('❌ AuthAPI: Error creating profile:', profileError);
-      throw profileError;
+        password: userData.password,
+        email_confirm: true, // Auto-confirm email
+        user_metadata: {
+          full_name: userData.full_name || '',
+          role: userData.role || 'user',
+          company_id: userData.company_id
+        }
+      });
+      
+      if (authError) {
+        console.error('❌ AuthAPI: Error creating auth user:', authError);
+        throw authError;
+      }
+      
+      if (!authData.user) {
+        throw new Error('No user created');
+      }
+      
+      console.log('✅ AuthAPI: Auth user created:', authData.user.id);
+      
+      // Then create the profile
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .insert([{
+          id: authData.user.id,
+          email: userData.email,
+          full_name: userData.full_name || '',
+          role: userData.role || 'user',
+          status: 'active' as UserStatus,
+          company_id: userData.company_id,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+      
+      if (profileError) {
+        console.error('❌ AuthAPI: Error creating profile:', profileError);
+        throw profileError;
+      }
+      
+      console.log('✅ AuthAPI: Profile created:', profileData);
+      return {
+        ...authData.user,
+        profile: profileData
+      };
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw error;
     }
-    
-    console.log('✅ AuthAPI: Profile created:', profileData);
-    return {
-      ...authData.user,
-      profile: profileData
-    };
-  } catch (error) {
-    console.error('Error creating user:', error);
-    throw error;
-  }
-},
-
-  // Delete user (permanent deletion - admin only)
-  deleteUser: async (userId: string): Promise<boolean> => {
-  try {
-    console.log('🔍 AuthAPI: Deleting user:', userId);
-    
-    // First delete from profiles table
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .delete()
-      .eq('id', userId);
-    
-    if (profileError) {
-      console.error('❌ AuthAPI: Error deleting user profile:', profileError);
-      throw new Error(`Database error: ${profileError.message}`);
-    }
-    
-    // Then delete from auth (requires admin privileges)
-    const { error: authError } = await supabase.auth.admin.deleteUser(
-      userId,
-      true // Requires confirmation
-    );
-    
-    if (authError) {
-      console.warn('⚠️ AuthAPI: Could not delete auth user (may need admin role):', authError);
-      // Continue anyway since profile is deleted
-    }
-    
-    console.log('✅ AuthAPI: User deleted successfully');
-    return true;
-  } catch (error) {
-    console.error('Error deleting user:', error);
-    throw error;
-  }
-},
+  },
 
   // Get user profile
   getUserProfile: async (userId: string): Promise<Profile | null> => {
@@ -868,33 +851,6 @@ getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): 
       throw error;
     }
   },
-
-  // Assign user to company
-  assignUserToCompany: async (userId: string, companyId: string): Promise<boolean> => {
-  try {
-    console.log('🔍 AuthAPI: Assigning user to company via direct database update:', { userId, companyId });
-    
-    // Use direct database update instead of API call
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ 
-        company_id: companyId,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId);
-    
-    if (error) {
-      console.error('❌ AuthAPI: Error updating user company in database:', error);
-      throw new Error(`Database error: ${error.message}`);
-    }
-    
-    console.log('✅ AuthAPI: User company updated successfully');
-    return true;
-  } catch (error) {
-    console.error('Error assigning user to company:', error);
-    throw error;
-  }
-},
 };
 
 // Image handling utilities
@@ -1046,8 +1002,6 @@ export const isUserAdmin = async (): Promise<boolean> => {
   }
 };
 
-
-
 // Helper function to get user's company ID
 export const getUserCompanyId = async (): Promise<string | null> => {
   try {
@@ -1077,5 +1031,6 @@ export const supabaseAdmin = createClient(
     }
   }
 );
+
 // Export everything
 export default supabase;
