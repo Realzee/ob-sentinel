@@ -96,20 +96,20 @@ export default function MainDashboard({ user }: MainDashboardProps) {
 
   // FIXED: Enhanced user role and status detection
   const userEmail = user?.email?.toLowerCase();
-const profileRole = user?.role;
-const isHardcodedAdmin = ADMIN_EMAILS.includes(userEmail || '');
-const isAdmin = profileRole === 'admin' || profileRole === 'administrator' || isHardcodedAdmin;
-const isModerator = profileRole === 'moderator';
-const isController = profileRole === 'controller';
+  const profileRole = user?.role;
+  const isHardcodedAdmin = ADMIN_EMAILS.includes(userEmail || '');
+  const isAdmin = profileRole === 'admin' || profileRole === 'administrator' || isHardcodedAdmin;
+  const isModerator = profileRole === 'moderator';
+  const isController = profileRole === 'controller';
 
-console.log('🔍 Enhanced User Role Debug:', {
-  email: userEmail,
-  profileRole: profileRole,
-  isHardcodedAdmin: isHardcodedAdmin,
-  isAdmin: isAdmin,
-  canManageUsers: isAdmin,
-  inAdminList: ADMIN_EMAILS.includes(userEmail || '')
-});
+  console.log('🔍 Enhanced User Role Debug:', {
+    email: userEmail,
+    profileRole: profileRole,
+    isHardcodedAdmin: isHardcodedAdmin,
+    isAdmin: isAdmin,
+    canManageUsers: isAdmin,
+    inAdminList: ADMIN_EMAILS.includes(userEmail || '')
+  });
 
   // FIX: Add missing canDelete variable
   const canDelete = isAdmin || isModerator;
@@ -207,9 +207,131 @@ console.log('🔍 Enhanced User Role Debug:', {
     });
   }, [user]);
 
-  // Load data immediately on component mount and when tab becomes visible
+  // Enhanced loadData function with faster loading
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      console.log('🔄 Loading fresh data...');
+      
+      // Load data in parallel for faster loading
+      const [statsData, vehiclesData, crimesData] = await Promise.all([
+        reportsAPI.getDashboardStats(),
+        reportsAPI.getVehicleAlerts(),
+        reportsAPI.getCrimeReports()
+      ]);
+      
+      setStats(statsData);
+      
+      // Process reports immediately without waiting for users
+      const activeVehicles = Array.isArray(vehiclesData) 
+        ? vehiclesData.filter(vehicle => vehicle.status !== 'rejected')
+        : [];
+      
+      const activeCrimes = Array.isArray(crimesData) 
+        ? crimesData.filter(crime => crime.status !== 'rejected')
+        : [];
+      
+      // Set reports immediately (will update reporter info later)
+      setVehicleReports(activeVehicles.map(vehicle => ({
+        ...vehicle,
+        ob_number: vehicle.ob_number || generateShortOBNumber('V')
+      })) as VehicleAlertWithImages[]);
+      
+      setCrimeReports(activeCrimes.map(crime => ({
+        ...crime,
+        ob_number: crime.ob_number || generateShortOBNumber('C')
+      })) as CrimeReportWithImages[]);
+      
+      setReportsLoading(false);
+      
+      // Load user profiles in the background
+      loadUserProfiles(activeVehicles, activeCrimes);
+      
+    } catch (error) {
+      console.error('Error loading data:', error);
+      showError('Failed to load data. Please try refreshing the page.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // New function for loading user profiles in background
+  const loadUserProfiles = async (vehicles: VehicleAlert[], crimes: CrimeReport[]) => {
+    try {
+      const allUsers = await authAPI.getAllUsers();
+      
+      if (Array.isArray(allUsers)) {
+        const userProfilesMap = new Map();
+        
+        allUsers.forEach((user: any) => {
+          if ('full_name' in user) {
+            userProfilesMap.set(user.id, user);
+          } else if ('user_metadata' in user) {
+            const profile = {
+              id: user.id,
+              email: user.email,
+              full_name: user.user_metadata?.full_name || null,
+              role: user.user_metadata?.role || 'user',
+              status: user.status || 'active',
+              created_at: user.created_at,
+              updated_at: user.updated_at || user.created_at,
+              last_seen_at: user.last_sign_in_at || user.created_at
+            };
+            userProfilesMap.set(user.id, profile);
+          }
+        });
+        
+        // Update vehicles with reporter info
+        const vehiclesWithReporters = vehicles.map(vehicle => ({
+          ...vehicle,
+          reporter_profile: userProfilesMap.get(vehicle.reported_by) || {
+            id: vehicle.reported_by,
+            email: 'unknown@example.com',
+            full_name: 'Unknown User',
+            role: 'user',
+            status: 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          ob_number: vehicle.ob_number || generateShortOBNumber('V')
+        })) as VehicleAlertWithImages[];
+        
+        // Update crimes with reporter info
+        const crimesWithReporters = crimes.map(crime => ({
+          ...crime,
+          reporter_profile: userProfilesMap.get(crime.reported_by) || {
+            id: crime.reported_by,
+            email: 'unknown@example.com',
+            full_name: 'Unknown User',
+            role: 'user',
+            status: 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          ob_number: crime.ob_number || generateShortOBNumber('C')
+        })) as CrimeReportWithImages[];
+        
+        // Update state with enhanced reports
+        setVehicleReports(vehiclesWithReporters);
+        setCrimeReports(crimesWithReporters);
+      }
+    } catch (error) {
+      console.error('Error loading user profiles:', error);
+      // Don't show error - reports are already loaded
+    }
+  };
+
+  // Load data immediately on component mount with auto-refresh
   useEffect(() => {
+    // Load data immediately without waiting for visibility
     loadData();
+    
+    // Set up periodic refresh every 30 seconds
+    const intervalId = setInterval(() => {
+      console.log('⏰ Auto-refreshing data...');
+      loadData();
+    }, 30000);
     
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -218,7 +340,6 @@ console.log('🔍 Enhanced User Role Debug:', {
       }
     };
 
-    // Also handle page focus
     const handleFocus = () => {
       console.log('🔍 Page focused, refreshing data...');
       loadData();
@@ -230,130 +351,9 @@ console.log('🔍 Enhanced User Role Debug:', {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
+      clearInterval(intervalId);
     };
   }, []);
-
-  // Enhanced loadReports function with active status filtering
-  const loadReports = useCallback(async () => {
-  try {
-    setReportsLoading(true);
-    console.log('🔄 Loading fresh reports data...');
-    
-    const [vehiclesData, crimesData, allUsers] = await Promise.all([
-      reportsAPI.getVehicleAlerts(),
-      reportsAPI.getCrimeReports(),
-      authAPI.getAllUsers() // Get all users for reporter info
-    ]);
-    
-    // Filter out rejected/deleted reports and only show active/resolved
-    const activeVehicles = Array.isArray(vehiclesData) 
-      ? vehiclesData.filter(vehicle => vehicle.status !== 'rejected')
-      : [];
-    
-    const activeCrimes = Array.isArray(crimesData) 
-      ? crimesData.filter(crime => crime.status !== 'rejected')
-      : [];
-    
-    // Create a map of user profiles for quick lookup
-    const userProfilesMap = new Map();
-    
-    // Check if allUsers is an array
-    if (Array.isArray(allUsers)) {
-      allUsers.forEach((user: any) => {
-        // Handle both AuthUser and Profile types
-        if ('full_name' in user) {
-          // It's a Profile
-          userProfilesMap.set(user.id, user);
-        } else if ('user_metadata' in user) {
-          // It's an AuthUser - convert to Profile format
-          const profile = {
-            id: user.id,
-            email: user.email,
-            full_name: user.user_metadata?.full_name || null,
-            role: user.user_metadata?.role || 'user',
-            status: user.status || 'active',
-            created_at: user.created_at,
-            updated_at: user.updated_at || user.created_at,
-            last_seen_at: user.last_sign_in_at || user.created_at
-          };
-          userProfilesMap.set(user.id, profile);
-        }
-      });
-    }
-
-    // Enhance reports with reporter information
-    const vehiclesWithReporters = activeVehicles.map(vehicle => ({
-      ...vehicle,
-      reporter_profile: userProfilesMap.get(vehicle.reported_by) || {
-        id: vehicle.reported_by,
-        email: 'unknown@example.com',
-        full_name: 'Unknown User',
-        role: 'user',
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      ob_number: vehicle.ob_number || generateShortOBNumber('V')
-    })) as VehicleAlertWithImages[];
-    
-    const crimesWithReporters = activeCrimes.map(crime => ({
-      ...crime,
-      reporter_profile: userProfilesMap.get(crime.reported_by) || {
-        id: crime.reported_by,
-        email: 'unknown@example.com',
-        full_name: 'Unknown User',
-        role: 'user',
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      ob_number: crime.ob_number || generateShortOBNumber('C')
-    })) as CrimeReportWithImages[];
-    
-    setVehicleReports(vehiclesWithReporters);
-    setCrimeReports(crimesWithReporters);
-    
-    console.log(`✅ Loaded ${vehiclesWithReporters.length} vehicle reports and ${crimesWithReporters.length} crime reports`);
-    
-  } catch (error) {
-    console.error('Error loading reports:', error);
-    showError('Failed to load reports. Please try refreshing the page.');
-    
-    // Set empty arrays on error
-    setVehicleReports([]);
-    setCrimeReports([]);
-  } finally {
-    setReportsLoading(false);
-  }
-}, []);
-
-  // Enhanced loadData with better cache clearing
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      
-      // Clear cache before loading fresh data
-      clearAllCache();
-      
-      console.log('🔄 Loading fresh data with cache busting...');
-      
-      const [statsData] = await Promise.all([
-        reportsAPI.getDashboardStats()
-      ]);
-      
-      setStats(statsData);
-      await loadReports();
-      
-      // Force re-render
-      setCacheBuster(prev => prev + 1);
-      
-    } catch (error) {
-      console.error('Error loading data:', error);
-      showError('Failed to load data. Please try refreshing the page.');
-    } finally {
-      setLoading(false);
-    }
-  }, [clearAllCache, loadReports]);
 
   // Update the refresh button to use enhanced cache clearing
   const handleRefresh = async () => {
@@ -466,7 +466,7 @@ console.log('🔍 Enhanced User Role Debug:', {
       console.error('Error deleting report:', error);
       
       // Revert optimistic update if there was an error
-      await loadReports();
+      await loadData();
       
       showError('Error deleting report. Please try again.');
     } finally {
@@ -483,7 +483,7 @@ console.log('🔍 Enhanced User Role Debug:', {
     console.log('🔄 Refreshing data after report creation...');
     
     // Force reload all data
-    await loadReports();
+    await loadData();
     const statsData = await reportsAPI.getDashboardStats();
     setStats(statsData);
     
@@ -491,7 +491,7 @@ console.log('🔍 Enhanced User Role Debug:', {
     setCacheBuster(prev => prev + 1);
     
     showSuccess('Report created successfully!');
-  }, [loadReports]);
+  }, [loadData]);
 
   // Add useEffect to handle cache busting
   useEffect(() => {
@@ -604,7 +604,7 @@ console.log('🔍 Enhanced User Role Debug:', {
                 </CustomButton>
               )}
 
-              {/* Admin Actions - FIXED: Now properly shows for admins */}
+              {/* Admin Panel - FIXED: Now properly shows for admins */}
               {canManageUsers && (
                 <CustomButton
                   onClick={() => setIsUserManagementOpen(true)}
@@ -615,7 +615,7 @@ console.log('🔍 Enhanced User Role Debug:', {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
                   </svg>
-                  <span>Manage Users</span>
+                  <span>Admin Panel</span>
                 </CustomButton>
               )}
 
@@ -683,7 +683,7 @@ console.log('🔍 Enhanced User Role Debug:', {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
                     </svg>
-                    <span>Manage Users</span>
+                    <span>Admin Panel</span>
                   </CustomButton>
                 )}
 
@@ -824,18 +824,18 @@ console.log('🔍 Enhanced User Role Debug:', {
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <CustomButton
-  onClick={handleRefresh}
-  disabled={loading}
-  variant="secondary"
-  size="md"
-  loading={loading} // Now this will work
-  className="flex items-center justify-center space-x-2"
->
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-  </svg>
-  <span>Refresh & Clear Cache</span>
-</CustomButton>
+            onClick={handleRefresh}
+            disabled={loading}
+            variant="secondary"
+            size="md"
+            loading={loading}
+            className="flex items-center justify-center space-x-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span>Refresh & Clear Cache</span>
+          </CustomButton>
         </div>
 
         {/* Reports List */}
@@ -1037,9 +1037,10 @@ console.log('🔍 Enhanced User Role Debug:', {
       />
 
       <UserManagementModal 
-        isOpen={isUserManagementOpen}
+        open={isUserManagementOpen}
         onClose={() => setIsUserManagementOpen(false)}
-        currentUser={user}
+        currentUserRole={user?.role}
+        currentUserCompanyId={user?.company_id}
       />
 
       <LocationPreviewModal
@@ -1059,39 +1060,40 @@ console.log('🔍 Enhanced User Role Debug:', {
 
       {/* Confirmation Modals */}
       
-<ConfirmationModal
-  isOpen={showDeleteConfirmModal}
-  onClose={() => {
-    setShowDeleteConfirmModal(false);
-    setReportToDelete(null);
-  }}
-  onConfirm={confirmDeleteReport}
-  title="Confirm Deletion"
-  message="Are you sure you want to delete this report? This action cannot be undone."
-  variant="warning" // Use 'warning' instead of 'type'
-  confirmText="Delete Report"
-  cancelText="Cancel"
-/>
+      <ConfirmationModal
+        isOpen={showDeleteConfirmModal}
+        onClose={() => {
+          setShowDeleteConfirmModal(false);
+          setReportToDelete(null);
+        }}
+        onConfirm={confirmDeleteReport}
+        title="Confirm Deletion"
+        message="Are you sure you want to delete this report? This action cannot be undone."
+        variant="warning"
+        confirmText="Delete Report"
+        cancelText="Cancel"
+      />
 
-<ConfirmationModal
-  isOpen={showSuccessModal}
-  onClose={() => setShowSuccessModal(false)}
-  title="Success"
-  message={successMessage}
-  variant="success" // Use 'success' instead of 'type'
-  confirmText="OK"
-  showCancel={false}
-/>
+      <ConfirmationModal
+        isOpen={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        title="Success"
+        message={successMessage}
+        variant="success"
+        confirmText="OK"
+        showCancel={false}
+      />
 
-<ConfirmationModal
-  isOpen={showErrorModal}
-  onClose={() => setShowErrorModal(false)}
-  title="Error"
-  message={errorMessage}
-  variant="error" // Use 'error' instead of 'type' (note: ConfirmationModal has 'error' variant, not 'danger')
-  confirmText="OK"
-  showCancel={false}
-/>
+      <ConfirmationModal
+        isOpen={showErrorModal}
+        onClose={() => setShowErrorModal(false)}
+        title="Error"
+        message={errorMessage}
+        variant="error"
+        confirmText="OK"
+        showCancel={false}
+      />
+
       {/* Mobile Floating Action Button */}
       <div className="sm:hidden fixed bottom-6 right-6 z-50">
         <CustomButton
