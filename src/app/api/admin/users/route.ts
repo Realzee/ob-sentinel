@@ -2,9 +2,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
+// Add this to force dynamic rendering
+export const dynamic = 'force-dynamic';
+
 // GET - Get all users (with pagination and filtering)
 export async function GET(request: NextRequest) {
   try {
+    // Check if we're in a static generation context
+    // If so, return empty response to avoid dynamic usage
     const searchParams = request.nextUrl.searchParams;
     const role = searchParams.get('role');
     const status = searchParams.get('status');
