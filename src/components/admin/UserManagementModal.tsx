@@ -87,6 +87,7 @@ const assignUserToCompany = async (userId: string, companyId: string | null): Pr
       return false;
     }
 
+    // URL stays the same since folder is now [userId]
     const response = await fetch(`/api/admin/users/${userId}/company`, {
       method: 'PUT',
       headers: {

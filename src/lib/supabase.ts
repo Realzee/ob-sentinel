@@ -89,9 +89,10 @@ export interface AuthUser {
   company_id?: string;
 }
 
-// Initialize Supabase client
+// Initialize Supabase clients
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -100,6 +101,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true
   }
 });
+
+export const supabaseAdmin = createClient(
+  supabaseUrl,
+  supabaseServiceKey,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
 
 // Type guard functions
 export const isVehicleAlert = (report: any): report is VehicleAlert => {
@@ -134,39 +146,13 @@ export const formatDateForDateTimeLocal = (dateString: string): string => {
   }
 };
 
-// Company API
+// Company API - Keep using API routes for company management
 export const companyAPI = {
   // Get all companies (admin only)
   getAllCompanies: async (): Promise<Company[]> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      console.log('🔍 Fetching companies from API...');
-      
-      // Use direct database query instead of API during build
-      if (typeof window === 'undefined') {
-        console.log('🔄 Using direct database query (build time)...');
-        const { data, error } = await supabase
-          .from('companies')
-          .select('*')
-          .order('name');
-        
-        if (error) {
-          console.error('❌ Database query failed:', error);
-          return [];
-        }
-        
-        console.log('✅ Database query successful, companies:', data?.length || 0);
-        return data || [];
-      }
+      const token = await getSessionToken();
+      if (!token) throw new Error('Not authenticated');
 
       const response = await fetch('/api/admin/companies', {
         headers: {
@@ -179,29 +165,23 @@ export const companyAPI = {
         console.error('❌ Companies API error:', response.status, errorText);
         
         // Fallback: Try direct database query
-        console.log('🔄 Trying fallback database query...');
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
           .from('companies')
           .select('*')
           .order('name');
         
         if (error) {
-          console.error('❌ Fallback also failed:', error);
+          console.error('❌ Database fallback failed:', error);
           return [];
         }
         
-        console.log('✅ Fallback successful, companies:', data?.length || 0);
         return data || [];
       }
 
       const data = await response.json();
-      console.log('✅ Companies API successful, companies:', data?.length || 0);
       return data || [];
     } catch (error) {
-      console.error('💥 Error fetching companies:', error);
-      
-      // Ultimate fallback - return empty array
-      console.log('🔄 Using ultimate fallback - empty array');
+      console.error('Error fetching companies:', error);
       return [];
     }
   },
@@ -209,7 +189,7 @@ export const companyAPI = {
   // Get company by ID
   getCompanyById: async (companyId: string): Promise<Company | null> => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('companies')
         .select('*')
         .eq('id', companyId)
@@ -226,16 +206,9 @@ export const companyAPI = {
   // Create company
   createCompany: async (companyData: { name: string; created_by: string }): Promise<Company> => {
     try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
+      const token = await getSessionToken();
       if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      // During build, don't make API calls
-      if (typeof window === 'undefined') {
-        throw new Error('Cannot create company during build');
+        throw new Error('Not authenticated');
       }
 
       const response = await fetch('/api/admin/companies', {
@@ -262,16 +235,9 @@ export const companyAPI = {
   // Update company
   updateCompany: async (companyId: string, updates: Partial<Company>): Promise<Company> => {
     try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
+      const token = await getSessionToken();
       if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      // During build, don't make API calls
-      if (typeof window === 'undefined') {
-        throw new Error('Cannot update company during build');
+        throw new Error('Not authenticated');
       }
 
       const response = await fetch(`/api/admin/companies/${companyId}`, {
@@ -298,16 +264,9 @@ export const companyAPI = {
   // Delete company
   deleteCompany: async (companyId: string): Promise<void> => {
     try {
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
+      const token = await getSessionToken();
       if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      // During build, don't make API calls
-      if (typeof window === 'undefined') {
-        throw new Error('Cannot delete company during build');
+        throw new Error('Not authenticated');
       }
 
       const response = await fetch(`/api/admin/companies/${companyId}`, {
@@ -330,7 +289,7 @@ export const companyAPI = {
   // Get users by company
   getUsersByCompany: async (companyId: string): Promise<Profile[]> => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('profiles')
         .select('*')
         .eq('company_id', companyId)
@@ -347,10 +306,7 @@ export const companyAPI = {
   // Assign user to company
   assignUserToCompany: async (userId: string, companyId: string): Promise<boolean> => {
     try {
-      console.log('🔍 CompanyAPI: Assigning user to company via direct database update:', { userId, companyId });
-      
-      // Use direct database update
-      const { data, error } = await supabase
+      const { error } = await supabaseAdmin
         .from('profiles')
         .update({ 
           company_id: companyId,
@@ -359,11 +315,10 @@ export const companyAPI = {
         .eq('id', userId);
       
       if (error) {
-        console.error('❌ CompanyAPI: Error updating user company in database:', error);
+        console.error('Error updating user company:', error);
         throw new Error(`Database error: ${error.message}`);
       }
       
-      console.log('✅ CompanyAPI: User company updated successfully');
       return true;
     } catch (error) {
       console.error('Error assigning user to company:', error);
@@ -622,7 +577,7 @@ export const reportsAPI = {
   }
 };
 
-// Auth API with company support
+// Auth API - ALL operations use supabaseAdmin for proper admin privileges
 export const authAPI = {
   // Get all users (admin sees all, moderators see only their company users)
   getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
@@ -667,7 +622,7 @@ export const authAPI = {
     }
   },
   
-  // All other functions use supabaseAdmin for admin privileges
+  // Update user role
   updateUserRole: async (userId: string, role: UserRole): Promise<boolean> => {
     try {
       const { error } = await supabaseAdmin
@@ -693,50 +648,20 @@ export const authAPI = {
   // Update user status
   updateUserStatus: async (userId: string, status: UserStatus): Promise<boolean> => {
     try {
-      // During build, don't make API calls
-      if (typeof window === 'undefined') {
-        throw new Error('Cannot update user status during build');
-      }
-
-      const token = await getSessionToken();
-      if (!token) {
-        console.error('❌ No session token available');
+      const { error } = await supabaseAdmin
+        .from('profiles')
+        .update({ 
+          status: status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+      
+      if (error) {
+        console.error('❌ Error updating user status:', error);
         return false;
       }
-
-      const response = await fetch(`/api/admin/users/${userId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ status })
-      });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Update status API error:', response.status, errorText);
-        
-        // Fallback to direct database update
-        console.log('🔄 Trying direct database update...');
-        const { error } = await supabase
-          .from('profiles')
-          .update({ 
-            status: status,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', userId);
-        
-        if (error) {
-          console.error('❌ Database update also failed:', error);
-          return false;
-        }
-        
-        console.log('✅ Database update successful');
-        return true;
-      }
-      
-      return response.ok;
+      return true;
     } catch (error) {
       console.error('Error updating user status:', error);
       return false;
@@ -746,45 +671,27 @@ export const authAPI = {
   // Delete user
   deleteUser: async (userId: string): Promise<boolean> => {
     try {
-      // During build, don't make API calls
-      if (typeof window === 'undefined') {
-        throw new Error('Cannot delete user during build');
-      }
-
-      const token = await getSessionToken();
-      if (!token) {
-        console.error('❌ No session token available');
-        return false;
-      }
-
-      const response = await fetch(`/api/admin/users/${userId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      // First delete from auth (requires admin privileges)
+      const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Delete user API error:', response.status, errorText);
+      if (authError) {
+        console.error('❌ Error deleting auth user:', authError);
         
-        // Fallback to direct database delete
-        console.log('🔄 Trying direct database delete...');
-        const { error } = await supabase
+        // If auth deletion fails, at least delete the profile
+        const { error: profileError } = await supabaseAdmin
           .from('profiles')
           .delete()
           .eq('id', userId);
         
-        if (error) {
-          console.error('❌ Database delete also failed:', error);
+        if (profileError) {
+          console.error('❌ Error deleting profile:', profileError);
           return false;
         }
         
-        console.log('✅ Database delete successful');
         return true;
       }
       
-      return response.ok;
+      return true;
     } catch (error) {
       console.error('Error deleting user:', error);
       return false;
@@ -794,50 +701,20 @@ export const authAPI = {
   // Assign user to company
   assignUserToCompany: async (userId: string, companyId: string | null): Promise<boolean> => {
     try {
-      // During build, don't make API calls
-      if (typeof window === 'undefined') {
-        throw new Error('Cannot assign user to company during build');
-      }
-
-      const token = await getSessionToken();
-      if (!token) {
-        console.error('❌ No session token available');
+      const { error } = await supabaseAdmin
+        .from('profiles')
+        .update({ 
+          company_id: companyId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+      
+      if (error) {
+        console.error('❌ Error updating user company:', error);
         return false;
       }
-
-      const response = await fetch(`/api/admin/users/${userId}/company`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ companyId })
-      });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Assign company API error:', response.status, errorText);
-        
-        // Fallback to direct database update
-        console.log('🔄 Trying direct database update...');
-        const { error } = await supabase
-          .from('profiles')
-          .update({ 
-            company_id: companyId,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', userId);
-        
-        if (error) {
-          console.error('❌ Database update also failed:', error);
-          return false;
-        }
-        
-        console.log('✅ Database update successful');
-        return true;
-      }
-      
-      return response.ok;
+      return true;
     } catch (error) {
       console.error('Error assigning user to company:', error);
       return false;
@@ -853,18 +730,11 @@ export const authAPI = {
     company_id?: string;
   }): Promise<any> => {
     try {
-      // During build, don't make API calls
-      if (typeof window === 'undefined') {
-        throw new Error('Cannot create user during build');
-      }
-
-      console.log('🔍 AuthAPI: Creating user:', userData);
-      
-      // First, create the user in auth
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      // Create the user in auth using admin API
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: userData.email,
         password: userData.password,
-        email_confirm: true, // Auto-confirm email
+        email_confirm: true,
         user_metadata: {
           full_name: userData.full_name || '',
           role: userData.role || 'user',
@@ -873,7 +743,7 @@ export const authAPI = {
       });
       
       if (authError) {
-        console.error('❌ AuthAPI: Error creating auth user:', authError);
+        console.error('❌ Error creating auth user:', authError);
         throw authError;
       }
       
@@ -881,10 +751,8 @@ export const authAPI = {
         throw new Error('No user created');
       }
       
-      console.log('✅ AuthAPI: Auth user created:', authData.user.id);
-      
-      // Then create the profile
-      const { data: profileData, error: profileError } = await supabase
+      // Create the profile
+      const { data: profileData, error: profileError } = await supabaseAdmin
         .from('profiles')
         .insert([{
           id: authData.user.id,
@@ -900,11 +768,10 @@ export const authAPI = {
         .single();
       
       if (profileError) {
-        console.error('❌ AuthAPI: Error creating profile:', profileError);
+        console.error('❌ Error creating profile:', profileError);
         throw profileError;
       }
       
-      console.log('✅ AuthAPI: Profile created:', profileData);
       return {
         ...authData.user,
         profile: profileData
@@ -918,7 +785,7 @@ export const authAPI = {
   // Get user profile
   getUserProfile: async (userId: string): Promise<Profile | null> => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -935,7 +802,7 @@ export const authAPI = {
   // Update user profile
   updateUserProfile: async (userId: string, updates: Partial<Profile>): Promise<Profile> => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('profiles')
         .update({
           ...updates,
@@ -1121,17 +988,6 @@ export const getUserCompanyId = async (): Promise<string | null> => {
     return null;
   }
 };
-
-export const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
 
 // Export everything
 export default supabase;
