@@ -649,49 +649,55 @@ export const reportsAPI = {
 // Auth API
 export const authAPI = {
   // Get all users (admin sees all, moderators see only their company users)
-  getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
+  getAllUsers: async (currentUserRole?: UserRole, companyId?: string) => {
     try {
-      let query = supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return [];
+      
+      // Get all auth users
+      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
+      if (authError) throw authError;
+      
+      // Get user profiles from profiles table
+      const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      // Apply company filtering for non-admin users
-      if (currentUserRole === 'moderator' && currentUserCompanyId) {
-        query = query.eq('company_id', currentUserCompanyId);
-      } else if (currentUserRole !== 'admin') {
-        // Regular users shouldn't see other users
-        return [];
-      }
-
-      const { data: profiles, error } = await query;
+        .select('*');
       
-      if (error) {
-        console.error('❌ Error fetching users:', error);
-        return [];
+      if (profilesError) throw profilesError;
+      
+      // Merge auth users with their profiles
+      const usersWithProfiles = authUsers.users.map(authUser => {
+        const profile = profiles?.find(p => p.id === authUser.id);
+        return {
+          id: authUser.id,
+          email: authUser.email,
+          role: profile?.role || authUser.user_metadata?.role || 'user',
+          status: profile?.status || 'active',
+          company_id: profile?.company_id,
+          user_metadata: {
+            ...authUser.user_metadata,
+            full_name: profile?.full_name || authUser.user_metadata?.full_name,
+            role: profile?.role || authUser.user_metadata?.role || 'user'
+          },
+          created_at: authUser.created_at,
+          updated_at: authUser.updated_at
+        } as AuthUser;
+      });
+      
+      // Filter based on role if needed
+      if (currentUserRole === 'moderator' && companyId) {
+        return usersWithProfiles.filter(user => 
+          user.company_id === companyId || user.role === 'admin'
+        );
       }
       
-      return (profiles || []).map(profile => ({
-        id: profile.id,
-        email: profile.email,
-        user_metadata: {
-          full_name: profile.full_name,
-          role: profile.role,
-          company_id: profile.company_id
-        },
-        created_at: profile.created_at,
-        updated_at: profile.updated_at,
-        last_sign_in_at: null,
-        role: profile.role,
-        status: profile.status,
-        company_id: profile.company_id
-      }));
+      return usersWithProfiles;
+      
     } catch (error) {
-      console.error('💥 Error fetching users:', error);
+      console.error('Error fetching users:', error);
       return [];
     }
-  },
-  
+  },  
   // Update user role - only admins can do this
   updateUserRole: async (userId: string, role: UserRole): Promise<boolean> => {
     try {

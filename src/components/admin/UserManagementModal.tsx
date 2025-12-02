@@ -183,62 +183,75 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
 
   // Load users function with company filtering
   const loadUsers = async () => {
-    try {
-      setLoading(true);
-      
-      console.log('🔍 Loading users via API route...');
-      
-      // FIX: Use detectedUserRole which is UserRole type
-      const usersData = await authAPI.getAllUsers(detectedUserRole, currentUserCompanyId);
-      
-      console.log('🔍 Got users data:', usersData);
-      console.log('🔍 Is array?', Array.isArray(usersData));
-      console.log('🔍 Length:', usersData?.length || 0);
-      
-      if (usersData && Array.isArray(usersData)) {
-        // Properly type the users
-        const typedUsers: AuthUser[] = usersData.map(user => {
-          // Ensure we always have a string for role
-          const roleFromMetadata = user.user_metadata?.role || '';
-          const roleFromUser = user.role || '';
-          const statusFromUser = user.status || '';
-          
-          // Convert to string explicitly
-          const roleString = String(roleFromUser || roleFromMetadata || 'user');
-          const statusString = String(statusFromUser || 'active');
-          
-          // Use type assertion to handle the type mismatch
-          const finalRole = toUserRole(roleString);
-          const finalStatus = toUserStatus(statusString);
-          
-          return {
-            ...user,
-            user_metadata: {
-              ...user.user_metadata,
-              role: finalRole
-            },
-            role: finalRole,
-            status: finalStatus
-          };
-        });
-        
-        setUsers(typedUsers);
-        console.log('✅ Loaded users:', typedUsers.length);
-      } else {
-        console.error('❌ Invalid response from getAllUsers:', usersData);
-        // Set empty array to clear any previous data
-        setUsers([]);
-      }
-      
-    } catch (error: any) {
-      console.error('❌ Error loading users:', error);
-      showError('Failed to load users: ' + error.message);
-      // Set empty array on error
+  try {
+    setLoading(true);
+    
+    console.log('🔍 Loading users from Supabase auth...');
+    
+    // Get the current user's session first
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('❌ No session found');
+      showError('Not authenticated');
       setUsers([]);
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
+    
+    console.log('🔍 Current session user:', session.user);
+    
+    // FIX: Use detectedUserRole which is UserRole type
+    const usersData = await authAPI.getAllUsers(detectedUserRole, currentUserCompanyId);
+    
+    console.log('🔍 Got users data:', usersData);
+    console.log('🔍 Is array?', Array.isArray(usersData));
+    console.log('🔍 Length:', usersData?.length || 0);
+    
+    if (usersData && Array.isArray(usersData)) {
+      // Properly type the users
+      const typedUsers: AuthUser[] = usersData.map(user => {
+        // Ensure we always have a string for role
+        const roleFromMetadata = user.user_metadata?.role || '';
+        const roleFromUser = user.role || '';
+        const statusFromUser = user.status || '';
+        
+        // Convert to string explicitly
+        const roleString = String(roleFromUser || roleFromMetadata || 'user');
+        const statusString = String(statusFromUser || 'active');
+        
+        // Use type assertion to handle the type mismatch
+        const finalRole = toUserRole(roleString);
+        const finalStatus = toUserStatus(statusString);
+        
+        return {
+          ...user,
+          user_metadata: {
+            ...user.user_metadata,
+            role: finalRole,
+            full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'No Name'
+          },
+          role: finalRole,
+          status: finalStatus
+        };
+      });
+      
+      setUsers(typedUsers);
+      console.log('✅ Loaded users:', typedUsers.length);
+      console.log('✅ Sample user:', typedUsers[0]);
+    } else {
+      console.error('❌ Invalid response from getAllUsers:', usersData);
+      // Set empty array to clear any previous data
+      setUsers([]);
+    }
+    
+  } catch (error: any) {
+    console.error('❌ Error loading users:', error);
+    showError('Failed to load users: ' + error.message);
+    // Set empty array on error
+    setUsers([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Load companies function with admin check
   const loadCompanies = async () => {
