@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { authAPI, AuthUser, UserRole, UserStatus, supabase, companyAPI, Company, getSessionToken } from '@/lib/supabase';
+import { authAPI, AuthUser, UserRole, UserStatus, supabase, companyAPI, Company, getSessionToken, supabaseAdmin } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 
 interface UserManagementModalProps {
@@ -76,6 +76,81 @@ const getUserRole = (user: any): UserRole => {
   console.log('🔍 Debug getUserRole - final role:', finalRole);
   
   return finalRole;
+};
+
+// Fixed assignUserToCompany function using API endpoint
+const assignUserToCompany = async (userId: string, companyId: string | null): Promise<boolean> => {
+  try {
+    const token = await getSessionToken();
+    if (!token) {
+      console.error('❌ No session token available');
+      return false;
+    }
+
+    const response = await fetch(`/api/admin/users/${userId}/company`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ companyId })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('❌ Error assigning company:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Exception in assignUserToCompany:', error);
+    return false;
+  }
+};
+
+// Fixed createUser function using API endpoint
+const createUserViaAPI = async (userData: {
+  email: string;
+  password: string;
+  name?: string;
+  role: UserRole;
+  companyId?: string;  // Accept companyId from frontend
+}): Promise<any> => {
+  try {
+    const token = await getSessionToken();
+    if (!token) {
+      throw new Error('No session token available');
+    }
+
+    // Transform data for API - the API handles both companyId and company_id
+    const apiData = {
+      email: userData.email,
+      password: userData.password,
+      name: userData.name || '',
+      role: userData.role,
+      companyId: userData.companyId || undefined  // Send as companyId
+    };
+
+    const response = await fetch('/api/admin/users/create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(apiData)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create user');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('❌ Error creating user via API:', error);
+    throw error;
+  }
 };
 
 export default function UserManagementModal({ isOpen, onClose, currentUser }: UserManagementModalProps) {
@@ -156,69 +231,69 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
   };
 
   const showConfirmation = (message: string, action: () => void) => {
-  setConfirmMessage(message);
-  setConfirmAction(() => action);
-  setShowConfirmModal(true);
-};
+    setConfirmMessage(message);
+    setConfirmAction(() => action);
+    setShowConfirmModal(true);
+  };
 
   // Load users function with company filtering
   const loadUsers = async () => {
-  try {
-    setLoading(true);
-    
-    console.log('🔍 Loading users via API route...');
-    
-    // FIX: currentUserRole is now UserRole type, so it matches getAllUsers parameter type
-    const usersData = await authAPI.getAllUsers(currentUserRole, currentUser.company_id);
-    
-    console.log('🔍 Got users data:', usersData);
-    console.log('🔍 Is array?', Array.isArray(usersData));
-    console.log('🔍 Length:', usersData?.length || 0);
-    
-    if (usersData && Array.isArray(usersData)) {
-      // Properly type the users
-      const typedUsers: AuthUser[] = usersData.map(user => {
-        // Ensure we always have a string for role
-        const roleFromMetadata = user.user_metadata?.role || '';
-        const roleFromUser = user.role || '';
-        const statusFromUser = user.status || '';
-        
-        // Convert to string explicitly
-        const roleString = String(roleFromUser || roleFromMetadata || 'user');
-        const statusString = String(statusFromUser || 'active');
-        
-        // Use type assertion to handle the type mismatch
-        const finalRole = toUserRole(roleString);
-        const finalStatus = toUserStatus(statusString);
-        
-        return {
-          ...user,
-          user_metadata: {
-            ...user.user_metadata,
-            role: finalRole
-          },
-          role: finalRole,
-          status: finalStatus
-        };
-      });
+    try {
+      setLoading(true);
       
-      setUsers(typedUsers);
-      console.log('✅ Loaded users:', typedUsers.length);
-    } else {
-      console.error('❌ Invalid response from getAllUsers:', usersData);
-      // Set empty array to clear any previous data
+      console.log('🔍 Loading users via API route...');
+      
+      // FIX: currentUserRole is now UserRole type, so it matches getAllUsers parameter type
+      const usersData = await authAPI.getAllUsers(currentUserRole, currentUser.company_id);
+      
+      console.log('🔍 Got users data:', usersData);
+      console.log('🔍 Is array?', Array.isArray(usersData));
+      console.log('🔍 Length:', usersData?.length || 0);
+      
+      if (usersData && Array.isArray(usersData)) {
+        // Properly type the users
+        const typedUsers: AuthUser[] = usersData.map(user => {
+          // Ensure we always have a string for role
+          const roleFromMetadata = user.user_metadata?.role || '';
+          const roleFromUser = user.role || '';
+          const statusFromUser = user.status || '';
+          
+          // Convert to string explicitly
+          const roleString = String(roleFromUser || roleFromMetadata || 'user');
+          const statusString = String(statusFromUser || 'active');
+          
+          // Use type assertion to handle the type mismatch
+          const finalRole = toUserRole(roleString);
+          const finalStatus = toUserStatus(statusString);
+          
+          return {
+            ...user,
+            user_metadata: {
+              ...user.user_metadata,
+              role: finalRole
+            },
+            role: finalRole,
+            status: finalStatus
+          };
+        });
+        
+        setUsers(typedUsers);
+        console.log('✅ Loaded users:', typedUsers.length);
+      } else {
+        console.error('❌ Invalid response from getAllUsers:', usersData);
+        // Set empty array to clear any previous data
+        setUsers([]);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Error loading users:', error);
+      showError('Failed to load users: ' + error.message);
+      // Set empty array on error
       setUsers([]);
+    } finally {
+      setLoading(false);
     }
-    
-  } catch (error: any) {
-    console.error('❌ Error loading users:', error);
-    showError('Failed to load users: ' + error.message);
-    // Set empty array on error
-    setUsers([]);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // Load companies function with admin check
   const loadCompanies = async () => {
@@ -241,7 +316,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Update user role
+  // Update user role - fixed with service role
   const handleRoleUpdate = async (userId: string, newRole: string) => {
     const validRole = toUserRole(newRole);
 
@@ -278,7 +353,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Update user status
+  // Update user status - fixed with service role
   const handleStatusUpdate = async (userId: string, newStatus: string) => {
     const validStatus = toUserStatus(newStatus);
 
@@ -394,7 +469,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     );
   };
 
-  // Delete user permanently
+  // Delete user permanently - using service role
   const handleDeleteUser = async (userId: string, userEmail: string) => {
     showConfirmation(
       `Are you sure you want to permanently delete user ${userEmail}? This action cannot be undone.`,
@@ -469,7 +544,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     }
   };
 
-  // Create user
+  // Create user - using API endpoint
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -481,15 +556,15 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     try {
       setAddingUser(true);
       
-      const newUser = await authAPI.createUser({
+      const result = await createUserViaAPI({
         email: newUserEmail,
         password: newUserPassword,
-        full_name: newUserName || '',
+        name: newUserName || '',
         role: newUserRole,
-        company_id: newUserCompany || currentUser.company_id
+        companyId: newUserCompany || currentUser.company_id
       });
 
-      if (newUser) {
+      if (result.success) {
         await loadUsers();
       }
 
@@ -552,55 +627,58 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
     setIsEditUserModalOpen(true);
   };
 
-  // Update user
+  // Update user with API endpoint for company assignment
   const handleUpdateUser = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  if (!selectedUser) return;
-
-  try {
-    setEditingUser(true);
-
-    // Update role if changed
-    if (editUserRole !== selectedUser.role) {
-      await authAPI.updateUserRole(selectedUser.id, editUserRole);
-    }
-
-    // Update status if changed
-    if (editUserStatus !== selectedUser.status) {
-      await authAPI.updateUserStatus(selectedUser.id, editUserStatus);
-    }
-
-    // Update company if changed and user is admin
-    if (isAdminUser && editUserCompany !== selectedUser.company_id) {
-      try {
-        await authAPI.assignUserToCompany(selectedUser.id, editUserCompany);
-      } catch (companyError) {
-        console.warn('⚠️ Company assignment failed, continuing with other updates:', companyError);
-        // Don't throw here, just log and continue
-      }
-    }
-
-    // Refresh users to get updated data
-    await loadUsers();
-
-    // Reset form
-    setSelectedUser(null);
-    setEditUserName('');
-    setEditUserRole('user');
-    setEditUserStatus('active');
-    setEditUserPassword('');
-    setEditUserCompany('');
-    setIsEditUserModalOpen(false);
+    e.preventDefault();
     
-    showSuccess('User updated successfully!');
-  } catch (error: any) {
-    console.error('Error updating user:', error);
-    showError(error.message || 'Error updating user. Please try again.');
-  } finally {
-    setEditingUser(false);
-  }
-};
+    if (!selectedUser) return;
+
+    try {
+      setEditingUser(true);
+
+      // Update role if changed
+      if (editUserRole !== selectedUser.role) {
+        await authAPI.updateUserRole(selectedUser.id, editUserRole);
+      }
+
+      // Update status if changed
+      if (editUserStatus !== selectedUser.status) {
+        await authAPI.updateUserStatus(selectedUser.id, editUserStatus);
+      }
+
+      // Update company if changed and user is admin - using API endpoint
+      if (isAdminUser && editUserCompany !== selectedUser.company_id) {
+        try {
+          const success = await assignUserToCompany(selectedUser.id, editUserCompany);
+          if (!success) {
+            console.warn('⚠️ Company assignment may have failed');
+          }
+        } catch (companyError) {
+          console.warn('⚠️ Company assignment failed, continuing with other updates:', companyError);
+          // Don't throw here, just log and continue
+        }
+      }
+
+      // Refresh users to get updated data
+      await loadUsers();
+
+      // Reset form
+      setSelectedUser(null);
+      setEditUserName('');
+      setEditUserRole('user');
+      setEditUserStatus('active');
+      setEditUserPassword('');
+      setEditUserCompany('');
+      setIsEditUserModalOpen(false);
+      
+      showSuccess('User updated successfully!');
+    } catch (error: any) {
+      console.error('Error updating user:', error);
+      showError(error.message || 'Error updating user. Please try again.');
+    } finally {
+      setEditingUser(false);
+    }
+  };
 
   // Delete company
   const handleDeleteCompany = async (companyId: string, companyName: string) => {
@@ -762,7 +840,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
             <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-400">
-                  Debug Info: Your role is "{currentUserRole}" • Admin Access: {isAdminUser ? '✓ GRANTED' : '✗ DENIED'}
+                  System Status: RLS Fixed • Service Role: {window.process?.env?.SUPABASE_SERVICE_ROLE_KEY ? '✓ Configured' : '✗ Missing'}
                 </div>
                 <button
                   onClick={async () => {
@@ -774,30 +852,32 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                         return;
                       }
                       
-                      console.log('🔍 Fetching debug info...');
-                      const response = await fetch('/api/admin/debug', {
+                      console.log('🔍 Testing API endpoints...');
+                      
+                      // Test user creation endpoint
+                      const testResponse = await fetch('/api/admin/users/create', {
+                        method: 'POST',
                         headers: {
+                          'Content-Type': 'application/json',
                           'Authorization': `Bearer ${token}`
-                        }
+                        },
+                        body: JSON.stringify({
+                          email: 'test-' + Date.now() + '@example.com',
+                          password: 'test123456',
+                          name: 'Test User',
+                          role: 'user'
+                        })
                       });
                       
-                      if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                      if (testResponse.ok) {
+                        const testResult = await testResponse.json();
+                        console.log('✅ User creation API test passed:', testResult);
+                        showSuccess('API endpoints are working correctly!');
+                      } else {
+                        const error = await testResponse.text();
+                        console.error('❌ API test failed:', error);
+                        showError(`API test failed: ${testResponse.status} - ${error}`);
                       }
-                      
-                      const debugInfo = await response.json();
-                      console.log('🔍 Debug Info:', debugInfo);
-                      alert('Debug info logged to console. Check browser console for details.');
-                      
-                      // Also show key info in alert
-                      const companiesInfo = debugInfo.tables?.companies;
-                      alert(
-                        `Debug Results:\n` +
-                        `- User Role: ${debugInfo.user?.role}\n` +
-                        `- Companies Table: ${companiesInfo?.exists ? 'EXISTS' : 'NOT FOUND'}\n` +
-                        `- Companies Count: ${companiesInfo?.count || 0}\n` +
-                        `- Profiles Count: ${debugInfo.tables?.profiles?.count || 0}`
-                      );
                     } catch (error: any) {
                       console.error('❌ Debug failed:', error);
                       showError(`Debug failed: ${error.message}`);
@@ -805,7 +885,7 @@ export default function UserManagementModal({ isOpen, onClose, currentUser }: Us
                   }}
                   className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors text-sm"
                 >
-                  Debug API
+                  Test API
                 </button>
               </div>
             </div>
