@@ -61,6 +61,31 @@ export interface CrimeReport {
   updated_at: string;
 }
 
+export interface AuditLog {
+  id: string;
+  action: string;
+  report_id: string;
+  report_type: 'vehicle' | 'crime' | 'system';
+  user_id: string;
+  user_email: string;
+  timestamp: string;
+  details: any;
+  created_at: string;
+}
+
+export interface DispatchRecord {
+  id: string;
+  report_id: string;
+  report_type: 'vehicle' | 'crime';
+  assigned_to: string;
+  status: 'pending' | 'dispatched' | 'en_route' | 'on_scene' | 'completed';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  timestamp: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Profile {
   id: string;
   email: string;
@@ -643,6 +668,128 @@ export const reportsAPI = {
       console.error('Error searching crime reports:', error);
       return [];
     }
+  },
+
+  // Audit Logs API
+  getAuditLogs: async (limit: number = 100): Promise<AuditLog[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching audit logs:', error);
+      return [];
+    }
+  },
+
+  logAuditAction: async (logData: {
+    action: string;
+    report_id: string;
+    report_type: 'vehicle' | 'crime' | 'system';
+    user_id: string;
+    user_email: string;
+    details: any;
+  }): Promise<AuditLog> => {
+    try {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .insert([{
+          ...logData,
+          timestamp: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error logging audit action:', error);
+      throw error;
+    }
+  },
+
+  // Dispatch Records API
+  getDispatchRecords: async (): Promise<DispatchRecord[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('dispatch_records')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching dispatch records:', error);
+      return [];
+    }
+  },
+
+  createDispatchRecord: async (dispatchData: {
+    report_id: string;
+    report_type: 'vehicle' | 'crime';
+    assigned_to: string;
+    status: 'pending' | 'dispatched' | 'en_route' | 'on_scene' | 'completed';
+    priority: 'low' | 'medium' | 'high' | 'critical';
+    notes: string;
+  }): Promise<DispatchRecord> => {
+    try {
+      const { data, error } = await supabase
+        .from('dispatch_records')
+        .insert([{
+          ...dispatchData,
+          timestamp: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating dispatch record:', error);
+      throw error;
+    }
+  },
+
+  updateDispatchRecord: async (id: string, updates: Partial<DispatchRecord>): Promise<DispatchRecord> => {
+    try {
+      const { data, error } = await supabase
+        .from('dispatch_records')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating dispatch record:', error);
+      throw error;
+    }
+  },
+
+  deleteDispatchRecord: async (id: string): Promise<void> => {
+    try {
+      const { error } = await supabase
+        .from('dispatch_records')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting dispatch record:', error);
+      throw error;
+    }
   }
 };
 
@@ -1132,6 +1279,38 @@ export const realtimeAPI = {
           event: '*',
           schema: 'public',
           table: 'companies'
+        },
+        callback
+      )
+      .subscribe();
+  },
+
+  // Subscribe to audit logs
+  subscribeToAuditLogs: (callback: (payload: any) => void) => {
+    return supabase
+      .channel('audit_logs')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'audit_logs'
+        },
+        callback
+      )
+      .subscribe();
+  },
+
+  // Subscribe to dispatch records
+  subscribeToDispatchRecords: (callback: (payload: any) => void) => {
+    return supabase
+      .channel('dispatch_records')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'dispatch_records'
         },
         callback
       )

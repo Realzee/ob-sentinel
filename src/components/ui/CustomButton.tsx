@@ -1,12 +1,12 @@
-// components/ui/CustomButton.tsx - UPDATED VERSION
+// components/ui/CustomButton.tsx
 interface CustomButtonProps {
   children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   variant?: 'primary' | 'secondary' | 'success' | 'danger';
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
   className?: string;
-  loading?: boolean; // Add this line
+  loading?: boolean;
 }
 
 export default function CustomButton({ 
@@ -16,7 +16,7 @@ export default function CustomButton({
   variant = 'primary',
   size = 'md',
   className = '',
-  loading = false // Add this line
+  loading = false
 }: CustomButtonProps) {
   const baseClasses = 'rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900';
   
@@ -28,6 +28,7 @@ export default function CustomButton({
   };
   
   const sizeClasses = {
+    xs: 'px-2 py-1 text-xs',
     sm: 'px-3 py-1.5 text-sm',
     md: 'px-4 py-2 text-base',
     lg: 'px-6 py-3 text-lg'

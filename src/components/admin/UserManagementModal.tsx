@@ -52,31 +52,21 @@ const getUserRole = (user: any): UserRole => {
   // Check multiple possible locations for the role
   let role: string | undefined = user.role;
   
-  console.log('🔍 Debug getUserRole - initial role:', role);
-  
   // Always check user_metadata first for role (it's more accurate)
   if (user.user_metadata) {
     const metadataRole = user.user_metadata.role;
-    console.log('🔍 Debug getUserRole - metadata role:', metadataRole);
-    
     if (metadataRole && metadataRole !== 'authenticated') {
       role = metadataRole;
     }
   }
   
-  console.log('🔍 Debug getUserRole - role after metadata check:', role);
-  
   // Check if email is in admin list (hardcoded admin detection)
   if ((!role || role === 'authenticated') && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) {
     role = 'admin';
-    console.log('🔍 Debug getUserRole - set as admin via email list');
   }
   
   // Use the helper function to ensure we return a valid UserRole
-  const finalRole = toUserRole(role || 'user');
-  console.log('🔍 Debug getUserRole - final role:', finalRole);
-  
-  return finalRole;
+  return toUserRole(role || 'user');
 };
 
 export default function UserManagementModal({ open, onClose, currentUserRole = 'user', currentUserCompanyId }: UserManagementModalProps) {
@@ -155,7 +145,6 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
   const detectedUserRole = currentUser ? getUserRole(currentUser) : currentUserRole;
   const isAdminUser = detectedUserRole === 'admin';
   
-  // Debug current user
   console.log('🔍 UserManagementModal - Current User:', {
     currentUser: currentUser,
     passedRole: currentUserRole,
@@ -181,79 +170,37 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     setShowConfirmModal(true);
   };
 
-  // Load users function with company filtering
+  // Load users function with company filtering - SIMPLIFIED
   const loadUsers = async () => {
-  try {
-    setLoading(true);
-    
-    console.log('🔍 Loading users from Supabase auth...');
-    
-    // Get the current user's session first
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      console.error('❌ No session found');
-      showError('Not authenticated');
-      setUsers([]);
-      return;
-    }
-    
-    console.log('🔍 Current session user:', session.user);
-    
-    // FIX: Use detectedUserRole which is UserRole type
-    const usersData = await authAPI.getAllUsers(detectedUserRole, currentUserCompanyId);
-    
-    console.log('🔍 Got users data:', usersData);
-    console.log('🔍 Is array?', Array.isArray(usersData));
-    console.log('🔍 Length:', usersData?.length || 0);
-    
-    if (usersData && Array.isArray(usersData)) {
-      // Properly type the users
-      const typedUsers: AuthUser[] = usersData.map(user => {
-        // Ensure we always have a string for role
-        const roleFromMetadata = user.user_metadata?.role || '';
-        const roleFromUser = user.role || '';
-        const statusFromUser = user.status || '';
-        
-        // Convert to string explicitly
-        const roleString = String(roleFromUser || roleFromMetadata || 'user');
-        const statusString = String(statusFromUser || 'active');
-        
-        // Use type assertion to handle the type mismatch
-        const finalRole = toUserRole(roleString);
-        const finalStatus = toUserStatus(statusString);
-        
-        return {
-          ...user,
-          user_metadata: {
-            ...user.user_metadata,
-            role: finalRole,
-            full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'No Name'
-          },
-          role: finalRole,
-          status: finalStatus
-        };
-      });
+    try {
+      setLoading(true);
       
-      setUsers(typedUsers);
-      console.log('✅ Loaded users:', typedUsers.length);
-      console.log('✅ Sample user:', typedUsers[0]);
-    } else {
-      console.error('❌ Invalid response from getAllUsers:', usersData);
-      // Set empty array to clear any previous data
+      console.log('🔍 Loading users via API route...');
+      
+      // FIX: Use detectedUserRole which is UserRole type
+      const usersData = await authAPI.getAllUsers(detectedUserRole, currentUserCompanyId);
+      
+      console.log('🔍 Got users data:', usersData);
+      console.log('🔍 Length:', usersData?.length || 0);
+      
+      if (usersData && Array.isArray(usersData)) {
+        setUsers(usersData);
+        console.log('✅ Loaded users:', usersData.length);
+      } else {
+        console.error('❌ Invalid response from getAllUsers');
+        setUsers([]);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Error loading users:', error);
+      showError('Failed to load users: ' + error.message);
       setUsers([]);
+    } finally {
+      setLoading(false);
     }
-    
-  } catch (error: any) {
-    console.error('❌ Error loading users:', error);
-    showError('Failed to load users: ' + error.message);
-    // Set empty array on error
-    setUsers([]);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
-  // Load companies function with admin check
+  // Load companies function with admin check - SIMPLIFIED
   const loadCompanies = async () => {
     try {
       const companiesData = await companyAPI.getAllCompanies();
@@ -265,9 +212,10 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
       } else {
         setCompanies(companiesData);
       }
+      console.log('✅ Loaded companies:', companiesData.length);
     } catch (error) {
       console.error('Error loading companies:', error);
-      showError('Failed to load companies');
+      setCompanies([]);
     }
   };
 
@@ -281,7 +229,6 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
       const success = await authAPI.updateUserRole(userId, validRole);
       
       if (success) {
-        // Proper state update with consistent typing
         setUsers(prev => prev.map(u => {
           if (u.id === userId) {
             return {
@@ -542,35 +489,34 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
 
   // Create company
   const handleAddCompany = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  if (!newCompanyName) {
-    showError('Please enter a company name');
-    return;
-  }
+    e.preventDefault();
+    
+    if (!newCompanyName) {
+      showError('Please enter a company name');
+      return;
+    }
 
-  try {
-    setAddingCompany(true);
-    
-    const newCompany = await companyAPI.createCompany({
-      name: newCompanyName
-      // created_by is handled automatically by the API function
-    });
-    
-    setCompanies(prev => [...prev, newCompany]);
-    
-    // Reset form
-    setNewCompanyName('');
-    setIsAddCompanyModalOpen(false);
-    
-    showSuccess('Company created successfully!');
-  } catch (error: any) {
-    console.error('Error creating company:', error);
-    showError(error.message || 'Error creating company. Please try again.');
-  } finally {
-    setAddingCompany(false);
-  }
-};
+    try {
+      setAddingCompany(true);
+      
+      const newCompany = await companyAPI.createCompany({
+        name: newCompanyName
+      });
+      
+      setCompanies(prev => [...prev, newCompany]);
+      
+      // Reset form
+      setNewCompanyName('');
+      setIsAddCompanyModalOpen(false);
+      
+      showSuccess('Company created successfully!');
+    } catch (error: any) {
+      console.error('Error creating company:', error);
+      showError(error.message || 'Error creating company. Please try again.');
+    } finally {
+      setAddingCompany(false);
+    }
+  };
 
   const handleEditUser = (user: AuthUser) => {
     setSelectedUser(user);
@@ -607,7 +553,6 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
           await authAPI.assignUserToCompany(selectedUser.id, editUserCompany);
         } catch (companyError) {
           console.warn('⚠️ Company assignment failed, continuing with other updates:', companyError);
-          // Don't throw here, just log and continue
         }
       }
 
@@ -792,50 +737,13 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
             <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-400">
-                  Debug Info: Your role is "{detectedUserRole}" • Admin Access: {isAdminUser ? '✓ GRANTED' : '✗ DENIED'}
+                  Debug Info: Your role is "{detectedUserRole}" • Admin Access: {isAdminUser ? '✓ GRANTED' : '✗ DENIED'} • Users: {users.length}
                 </div>
                 <button
-                  onClick={async () => {
-                    try {
-                      const token = await getSessionToken();
-                      if (!token) {
-                        console.error('❌ No session token available');
-                        showError('Not authenticated. Please log in again.');
-                        return;
-                      }
-                      
-                      console.log('🔍 Fetching debug info...');
-                      const response = await fetch('/api/admin/debug', {
-                        headers: {
-                          'Authorization': `Bearer ${token}`
-                        }
-                      });
-                      
-                      if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-                      }
-                      
-                      const debugInfo = await response.json();
-                      console.log('🔍 Debug Info:', debugInfo);
-                      alert('Debug info logged to console. Check browser console for details.');
-                      
-                      // Also show key info in alert
-                      const companiesInfo = debugInfo.tables?.companies;
-                      alert(
-                        `Debug Results:\n` +
-                        `- User Role: ${debugInfo.user?.role}\n` +
-                        `- Companies Table: ${companiesInfo?.exists ? 'EXISTS' : 'NOT FOUND'}\n` +
-                        `- Companies Count: ${companiesInfo?.count || 0}\n` +
-                        `- Profiles Count: ${debugInfo.tables?.profiles?.count || 0}`
-                      );
-                    } catch (error: any) {
-                      console.error('❌ Debug failed:', error);
-                      showError(`Debug failed: ${error.message}`);
-                    }
-                  }}
-                  className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors text-sm"
+                  onClick={loadUsers}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm"
                 >
-                  Debug API
+                  Refresh Users
                 </button>
               </div>
             </div>
@@ -944,6 +852,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
                   {loading ? (
                     <div className="flex justify-center items-center py-12">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                      <span className="ml-3 text-gray-400">Loading users...</span>
                     </div>
                   ) : (
                     <div className="overflow-hidden">
@@ -969,121 +878,123 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700">
-                          {filteredUsers.map((user) => (
-                            <tr key={user.id} className="hover:bg-gray-800/30 transition-colors">
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedUsers.includes(user.id)}
-                                  onChange={() => handleUserSelection(user.id)}
-                                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
-                                />
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div>
-                                  <div className="text-sm font-medium text-white">
-                                    {getUserDisplayName(user)}
-                                  </div>
-                                  <div className="text-sm text-gray-400">{user.email}</div>
-                                  {user.id === currentUser?.id && (
-                                    <span className="inline-block mt-1 px-2 py-1 text-xs bg-blue-500/20 text-blue-300 rounded-full border border-blue-500/30">
-                                      Current User
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`px-2 py-1 text-xs rounded-full ${
-                                  user.status === 'active' ? 'bg-green-500/20 text-green-300' :
-                                  user.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300' :
-                                  'bg-red-500/20 text-red-300'
-                                }`}>
-                                  {user.status}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center space-x-2">
-                                  <select
-                                    value={getUserRoleFromAuthUser(user)}
-                                    onChange={(e) => handleRoleUpdate(user.id, e.target.value)}
-                                    disabled={updating === user.id || user.id === currentUser?.id}
-                                    className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                  >
-                                    <option value="user">User</option>
-                                    <option value="moderator">Moderator</option>
-                                    <option value="admin">Admin</option>
-                                    <option value="controller">Controller</option>
-                                  </select>
-                                  {updating === user.id && (
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                                  )}
-                                </div>
-                              </td>
-                              {isAdminUser && (
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                                  {user.company_id ? companies.find(c => c.id === user.company_id)?.name || 'Unknown' : 'No Company'}
-                                </td>
-                              )}
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                                {new Date(user.created_at).toLocaleDateString()}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center space-x-2">
-                                  <button
-                                    onClick={() => handleEditUser(user)}
-                                    disabled={updating === user.id}
-                                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
-                                  >
-                                    Edit
-                                  </button>
-                                  {user.status === 'pending' && user.id !== currentUser?.id && (
-                                    <button
-                                      onClick={() => handleApproveUser(user.id)}
-                                      disabled={updating === user.id}
-                                      className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
-                                    >
-                                      Approve
-                                    </button>
-                                  )}
-                                  {user.status === 'suspended' && user.id !== currentUser?.id && (
-                                    <button
-                                      onClick={() => handleReactivateUser(user.id)}
-                                      disabled={updating === user.id}
-                                      className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
-                                    >
-                                      Reactivate
-                                    </button>
-                                  )}
-                                  {user.id !== currentUser?.id && user.status !== 'suspended' && (
-                                    <button
-                                      onClick={() => handleSuspendUser(user.id, user.email)}
-                                      disabled={updating === user.id}
-                                      className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
-                                    >
-                                      Suspend
-                                    </button>
-                                  )}
-                                  {isAdminUser && user.id !== currentUser?.id && (
-                                    <button
-                                      onClick={() => handleDeleteUser(user.id, user.email)}
-                                      disabled={updating === user.id}
-                                      className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
-                                    >
-                                      Delete
-                                    </button>
-                                  )}
-                                </div>
+                          {filteredUsers.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
+                                {users.length === 0 ? 'No users found' : 'No users match your filters'}
                               </td>
                             </tr>
-                          ))}
+                          ) : (
+                            filteredUsers.map((user) => (
+                              <tr key={user.id} className="hover:bg-gray-800/30 transition-colors">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedUsers.includes(user.id)}
+                                    onChange={() => handleUserSelection(user.id)}
+                                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                                  />
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div>
+                                    <div className="text-sm font-medium text-white">
+                                      {getUserDisplayName(user)}
+                                    </div>
+                                    <div className="text-sm text-gray-400">{user.email}</div>
+                                    {user.id === currentUser?.id && (
+                                      <span className="inline-block mt-1 px-2 py-1 text-xs bg-blue-500/20 text-blue-300 rounded-full border border-blue-500/30">
+                                        Current User
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`px-2 py-1 text-xs rounded-full ${
+                                    user.status === 'active' ? 'bg-green-500/20 text-green-300' :
+                                    user.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300' :
+                                    'bg-red-500/20 text-red-300'
+                                  }`}>
+                                    {user.status}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center space-x-2">
+                                    <select
+                                      value={getUserRoleFromAuthUser(user)}
+                                      onChange={(e) => handleRoleUpdate(user.id, e.target.value)}
+                                      disabled={updating === user.id || user.id === currentUser?.id}
+                                      className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      <option value="user">User</option>
+                                      <option value="moderator">Moderator</option>
+                                      <option value="admin">Admin</option>
+                                      <option value="controller">Controller</option>
+                                    </select>
+                                    {updating === user.id && (
+                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                                    )}
+                                  </div>
+                                </td>
+                                {isAdminUser && (
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                                    {user.company_id ? companies.find(c => c.id === user.company_id)?.name || 'Unknown' : 'No Company'}
+                                  </td>
+                                )}
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                                  {new Date(user.created_at).toLocaleDateString()}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center space-x-2">
+                                    <button
+                                      onClick={() => handleEditUser(user)}
+                                      disabled={updating === user.id}
+                                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                    >
+                                      Edit
+                                    </button>
+                                    {user.status === 'pending' && user.id !== currentUser?.id && (
+                                      <button
+                                        onClick={() => handleApproveUser(user.id)}
+                                        disabled={updating === user.id}
+                                        className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                      >
+                                        Approve
+                                      </button>
+                                    )}
+                                    {user.status === 'suspended' && user.id !== currentUser?.id && (
+                                      <button
+                                        onClick={() => handleReactivateUser(user.id)}
+                                        disabled={updating === user.id}
+                                        className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                      >
+                                        Reactivate
+                                      </button>
+                                    )}
+                                    {user.id !== currentUser?.id && user.status !== 'suspended' && (
+                                      <button
+                                        onClick={() => handleSuspendUser(user.id, user.email)}
+                                        disabled={updating === user.id}
+                                        className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                      >
+                                        Suspend
+                                      </button>
+                                    )}
+                                    {isAdminUser && user.id !== currentUser?.id && (
+                                      <button
+                                        onClick={() => handleDeleteUser(user.id, user.email)}
+                                        disabled={updating === user.id}
+                                        className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                      >
+                                        Delete
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
-                      
-                      {filteredUsers.length === 0 && (
-                        <div className="text-center py-12">
-                          <p className="text-gray-400">No users found</p>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -1131,49 +1042,51 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700">
-                          {companies.map((company) => (
-                            <tr key={company.id} className="hover:bg-gray-800/30 transition-colors">
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm font-medium text-white">
-                                  {company.name}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className="px-2 py-1 text-xs bg-blue-500/20 text-blue-300 rounded-full">
-                                  {users.filter(u => u.company_id === company.id).length} users
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                                {new Date(company.created_at).toLocaleDateString()}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center space-x-2">
-                                  <button
-                                    onClick={() => handleEditCompany(company)}
-                                    disabled={updating === company.id}
-                                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteCompany(company.id, company.name)}
-                                    disabled={updating === company.id}
-                                    className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
+                          {companies.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-6 py-8 text-center text-gray-400">
+                                No companies found
                               </td>
                             </tr>
-                          ))}
+                          ) : (
+                            companies.map((company) => (
+                              <tr key={company.id} className="hover:bg-gray-800/30 transition-colors">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm font-medium text-white">
+                                    {company.name}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="px-2 py-1 text-xs bg-blue-500/20 text-blue-300 rounded-full">
+                                    {users.filter(u => u.company_id === company.id).length} users
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                                  {new Date(company.created_at).toLocaleDateString()}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center space-x-2">
+                                    <button
+                                      onClick={() => handleEditCompany(company)}
+                                      disabled={updating === company.id}
+                                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteCompany(company.id, company.name)}
+                                      disabled={updating === company.id}
+                                      className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
-                      
-                      {companies.length === 0 && (
-                        <div className="text-center py-12">
-                          <p className="text-gray-400">No companies found</p>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
