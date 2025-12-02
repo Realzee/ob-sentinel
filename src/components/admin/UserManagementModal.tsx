@@ -186,73 +186,65 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
   try {
     setLoading(true);
     
-    console.log('🔍 Loading users from Supabase auth...');
+    console.log('🔍 Loading users directly from profiles...');
     
-    // Get the current user's session first
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      console.error('❌ No session found');
-      showError('Not authenticated');
+    // Simple direct query to profiles table
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('❌ Profiles error:', error);
+      showError('Failed to load users');
       setUsers([]);
       return;
     }
     
-    console.log('🔍 Current session user:', session.user);
-    
-    // FIX: Use detectedUserRole which is UserRole type
-    const usersData = await authAPI.getAllUsers(detectedUserRole, currentUserCompanyId);
-    
-    console.log('🔍 Got users data:', usersData);
-    console.log('🔍 Is array?', Array.isArray(usersData));
-    console.log('🔍 Length:', usersData?.length || 0);
-    
-    if (usersData && Array.isArray(usersData)) {
-      // Properly type the users
-      const typedUsers: AuthUser[] = usersData.map(user => {
-        // Ensure we always have a string for role
-        const roleFromMetadata = user.user_metadata?.role || '';
-        const roleFromUser = user.role || '';
-        const statusFromUser = user.status || '';
-        
-        // Convert to string explicitly
-        const roleString = String(roleFromUser || roleFromMetadata || 'user');
-        const statusString = String(statusFromUser || 'active');
-        
-        // Use type assertion to handle the type mismatch
-        const finalRole = toUserRole(roleString);
-        const finalStatus = toUserStatus(statusString);
-        
-        return {
-          ...user,
-          user_metadata: {
-            ...user.user_metadata,
-            role: finalRole,
-            full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'No Name'
-          },
-          role: finalRole,
-          status: finalStatus
-        };
-      });
-      
-      setUsers(typedUsers);
-      console.log('✅ Loaded users:', typedUsers.length);
-      console.log('✅ Sample user:', typedUsers[0]);
-    } else {
-      console.error('❌ Invalid response from getAllUsers:', usersData);
-      // Set empty array to clear any previous data
+    if (!profiles || profiles.length === 0) {
       setUsers([]);
+      return;
     }
+    
+    // Convert profiles to AuthUser format
+    const typedUsers: AuthUser[] = profiles.map((profile: any) => {
+      const role = toUserRole(profile.role);
+      const status = toUserStatus(profile.status || 'active');
+      
+      return {
+        id: profile.id,
+        email: profile.email || 'unknown@example.com',
+        role: role,
+        status: status,
+        company_id: profile.company_id,
+        user_metadata: {
+          full_name: profile.full_name || '',
+          role: role
+        },
+        created_at: profile.created_at,
+        updated_at: profile.updated_at
+      };
+    });
+    
+    // Filter based on user role
+    let filteredUsers = typedUsers;
+    if (detectedUserRole === 'moderator' && currentUserCompanyId) {
+      filteredUsers = typedUsers.filter(user => 
+        user.company_id === currentUserCompanyId || user.role === 'admin'
+      );
+    }
+    
+    setUsers(filteredUsers);
+    console.log('✅ Loaded users:', filteredUsers.length);
     
   } catch (error: any) {
     console.error('❌ Error loading users:', error);
     showError('Failed to load users: ' + error.message);
-    // Set empty array on error
     setUsers([]);
   } finally {
     setLoading(false);
   }
 };
-
   // Load companies function with admin check
   const loadCompanies = async () => {
     try {
