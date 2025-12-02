@@ -627,170 +627,63 @@ export const authAPI = {
   // Get all users (admin sees all, moderators see only their company users)
   getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
     try {
-      // During build, return empty array
-      if (typeof window === 'undefined') {
-        console.log('🔄 Build time: Returning empty users array');
-        return [];
-      }
-
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-
-      if (!token) {
-        throw new Error('No authentication token available');
-      }
-
-      const response = await fetch('/api/admin/users/', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      // Use service role for admin operations
+      const { data: profiles, error } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
       
-      // First check the response status
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Users API error:', response.status, errorText);
-        
-        // Fallback to direct database query
-        console.log('🔄 Trying database query as fallback...');
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .order('created_at', { ascending: false });
-        
-        if (error) {
-          console.error('❌ Database query also failed:', error);
-          return [];
-        }
-        
-        // Transform profiles to AuthUser format
-        const users = data?.map(profile => ({
-          id: profile.id,
-          email: profile.email,
-          user_metadata: {
-            full_name: profile.full_name,
-            role: profile.role,
-            company_id: profile.company_id
-          },
-          created_at: profile.created_at,
-          updated_at: profile.updated_at,
-          last_sign_in_at: null,
-          role: profile.role,
-          status: profile.status,
-          company_id: profile.company_id
-        })) || [];
-        
-        // Filter users by company for moderators
-        let filteredData = users;
-        if (currentUserRole === 'moderator' && currentUserCompanyId) {
-          filteredData = users.filter((user: AuthUser) => user.company_id === currentUserCompanyId);
-        }
-        
-        console.log('✅ Database fallback successful, users:', filteredData.length);
-        return filteredData;
-      }
-      
-      // Get response text first to see what we're getting
-      const responseText = await response.text();
-      console.log('🔍 Users API raw response:', responseText);
-      
-      // Try to parse as JSON
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('❌ Failed to parse API response as JSON:', parseError);
+      if (error) {
+        console.error('❌ Error fetching users:', error);
         return [];
       }
       
-      // Check if data has the expected format
-      if (!data || typeof data !== 'object') {
-        console.error('❌ Users API returned non-object data:', data);
-        return [];
-      }
-      
-      // Check if it's an error object
-      if (data.error || data.message) {
-        console.error('❌ Users API returned error object:', data);
-        return [];
-      }
-      
-      // Check if data is an array, or if it has a data property that's an array
-      let usersArray: AuthUser[] = [];
-      
-      if (Array.isArray(data)) {
-        usersArray = data;
-      } else if (data.data && Array.isArray(data.data)) {
-        usersArray = data.data;
-      } else if (data.users && Array.isArray(data.users)) {
-        usersArray = data.users;
-      } else {
-        console.error('❌ Users API returned unexpected data format:', data);
-        return [];
-      }
-      
-      // Filter users by company for moderators
-      let filteredData = usersArray;
+      // Filter by company for moderators
+      let filteredData = profiles || [];
       if (currentUserRole === 'moderator' && currentUserCompanyId) {
-        filteredData = usersArray.filter((user: AuthUser) => user.company_id === currentUserCompanyId);
+        filteredData = filteredData.filter((profile: Profile) => 
+          profile.company_id === currentUserCompanyId
+        );
       }
       
-      console.log('✅ Users API successful, returning:', filteredData.length, 'users');
-      return filteredData;
+      return filteredData.map(profile => ({
+        id: profile.id,
+        email: profile.email,
+        user_metadata: {
+          full_name: profile.full_name,
+          role: profile.role,
+          company_id: profile.company_id
+        },
+        created_at: profile.created_at,
+        updated_at: profile.updated_at,
+        last_sign_in_at: null,
+        role: profile.role,
+        status: profile.status,
+        company_id: profile.company_id
+      }));
     } catch (error) {
       console.error('💥 Error fetching users:', error);
-      // Return empty array instead of throwing
       return [];
     }
   },
   
-  // Update user role
+  // All other functions use supabaseAdmin for admin privileges
   updateUserRole: async (userId: string, role: UserRole): Promise<boolean> => {
     try {
-      // During build, don't make API calls
-      if (typeof window === 'undefined') {
-        throw new Error('Cannot update user role during build');
-      }
-
-      const token = await getSessionToken();
-      if (!token) {
-        console.error('❌ No session token available');
+      const { error } = await supabaseAdmin
+        .from('profiles')
+        .update({ 
+          role: role,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+      
+      if (error) {
+        console.error('❌ Error updating user role:', error);
         return false;
       }
-
-      const response = await fetch(`/api/admin/users/${userId}/role`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ role })
-      });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Update role API error:', response.status, errorText);
-        
-        // Fallback to direct database update
-        console.log('🔄 Trying direct database update...');
-        const { error } = await supabase
-          .from('profiles')
-          .update({ 
-            role: role,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', userId);
-        
-        if (error) {
-          console.error('❌ Database update also failed:', error);
-          return false;
-        }
-        
-        console.log('✅ Database update successful');
-        return true;
-      }
-      
-      return response.ok;
+      return true;
     } catch (error) {
       console.error('Error updating user role:', error);
       return false;
