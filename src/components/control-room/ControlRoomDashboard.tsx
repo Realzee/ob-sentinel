@@ -1,4 +1,4 @@
-// components/control-room/ControlRoomDashboard.tsx (Enhanced with monitoring features)
+// components/control-room/ControlRoomDashboard.tsx (Enhanced with Event Stack)
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,6 +6,7 @@ import { reportsAPI, authAPI, AuditLog as SupabaseAuditLog, DispatchRecord as Su
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useRouter } from 'next/navigation';
 import LiveMap from './LiveMapWrapper';
+import EventStack from './EventStack';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import CustomButton from '@/components/ui/CustomButton';
 
@@ -34,6 +35,35 @@ interface DispatchRecord {
   updated_at: string;
 }
 
+interface EventReport {
+  id: string;
+  type: 'vehicle' | 'crime' | 'other';
+  title: string;
+  description: string;
+  location: {
+    lat: number;
+    lng: number;
+    address?: string;
+    zone?: string;
+    area?: string;
+    region?: string;
+  };
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  timestamp: string;
+  status: 'active' | 'pending' | 'resolved';
+  counters?: {
+    witnesses?: number;
+    evidence?: number;
+    related?: number;
+  };
+  vehicleDetails?: {
+    license_plate: string;
+    make: string;
+    model: string;
+    color: string;
+  };
+}
+
 export default function ControlRoomDashboard() {
   const { user, signOut } = useAuth();
   const router = useRouter();
@@ -47,9 +77,19 @@ export default function ControlRoomDashboard() {
   const [dispatchRecords, setDispatchRecords] = useState<DispatchRecord[]>([]);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
   
+  // Event Stack states
+  const [selectedEventId, setSelectedEventId] = useState<string | undefined>(undefined);
+  const [selectedEvent, setSelectedEvent] = useState<{
+    id: string;
+    lat: number;
+    lng: number;
+    type: 'vehicle' | 'crime' | 'other';
+  } | undefined>(undefined);
+  
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
   const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
+  const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [dispatchForm, setDispatchForm] = useState({
     assignedTo: '',
@@ -119,6 +159,101 @@ export default function ControlRoomDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper function to parse coordinates
+  const parseCoordinates = (location: string): { lat: number; lng: number } => {
+    if (!location) return { lat: -26.195246, lng: 28.034088 };
+    
+    const parts = location.split(',');
+    if (parts.length === 2) {
+      const lat = parseFloat(parts[0].trim());
+      const lng = parseFloat(parts[1].trim());
+      if (!isNaN(lat) && !isNaN(lng)) {
+        return { lat, lng };
+      }
+    }
+    
+    return { lat: -26.195246, lng: 28.034088 };
+  };
+
+  // Event Stack handlers
+  const handleEventSelect = (event: EventReport) => {
+    setSelectedEventId(event.id);
+    setSelectedEvent({
+      id: event.id,
+      lat: event.location.lat,
+      lng: event.location.lng,
+      type: event.type
+    });
+  };
+
+  const handleMapEventSelect = (eventId: string) => {
+    setSelectedEventId(eventId);
+    // Find the event in the combined lists
+    const allEvents = [...vehicleReports, ...crimeReports];
+    const event = allEvents.find(e => e.id === eventId);
+    if (event) {
+      const coords = parseCoordinates(event.last_seen_location || event.location);
+      setSelectedEvent({
+        id: eventId,
+        lat: coords.lat,
+        lng: coords.lng,
+        type: event.license_plate ? 'vehicle' : 'crime'
+      });
+    }
+  };
+
+  // WhatsApp sharing functionality
+  const handleShareToWhatsApp = (report: any, type: 'vehicle' | 'crime') => {
+    setSelectedReport({...report, reportType: type});
+    setWhatsappModalOpen(true);
+  };
+
+  const confirmWhatsappShare = () => {
+    if (!selectedReport) return;
+    
+    const phoneNumber = "27662855960";
+    
+    // Format message based on report type
+    let message = "";
+    if (selectedReport.reportType === 'vehicle') {
+      message = `🚨 *VEHICLE ALERT*\n\n` +
+                `*License Plate:* ${selectedReport.license_plate || 'Unknown'}\n` +
+                `*Vehicle:* ${selectedReport.vehicle_make} ${selectedReport.vehicle_model} ${selectedReport.vehicle_color}\n` +
+                `*Reason:* ${selectedReport.reason}\n` +
+                `*Last Seen:* ${selectedReport.last_seen_location}\n` +
+                `*Time:* ${new Date(selectedReport.created_at).toLocaleString()}\n` +
+                `*Severity:* ${selectedReport.severity.toUpperCase()}\n` +
+                `*Status:* ${selectedReport.status.toUpperCase()}\n\n` +
+                `_Sent from Control Room Dashboard_`;
+    } else {
+      message = `🚨 *CRIME REPORT*\n\n` +
+                `*Title:* ${selectedReport.title}\n` +
+                `*Type:* ${selectedReport.report_type}\n` +
+                `*Location:* ${selectedReport.location}\n` +
+                `*Description:* ${selectedReport.description.substring(0, 150)}...\n` +
+                `*Time:* ${new Date(selectedReport.created_at).toLocaleString()}\n` +
+                `*Severity:* ${selectedReport.severity.toUpperCase()}\n` +
+                `*Status:* ${selectedReport.status.toUpperCase()}\n\n` +
+                `_Sent from Control Room Dashboard_`;
+    }
+    
+    // Encode message for URL
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+    
+    // Open WhatsApp in new tab
+    window.open(whatsappUrl, '_blank');
+    
+    // Log the share action
+    logAuditAction('whatsapp_share', selectedReport.id, selectedReport.reportType, {
+      phone_number: phoneNumber,
+      report_type: selectedReport.reportType
+    });
+    
+    setWhatsappModalOpen(false);
+    setSelectedReport(null);
   };
 
   const logAuditAction = async (action: string, reportId: string, reportType: 'vehicle' | 'crime', details: any) => {
@@ -447,6 +582,76 @@ export default function ControlRoomDashboard() {
         </div>
       )}
 
+      {/* WhatsApp Share Modal */}
+      {whatsappModalOpen && selectedReport && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md">
+            <div className="p-6">
+              <h3 className="text-xl font-semibold text-white mb-4">Share via WhatsApp</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Report</label>
+                  <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+                    {selectedReport.license_plate 
+                      ? `Vehicle: ${selectedReport.license_plate}`
+                      : `Crime: ${selectedReport.title}`
+                    }
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Recipient</label>
+                  <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
+                        </svg>
+                      </div>
+                      <span>+27 66 285 5960</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+                  <div className="flex items-start space-x-2">
+                    <svg className="w-5 h-5 text-yellow-500 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                    </svg>
+                    <div className="text-sm text-yellow-300">
+                      This will open WhatsApp and share the report details with the specified number. 
+                      Make sure you have permission to share this information.
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex space-x-3 mt-6">
+                <CustomButton
+                  onClick={() => {
+                    setWhatsappModalOpen(false);
+                    setSelectedReport(null);
+                  }}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  Cancel
+                </CustomButton>
+                <CustomButton
+                  onClick={confirmWhatsappShare}
+                  variant="success"
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                >
+                  <div className="flex items-center justify-center space-x-2">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
+                    </svg>
+                    <span>Share via WhatsApp</span>
+                  </div>
+                </CustomButton>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-black/80 backdrop-blur-md border-b border-gray-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -534,38 +739,23 @@ export default function ControlRoomDashboard() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {/* Overview Tab */}
+        {/* Overview Tab with Event Stack */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left column - Stats and Map */}
-            <div className="lg:col-span-2">
-              {/* Color Legend */}
-              <div className="mb-6 bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
-                <h4 className="text-sm font-semibold text-white mb-3">Color Legend</h4>
-                <div className="flex flex-wrap gap-3">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <span className="text-xs text-gray-400">Critical/24h+</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                    <span className="text-xs text-gray-400">High/12h+</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                    <span className="text-xs text-gray-400">Medium/6h+</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                    <span className="text-xs text-gray-400">Recent</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                    <span className="text-xs text-gray-400">Dispatched</span>
-                  </div>
-                </div>
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Left column - Event Stack */}
+            <div className="lg:col-span-1">
+              <div className="h-full rounded-xl border border-gray-700 overflow-hidden bg-gray-900">
+                <EventStack
+                  vehicleReports={vehicleReports}
+                  crimeReports={crimeReports}
+                  onSelectEvent={handleEventSelect}
+                  selectedEventId={selectedEventId}
+                />
               </div>
+            </div>
 
+            {/* Right column - Map and Stats */}
+            <div className="lg:col-span-3">
               {/* Stats Grid */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {[
@@ -592,8 +782,13 @@ export default function ControlRoomDashboard() {
               </div>
 
               {/* Live Map */}
-              <div className="mb-6">
-                <LiveMap vehicleReports={vehicleReports} crimeReports={crimeReports} />
+              <div className="mb-6 h-[500px] rounded-xl border border-gray-700 overflow-hidden">
+                <LiveMap
+                  vehicleReports={vehicleReports}
+                  crimeReports={crimeReports}
+                  selectedEvent={selectedEvent}
+                  onEventSelect={handleMapEventSelect}
+                />
               </div>
 
               {/* Recent Activity with Color Coding */}
@@ -658,123 +853,6 @@ export default function ControlRoomDashboard() {
                         );
                       })}
                   </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right column - Monitoring Panels */}
-            <div className="space-y-6">
-              {/* Quick Actions */}
-              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
-                <div className="space-y-3">
-                  <CustomButton
-                    onClick={() => window.open('/bolo-generator', '_blank')}
-                    variant="primary"
-                    size="md"
-                    className="w-full"
-                  >
-                    Generate BOLO Report
-                  </CustomButton>
-                  <CustomButton
-                    onClick={handleExportData}
-                    variant="success"
-                    size="md"
-                    className="w-full"
-                  >
-                    Export with Audit Trail
-                  </CustomButton>
-                  <CustomButton
-                    variant="secondary"
-                    size="md"
-                    className="w-full"
-                    onClick={() => setActiveTab('dispatch')}
-                  >
-                    View Dispatch Log
-                  </CustomButton>
-                </div>
-              </div>
-              
-              {/* Active Dispatch Status */}
-              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Active Dispatch</h3>
-                <div className="space-y-3">
-                  {dispatchRecords
-                    .filter(d => d.status !== 'completed')
-                    .slice(0, 3)
-                    .map((dispatch) => {
-                      const report = [...vehicleReports, ...crimeReports].find(r => r.id === dispatch.report_id);
-                      return (
-                        <div key={dispatch.id} className="p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <div className="font-medium text-white text-sm">
-                                {report?.license_plate || report?.title}
-                              </div>
-                              <div className="text-xs text-gray-400">Assigned: {dispatch.assigned_to}</div>
-                            </div>
-                            <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(dispatch.status).replace('bg-', 'bg-').replace('500', '500/20')} ${getStatusColor(dispatch.status).replace('bg-', 'text-')}300`}>
-                              {dispatch.status}
-                            </span>
-                          </div>
-                          <div className="flex space-x-2 mt-2">
-                            {['en_route', 'on_scene', 'completed'].map((status) => (
-                              <button
-                                key={status}
-                                onClick={() => handleUpdateDispatchStatus(dispatch.id, status as any)}
-                                className={`text-xs px-2 py-1 rounded ${dispatch.status === status ? 'bg-gray-700' : 'bg-gray-800 hover:bg-gray-700'}`}
-                              >
-                                {status}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  {dispatchRecords.filter(d => d.status !== 'completed').length === 0 && (
-                    <p className="text-gray-400 text-sm text-center py-4">No active dispatch</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Aging Reports Alert */}
-              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Aging Alerts</h3>
-                <div className="space-y-3">
-                  {[...vehicleReports, ...crimeReports]
-                    .filter(report => {
-                      const hours = (Date.now() - new Date(report.created_at).getTime()) / (1000 * 60 * 60);
-                      return hours > 12;
-                    })
-                    .slice(0, 3)
-                    .map((report) => (
-                      <div key={report.id} className="p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-                        <div className="flex items-center space-x-2">
-                          <div className={`w-2 h-2 rounded-full ${getReportAgeColor(report.created_at)}`}></div>
-                          <div className="flex-1">
-                            <div className="font-medium text-white text-sm">
-                              {report.license_plate || report.title}
-                            </div>
-                            <div className="text-xs text-gray-400">
-                              {Math.round((Date.now() - new Date(report.created_at).getTime()) / (1000 * 60 * 60))} hours old
-                            </div>
-                          </div>
-                          <CustomButton
-                            onClick={() => handleEscalateReport(report.id, report.license_plate ? 'vehicle' : 'crime')}
-                            variant="danger"
-                            size="xs"
-                          >
-                            Escalate
-                          </CustomButton>
-                        </div>
-                      </div>
-                    ))}
-                  {[...vehicleReports, ...crimeReports].filter(r => {
-                    const hours = (Date.now() - new Date(r.created_at).getTime()) / (1000 * 60 * 60);
-                    return hours > 12;
-                  }).length === 0 && (
-                    <p className="text-green-400 text-sm text-center py-4">No aging reports</p>
-                  )}
                 </div>
               </div>
             </div>
@@ -869,6 +947,16 @@ export default function ControlRoomDashboard() {
                                   Dispatch
                                 </CustomButton>
                               )}
+                              <CustomButton
+                                onClick={() => handleShareToWhatsApp(report, 'vehicle')}
+                                variant="success"
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
+                                </svg>
+                              </CustomButton>
                             </div>
                           </div>
                         </div>
@@ -968,6 +1056,16 @@ export default function ControlRoomDashboard() {
                                   Dispatch
                                 </CustomButton>
                               )}
+                              <CustomButton
+                                onClick={() => handleShareToWhatsApp(report, 'crime')}
+                                variant="success"
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
+                                </svg>
+                              </CustomButton>
                             </div>
                           </div>
                         </div>
