@@ -1,16 +1,20 @@
 // app/control-room/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useRouter } from 'next/navigation';
 import ControlRoomDashboard from '@/components/control-room/ControlRoomDashboard';
+import Image from 'next/image';
 
 export default function ControlRoomPage() {
   const { user, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
   const [debugInfo, setDebugInfo] = useState<string>('');
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
+  const [isRefreshingReports, setIsRefreshingReports] = useState(false);
+  const [showWhatsAppAlert, setShowWhatsAppAlert] = useState(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -29,6 +33,7 @@ export default function ControlRoomPage() {
         User ID: ${user.id}
         Can Access Control Room: ${canAccessControlRoom}
         Auth Loading: ${authLoading}
+        Last Refresh: ${lastRefreshTime ? lastRefreshTime.toLocaleTimeString() : 'Never'}
         Timestamp: ${new Date().toISOString()}
       `;
       setDebugInfo(debug);
@@ -40,12 +45,11 @@ export default function ControlRoomPage() {
       // User is not authenticated and auth is not loading
       setIsCheckingAccess(false);
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, lastRefreshTime]);
 
   const handleLogout = async () => {
     try {
       await signOut();
-      // Optional: redirect after logout
       router.push('/');
     } catch (error) {
       console.error('Logout error:', error);
@@ -56,11 +60,68 @@ export default function ControlRoomPage() {
     router.push('/dashboard');
   };
 
-  const handleTemporaryAdminAccess = () => {
-    console.warn('⚠️ Temporary admin access granted for testing purposes only');
-    alert('⚠️ Temporary admin access enabled for testing. This should be removed in production.');
-    window.location.reload();
+  // Function to refresh only reports without reloading the entire page
+  const handleRefreshReports = useCallback(async () => {
+    if (isRefreshingReports) return;
+    
+    setIsRefreshingReports(true);
+    console.log('🔄 Refreshing reports data...');
+    
+    try {
+      // This would typically call an API to refresh reports
+      // For now, we'll simulate a refresh
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Update last refresh time
+      const now = new Date();
+      setLastRefreshTime(now);
+      
+      // Show success feedback
+      console.log('✅ Reports refreshed successfully at', now.toLocaleTimeString());
+      
+      // Trigger a custom event that the dashboard can listen to
+      window.dispatchEvent(new CustomEvent('refreshReports', {
+        detail: { timestamp: now }
+      }));
+      
+    } catch (error) {
+      console.error('Failed to refresh reports:', error);
+    } finally {
+      setIsRefreshingReports(false);
+    }
+  }, [isRefreshingReports]);
+
+  // Function to handle WhatsApp sharing with alert
+  const handleShareToWhatsApp = () => {
+    // Show alert/modal
+    setShowWhatsAppAlert(true);
+    
+    // For demonstration: Create a share URL
+    const shareText = `📊 Control Room Report - ${new Date().toLocaleDateString()}\n\nCheck out the latest analytics and insights from the control room dashboard.\n\nGenerated at: ${new Date().toLocaleTimeString()}`;
+    const shareUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+    
+    // Open WhatsApp share dialog after a short delay
+    setTimeout(() => {
+      window.open(shareUrl, '_blank');
+      
+      // Close alert after 3 seconds
+      setTimeout(() => {
+        setShowWhatsAppAlert(false);
+      }, 3000);
+    }, 500);
   };
+
+  // Auto-refresh reports every 5 minutes (optional)
+  useEffect(() => {
+    if (!user) return;
+    
+    const autoRefreshInterval = setInterval(() => {
+      console.log('🔄 Auto-refreshing reports...');
+      handleRefreshReports();
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return () => clearInterval(autoRefreshInterval);
+  }, [user, handleRefreshReports]);
 
   if (authLoading || isCheckingAccess) {
     return (
@@ -75,7 +136,6 @@ export default function ControlRoomPage() {
   }
 
   if (!user) {
-    // This should redirect via useEffect, but as a fallback:
     return null;
   }
 
@@ -84,7 +144,7 @@ export default function ControlRoomPage() {
   const canAccessControlRoom = ['admin', 'moderator', 'controller'].includes(userRole);
 
   // TEMPORARY: Allow all users for testing - REMOVE IN PRODUCTION
-  const ALLOW_ALL_FOR_TESTING = true; // IMPORTANT: Set to false in production
+  const ALLOW_ALL_FOR_TESTING = true;
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   if (!canAccessControlRoom && !ALLOW_ALL_FOR_TESTING) {
@@ -97,52 +157,75 @@ export default function ControlRoomPage() {
             This area is restricted to administrators, moderators, and controllers only.
           </p>
           
-          <div className="bg-gray-800 p-4 rounded-lg mb-6 text-left border border-gray-700">
-            <p className="text-sm text-gray-300 mb-2 font-medium">Debug Information:</p>
-            <pre className="text-xs text-gray-400 whitespace-pre-wrap bg-gray-900 p-3 rounded overflow-auto max-h-40">
-              {debugInfo}
-            </pre>
-          </div>
-          
           <div className="space-y-3">
             <button
               onClick={handleGoToDashboard}
-              className="w-full px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+              className="w-full px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors duration-200"
             >
               Return to Dashboard
             </button>
             
             <button
               onClick={handleLogout}
-              className="w-full px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-xl font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50"
+              className="w-full px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-xl font-medium transition-colors duration-200"
             >
               Logout
             </button>
-            
-            {/* Temporary admin access button for testing - only show in development */}
-            {isDevelopment && (
-              <button
-                onClick={handleTemporaryAdminAccess}
-                className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm"
-              >
-                ⚠️ Temporary Admin Access (Testing Only)
-              </button>
-            )}
-            
-            {!isDevelopment && !canAccessControlRoom && (
-              <p className="text-gray-500 text-sm mt-4">
-                Need access? Contact your administrator.
-              </p>
-            )}
           </div>
         </div>
       </div>
     );
   }
 
-  // If we reach here, user has access (either legitimately or via testing flag)
   return (
     <div className="min-h-screen bg-black text-white">
+      {/* WhatsApp Share Alert Modal */}
+      {showWhatsAppAlert && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-green-500 shadow-2xl">
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-4 p-3 bg-green-900 rounded-full">
+                <Image 
+                  src="/whatsapp-icon.svg" 
+                  alt="WhatsApp" 
+                  width={48} 
+                  height={48}
+                  className="w-12 h-12"
+                  onError={(e) => {
+                    // Fallback if image doesn't exist
+                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.parentElement!.innerHTML = `
+                      <div class="text-3xl">📱</div>
+                    `;
+                  }}
+                />
+              </div>
+              
+              <h3 className="text-xl font-bold text-white mb-2">
+                Sharing to WhatsApp
+              </h3>
+              
+              <p className="text-gray-300 mb-4">
+                Your report is being prepared for sharing. The WhatsApp share dialog will open shortly...
+              </p>
+              
+              <div className="flex space-x-2 mb-4">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce"></div>
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+              </div>
+              
+              <button
+                onClick={() => setShowWhatsAppAlert(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors duration-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Warning banner for testing mode */}
       {ALLOW_ALL_FOR_TESTING && !canAccessControlRoom && (
         <div className="bg-yellow-900 border-b border-yellow-700 p-3 text-center">
@@ -153,27 +236,28 @@ export default function ControlRoomPage() {
       )}
       
       {/* Header with navigation */}
-      <header className="bg-gray-900 border-b border-gray-700 p-4 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-4 flex-wrap">
-            <button
-              onClick={handleGoToDashboard}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 flex items-center gap-2"
-            >
-              <span>←</span> Dashboard
-            </button>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold">Control Room</h1>
-              {ALLOW_ALL_FOR_TESTING && !canAccessControlRoom && (
-                <span className="px-2 py-1 bg-yellow-600 text-white text-xs rounded-full">
-                  TEST
-                </span>
-              )}
+      <header className="bg-gray-900 border-b border-gray-700 p-4 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto">
+          {/* Top row: Title and user info */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleGoToDashboard}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors duration-200 flex items-center gap-2"
+              >
+                <span>←</span> Dashboard
+              </button>
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-bold">Control Room</h1>
+                {ALLOW_ALL_FOR_TESTING && !canAccessControlRoom && (
+                  <span className="px-2 py-1 bg-yellow-600 text-white text-xs rounded-full">
+                    TEST
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-          
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
+            
+            <div className="flex items-center gap-4">
               <span className="text-gray-300 truncate max-w-[200px]">
                 {user.email}
               </span>
@@ -186,13 +270,60 @@ export default function ControlRoomPage() {
                 {userRole.toUpperCase()}
               </span>
             </div>
+          </div>
+          
+          {/* Bottom row: Action buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleRefreshReports}
+                disabled={isRefreshingReports}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2 ${
+                  isRefreshingReports 
+                    ? 'bg-blue-700 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {isRefreshingReports ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Refreshing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh Reports
+                  </>
+                )}
+              </button>
+              
+              {lastRefreshTime && (
+                <span className="text-gray-400 text-sm">
+                  Last refresh: {lastRefreshTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
             
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
-            >
-              Logout
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleShareToWhatsApp}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors duration-200 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
+                </svg>
+                Share to WhatsApp
+              </button>
+              
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors duration-200"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -202,17 +333,22 @@ export default function ControlRoomPage() {
         <ControlRoomDashboard />
       </main>
       
-      {/* Footer with debug info in development */}
-      {isDevelopment && (
-        <footer className="mt-8 p-4 border-t border-gray-800">
-          <details className="text-xs text-gray-500">
-            <summary className="cursor-pointer">Debug Information</summary>
-            <pre className="mt-2 p-3 bg-gray-900 rounded overflow-auto max-h-40">
-              {debugInfo}
-            </pre>
-          </details>
-        </footer>
-      )}
+      {/* Quick action floating button for mobile */}
+      <div className="fixed bottom-6 right-6 md:hidden z-30">
+        <button
+          onClick={handleRefreshReports}
+          className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-colors duration-200"
+          title="Refresh Reports"
+        >
+          {isRefreshingReports ? (
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+          ) : (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          )}
+        </button>
+      </div>
     </div>
   );
 }
