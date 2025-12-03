@@ -47,6 +47,11 @@ export default function EventStack({
 }: EventStackProps) {
   const [events, setEvents] = useState<EventReport[]>([]);
   const [lastUpdate, setLastUpdate] = useState<string>('');
+  const [isBrowser, setIsBrowser] = useState(false);
+
+  useEffect(() => {
+    setIsBrowser(typeof window !== 'undefined');
+  }, []);
 
   // Transform reports into event format
   useEffect(() => {
@@ -124,9 +129,11 @@ export default function EventStack({
     transformEvents();
     
     // Auto-update every 5 seconds
-    const interval = setInterval(transformEvents, 5000);
-    return () => clearInterval(interval);
-  }, [vehicleReports, crimeReports]);
+    if (isBrowser) {
+      const interval = setInterval(transformEvents, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [vehicleReports, crimeReports, isBrowser]);
 
   // Get event style based on type
   const getEventStyle = (event: EventReport, isSelected: boolean) => {
@@ -206,6 +213,22 @@ export default function EventStack({
         return <span className="inline-block w-2 h-2 rounded-full bg-gray-300"></span>;
     }
   };
+
+  // Show loading state on server
+  if (!isBrowser) {
+    return (
+      <div className="h-full rounded-xl border border-gray-700 overflow-hidden bg-gray-900 p-4">
+        <div className="animate-pulse">
+          <div className="h-6 bg-gray-800 rounded mb-4"></div>
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-16 bg-gray-800 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">

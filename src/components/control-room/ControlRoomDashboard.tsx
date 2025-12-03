@@ -5,10 +5,23 @@ import { useState, useEffect } from 'react';
 import { reportsAPI, authAPI, AuditLog as SupabaseAuditLog, DispatchRecord as SupabaseDispatchRecord } from '@/lib/supabase';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useRouter } from 'next/navigation';
-import LiveMap from './LiveMapWrapper';
+import dynamic from 'next/dynamic';
 import EventStack from './EventStack';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import CustomButton from '@/components/ui/CustomButton';
+
+// Dynamically import LiveMap with no SSR
+const LiveMap = dynamic(() => import('./LiveMapWrapper'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full bg-gray-900 rounded-xl flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
+        <p className="text-gray-400 mt-2">Loading map...</p>
+      </div>
+    </div>
+  ),
+});
 
 // Local interfaces that match the expected types
 interface AuditLog {
@@ -211,7 +224,7 @@ export default function ControlRoomDashboard() {
   };
 
   const confirmWhatsappShare = () => {
-    if (!selectedReport) return;
+    if (!selectedReport || typeof window === 'undefined') return;
     
     const phoneNumber = "27662855960";
     
