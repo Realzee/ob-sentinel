@@ -1,7 +1,7 @@
 // components/control-room/ControlRoomDashboard.tsx (Enhanced with Event Stack)
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { reportsAPI, authAPI, AuditLog as SupabaseAuditLog, DispatchRecord as SupabaseDispatchRecord } from '@/lib/supabase';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useRouter } from 'next/navigation';
@@ -77,6 +77,86 @@ interface EventReport {
   };
 }
 
+// Clock component
+function DigitalClock() {
+  const [time, setTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="font-mono text-lg font-semibold text-white">
+      {time.toLocaleTimeString('en-US', { 
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })}
+    </div>
+  );
+}
+
+function AnalogClock() {
+  const [time, setTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const hours = time.getHours() % 12;
+  const minutes = time.getMinutes();
+  const seconds = time.getSeconds();
+
+  const hourAngle = (hours * 30) + (minutes * 0.5);
+  const minuteAngle = (minutes * 6) + (seconds * 0.1);
+  const secondAngle = seconds * 6;
+
+  return (
+    <div className="relative w-8 h-8">
+      <div className="absolute inset-0 rounded-full border-2 border-gray-400"></div>
+      
+      {/* Hour hand */}
+      <div 
+        className="absolute top-1/2 left-1/2 w-0.5 h-3 bg-white origin-bottom"
+        style={{
+          transform: `translate(-50%, -100%) rotate(${hourAngle}deg)`,
+          transformOrigin: 'bottom center'
+        }}
+      ></div>
+      
+      {/* Minute hand */}
+      <div 
+        className="absolute top-1/2 left-1/2 w-0.5 h-4 bg-gray-300 origin-bottom"
+        style={{
+          transform: `translate(-50%, -100%) rotate(${minuteAngle}deg)`,
+          transformOrigin: 'bottom center'
+        }}
+      ></div>
+      
+      {/* Second hand */}
+      <div 
+        className="absolute top-1/2 left-1/2 w-px h-4 bg-red-500 origin-bottom"
+        style={{
+          transform: `translate(-50%, -100%) rotate(${secondAngle}deg)`,
+          transformOrigin: 'bottom center'
+        }}
+      ></div>
+      
+      {/* Center dot */}
+      <div className="absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-white rounded-full transform -translate-x-1/2 -translate-y-1/2"></div>
+    </div>
+  );
+}
+
 export default function ControlRoomDashboard() {
   const { user, signOut } = useAuth();
   const router = useRouter();
@@ -89,6 +169,14 @@ export default function ControlRoomDashboard() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [dispatchRecords, setDispatchRecords] = useState<DispatchRecord[]>([]);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  // Track previous counts to detect new reports
+  const prevVehicleCount = useRef(0);
+  const prevCrimeCount = useRef(0);
+  const prevStats = useRef<any>(null);
+  
+  // Audio for alert sound
+  const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   
   // Event Stack states
   const [selectedEventId, setSelectedEventId] = useState<string | undefined>(undefined);
@@ -118,11 +206,36 @@ export default function ControlRoomDashboard() {
 
   useEffect(() => {
     setIsClient(true);
+    
+    // Initialize audio element
+    if (typeof window !== 'undefined') {
+      alertAudioRef.current = new Audio('/sounds/alert.mp3');
+      // Fallback to a simple beep sound if custom file doesn't exist
+      alertAudioRef.current.onerror = () => {
+        // Create a simple beep sound programmatically
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+      };
+    }
+    
     loadData();
     
     // Set up auto-refresh every 30 seconds
     const interval = setInterval(() => {
-      loadData();
+      loadReportsOnly(); // Only refresh reports, not the entire page
     }, 30000);
     setRefreshInterval(interval);
     
@@ -151,6 +264,10 @@ export default function ControlRoomDashboard() {
         ['active', 'pending'].includes(crime.status)
       );
 
+      // Check for new reports before updating state
+      const hasNewVehicles = activeVehicles.length > prevVehicleCount.current;
+      const hasNewCrimes = activeCrimes.length > prevCrimeCount.current;
+      
       setVehicleReports(activeVehicles);
       setCrimeReports(activeCrimes);
       setStats(statsData);
@@ -167,10 +284,75 @@ export default function ControlRoomDashboard() {
       // Convert dispatch records to local type
       setDispatchRecords(dispatchData as DispatchRecord[]);
       
+      // Play alert sound if new reports detected
+      if ((hasNewVehicles || hasNewCrimes) && alertAudioRef.current) {
+        playAlertSound();
+      }
+      
+      // Update previous counts
+      prevVehicleCount.current = activeVehicles.length;
+      prevCrimeCount.current = activeCrimes.length;
+      prevStats.current = statsData;
+      
     } catch (error) {
       console.error('Error loading control room data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadReportsOnly = async () => {
+    try {
+      const [vehiclesData, crimesData] = await Promise.all([
+        reportsAPI.getVehicleAlerts(),
+        reportsAPI.getCrimeReports()
+      ]);
+
+      const activeVehicles = vehiclesData.filter((vehicle: any) => 
+        ['active', 'pending'].includes(vehicle.status)
+      );
+      
+      const activeCrimes = crimesData.filter((crime: any) => 
+        ['active', 'pending'].includes(crime.status)
+      );
+
+      // Check for new reports before updating state
+      const hasNewVehicles = activeVehicles.length > prevVehicleCount.current;
+      const hasNewCrimes = activeCrimes.length > prevCrimeCount.current;
+      
+      setVehicleReports(activeVehicles);
+      setCrimeReports(activeCrimes);
+      
+      // Play alert sound if new reports detected
+      if ((hasNewVehicles || hasNewCrimes) && alertAudioRef.current) {
+        playAlertSound();
+      }
+      
+      // Update previous counts
+      prevVehicleCount.current = activeVehicles.length;
+      prevCrimeCount.current = activeCrimes.length;
+      
+    } catch (error) {
+      console.error('Error refreshing reports:', error);
+    }
+  };
+
+  const playAlertSound = () => {
+    if (alertAudioRef.current) {
+      // Reset audio to start
+      alertAudioRef.current.currentTime = 0;
+      
+      // Play the sound
+      alertAudioRef.current.play().catch(error => {
+        console.warn('Audio play failed:', error);
+        // Fallback to system beep
+        if (typeof window !== 'undefined' && window.Notification && Notification.permission === 'granted') {
+          new Notification('New Report Alert', {
+            body: 'New reports have been received',
+            icon: '/favicon.ico'
+          });
+        }
+      });
     }
   };
 
@@ -617,7 +799,7 @@ export default function ControlRoomDashboard() {
                     <div className="flex items-center space-x-2">
                       <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
                         <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
+                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.87 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
                         </svg>
                       </div>
                       <span>+27 66 285 5960</span>
@@ -654,7 +836,7 @@ export default function ControlRoomDashboard() {
                 >
                   <div className="flex items-center justify-center space-x-2">
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.87 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
                     </svg>
                     <span>Share via WhatsApp</span>
                   </div>
@@ -708,6 +890,12 @@ export default function ControlRoomDashboard() {
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              {/* Clock Display */}
+              <div className="flex items-center space-x-3">
+                <AnalogClock />
+                <DigitalClock />
+              </div>
+              
               <div className="flex items-center space-x-3">
                 <span className="text-gray-300 text-sm">
                   {user?.email}
@@ -726,7 +914,7 @@ export default function ControlRoomDashboard() {
               </div>
               
               <CustomButton
-                onClick={loadData}
+                onClick={loadReportsOnly} // Changed to loadReportsOnly for faster refresh
                 disabled={loading}
                 variant="secondary"
                 size="sm"
@@ -967,7 +1155,7 @@ export default function ControlRoomDashboard() {
                                 className="bg-green-600 hover:bg-green-700"
                               >
                                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.87 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
                                 </svg>
                               </CustomButton>
                             </div>
@@ -1076,7 +1264,7 @@ export default function ControlRoomDashboard() {
                                 className="bg-green-600 hover:bg-green-700"
                               >
                                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.76.982.998-3.675-.236-.374a9.86 9.87 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.826 9.826 0 012.9 6.994c-.004 5.45-4.438 9.88-9.888 9.88m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.333.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.333 11.893-11.893 0-3.18-1.24-6.162-3.495-8.411"/>
                                 </svg>
                               </CustomButton>
                             </div>
