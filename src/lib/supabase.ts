@@ -6,6 +6,8 @@ export type ReportStatus = 'active' | 'pending' | 'resolved' | 'rejected' | 'rec
 export type UserRole = 'admin' | 'moderator' | 'controller' | 'user' | 'responder'; // ADDED 'responder'
 export type UserStatus = 'active' | 'pending' | 'suspended';
 
+export { createClient } from './supabase/server';
+
 export interface Company {
   id: string;
   name: string;
@@ -114,6 +116,18 @@ export interface AuthUser {
   company_id?: string;
 }
 
+export interface PermissionSet {
+  canViewDashboard: boolean;
+  canViewControlRoom: boolean;
+  canManageUsers: boolean;
+  canManageCompanies: boolean;
+  canManageReports: boolean;
+  canCreateReports: boolean;
+  canEditReports: boolean;
+  canDeleteReports: boolean;
+  canManageResponders: boolean;
+  // Add other permissions as needed
+}
 // Initialize regular Supabase client (for browser use)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -197,7 +211,10 @@ export const companyAPI = {
   getAllCompanies: async (): Promise<Company[]> => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return [];
+    if (!session) {
+      console.log('No session in getAllCompanies');
+      return [];
+    }
 
     // Get user's full profile
     const { data: profile, error: profileError } = await supabase
@@ -206,21 +223,33 @@ export const companyAPI = {
       .eq('id', session.user.id)
       .single();
 
-    // If profile not found, return empty array
     if (profileError || !profile) {
-      console.warn('Profile not found for user:', session.user.id, profileError?.message);
+      console.warn('Profile not found:', profileError?.message);
       return [];
     }
 
+    console.log('User profile for company access:', {
+      id: profile.id,
+      role: profile.role,
+      company_id: profile.company_id
+    });
+
     let query = supabase.from('companies').select('*');
     
-    // If user is moderator, only show their company
+    // Role-based filtering
     if (profile.role === 'moderator' && profile.company_id) {
+      console.log('Moderator filtering to company:', profile.company_id);
       query = query.eq('id', profile.company_id);
-    }
-    // Admins and controllers see all companies
-    else if (profile.role !== 'admin' && profile.role !== 'controller') {
-      return []; // Regular users see no companies
+    } else if (profile.role === 'controller' && profile.company_id) {
+      console.log('Controller filtering to company:', profile.company_id);
+      query = query.eq('id', profile.company_id);
+    } else if (profile.role === 'admin' || profile.role === 'moderator') {
+      // Admins and moderators can see companies
+      // No filter needed for admins
+      console.log(`${profile.role} can see all companies`);
+    } else {
+      console.log(`Role ${profile.role} cannot view companies`);
+      return [];
     }
 
     const { data, error } = await query.order('name');
@@ -229,6 +258,8 @@ export const companyAPI = {
       console.error('Error fetching companies:', error);
       return [];
     }
+    
+    console.log('Companies fetched:', data?.length || 0);
     return data || [];
   } catch (error) {
     console.error('Error fetching companies:', error);
@@ -1282,6 +1313,60 @@ export const authAPI = {
       console.error('Error fetching current user profile:', error);
       return null;
     }
+  },
+
+  getRespondersByCompany: async (companyId: string) => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('company_id', companyId)
+      .in('role', ['responder', 'controller'])
+      .eq('status', 'active');
+
+    if (error) throw error;
+    return data;
+  },
+
+  updateResponderStatus: async (userId: string, status: string) => {
+    const { data, error } = await supabase
+      .from('users')
+      .update({ status: status })
+      .eq('id', userId);
+
+    if (error) throw error;
+    return data;
+  },
+
+  updateResponderDispatchStatus: async (userId: string, reportId: string, status: string) => {
+    // This would update the dispatch record status
+    const { data, error } = await supabase
+      .from('dispatch_records')
+      .update({ status: status })
+      .eq('assigned_to', userId)
+      .eq('report_id', reportId);
+
+    if (error) throw error;
+    return data;
+  },
+
+  getDispatchRecordsByCompany: async (companyId: string) => {
+    // First get reports for the company, then get dispatch records for those reports
+    const { data: reports, error: reportsError } = await supabase
+      .from('reports')
+      .select('id')
+      .eq('company_id', companyId);
+
+    if (reportsError) throw reportsError;
+
+    const reportIds = reports.map(report => report.id);
+    
+    const { data: dispatchRecords, error } = await supabase
+      .from('dispatch_records')
+      .select('*')
+      .in('report_id', reportIds);
+
+    if (error) throw error;
+    return dispatchRecords;
   },
 
   // Update current user profile

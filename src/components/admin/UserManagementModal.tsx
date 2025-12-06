@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { authAPI, AuthUser, UserRole, UserStatus, supabase, companyAPI, Company, getSessionToken } from '@/lib/supabase';
+import { AuthUser, UserRole, UserStatus, supabase, companyAPI, Company } from '@/lib/supabase';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 
 interface UserManagementModalProps {
@@ -23,7 +23,7 @@ const ADMIN_EMAILS = [
 const toUserRole = (role: string | undefined): UserRole => {
   if (!role) return 'user';
   
-  const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user'];
+  const validRoles: UserRole[] = ['admin', 'moderator', 'controller', 'user', 'responder'];
   const normalizedRole = role.toLowerCase().trim() as UserRole;
   
   if (validRoles.includes(normalizedRole)) {
@@ -67,6 +67,304 @@ const getUserRole = (user: any): UserRole => {
   
   // Use the helper function to ensure we return a valid UserRole
   return toUserRole(role || 'user');
+};
+
+// API methods for user management
+const userAPI = {
+  getAllUsers: async (currentUserRole?: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      const currentUser = session.user;
+      const currentUserRoleFromMetadata = currentUser.user_metadata?.role || 'user';
+      
+      // Start building the query
+      let query = supabase
+        .from('auth.users')
+        .select('*');
+
+      // Apply role-based filtering
+      switch (currentUserRoleFromMetadata) {
+        case 'admin':
+          // Admins see all users
+          break;
+
+        case 'moderator':
+          // Moderators see only users from their company
+          if (currentUserCompanyId) {
+            query = query.eq('raw_user_meta_data->>company_id', currentUserCompanyId);
+          } else {
+            // If moderator doesn't have company, they see nothing
+            return [];
+          }
+          break;
+
+        case 'controller':
+          // Controllers see only users from their company
+          if (currentUserCompanyId) {
+            query = query.eq('raw_user_meta_data->>company_id', currentUserCompanyId);
+          } else {
+            return [];
+          }
+          break;
+
+        default:
+          // Regular users see only themselves
+          query = query.eq('id', currentUser.id);
+          break;
+      }
+
+      const { data: users, error } = await query;
+
+      if (error) {
+        console.error('Error fetching users:', error);
+        throw error;
+      }
+
+      // Transform to AuthUser type
+      const authUsers: AuthUser[] = (users || []).map((user: any) => ({
+        id: user.id,
+        email: user.email,
+        user_metadata: {
+          full_name: user.raw_user_meta_data?.full_name || '',
+          role: user.raw_user_meta_data?.role || 'user',
+          avatar_url: user.raw_user_meta_data?.avatar_url
+        },
+        role: user.raw_user_meta_data?.role || 'user',
+        status: user.raw_user_meta_data?.status || 'active',
+        company_id: user.raw_user_meta_data?.company_id || null,
+        created_at: user.created_at,
+        updated_at: user.updated_at || user.created_at,
+        last_sign_in_at: user.last_sign_in_at,
+        phone: user.phone || '',
+        confirmed_at: user.confirmed_at,
+        email_confirmed_at: user.email_confirmed_at,
+        banned_until: user.banned_until,
+        invited_at: user.invited_at,
+        is_sso_user: user.is_sso_user || false,
+        deleted_at: user.deleted_at
+      }));
+
+      return authUsers;
+
+    } catch (error) {
+      console.error('Error in getAllUsers:', error);
+      throw error;
+    }
+  },
+
+  createUser: async (userData: {
+    email: string;
+    password: string;
+    full_name?: string;
+    role: UserRole;
+    company_id?: string;
+  }) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Check if current user has permission to create users
+      const currentUserRole = session.user.user_metadata?.role;
+      if (!['admin', 'moderator'].includes(currentUserRole)) {
+        throw new Error('Insufficient permissions');
+      }
+
+      // Create the user in Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: userData.email,
+        password: userData.password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: userData.full_name || '',
+          role: userData.role,
+          company_id: userData.company_id,
+          status: 'active'
+        }
+      });
+
+      if (authError) {
+        throw authError;
+      }
+
+      return authData.user;
+
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw error;
+    }
+  },
+
+  updateUserRole: async (userId: string, role: UserRole) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Check permissions
+      const currentUserRole = session.user.user_metadata?.role;
+      if (!['admin', 'moderator'].includes(currentUserRole)) {
+        throw new Error('Insufficient permissions');
+      }
+
+      // Get current user metadata
+      const { data: { user }, error: fetchError } = await supabase.auth.admin.getUserById(userId);
+      
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      // Update user metadata
+      const { error: updateError } = await supabase.auth.admin.updateUserById(
+        userId,
+        {
+          user_metadata: {
+            ...user?.user_metadata,
+            role: role
+          }
+        }
+      );
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      throw error;
+    }
+  },
+
+  updateUserStatus: async (userId: string, status: UserStatus) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Check permissions
+      const currentUserRole = session.user.user_metadata?.role;
+      if (!['admin', 'moderator'].includes(currentUserRole)) {
+        throw new Error('Insufficient permissions');
+      }
+
+      // Get current user metadata
+      const { data: { user }, error: fetchError } = await supabase.auth.admin.getUserById(userId);
+      
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      // Update user metadata
+      const { error: updateError } = await supabase.auth.admin.updateUserById(
+        userId,
+        {
+          user_metadata: {
+            ...user?.user_metadata,
+            status: status
+          }
+        }
+      );
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      throw error;
+    }
+  },
+
+  deleteUser: async (userId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Check permissions (only admin can delete)
+      const currentUserRole = session.user.user_metadata?.role;
+      if (currentUserRole !== 'admin') {
+        throw new Error('Only admins can delete users');
+      }
+
+      // First update status to suspended
+      await userAPI.updateUserStatus(userId, 'suspended');
+
+      // Then hard delete from auth
+      const { error: deleteError } = await supabase.auth.admin.deleteUser(userId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  },
+
+  assignUserToCompany: async (userId: string, companyId?: string | null) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Check permissions
+      const currentUserRole = session.user.user_metadata?.role;
+      if (currentUserRole !== 'admin') {
+        throw new Error('Only admins can assign companies');
+      }
+
+      // Get current user metadata
+      const { data: { user }, error: fetchError } = await supabase.auth.admin.getUserById(userId);
+      
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      // Update user metadata
+      const { error: updateError } = await supabase.auth.admin.updateUserById(
+        userId,
+        {
+          user_metadata: {
+            ...user?.user_metadata,
+            company_id: companyId
+          }
+        }
+      );
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Error assigning user to company:', error);
+      throw error;
+    }
+  }
 };
 
 export default function UserManagementModal({ open, onClose, currentUserRole = 'user', currentUserCompanyId }: UserManagementModalProps) {
@@ -170,17 +468,16 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     setShowConfirmModal(true);
   };
 
-  // Load users function - using existing API route
+  // Load users function
   const loadUsers = async () => {
     try {
       setLoading(true);
       
-      console.log('🔍 Loading users via existing API route...');
+      console.log('🔍 Loading users via API...');
       console.log('🔍 Detected user role:', detectedUserRole);
       console.log('🔍 Current user company ID:', currentUserCompanyId);
       
-      // Use your existing authAPI.getAllUsers function which calls your secure API route
-      const usersData = await authAPI.getAllUsers(detectedUserRole, currentUserCompanyId);
+      const usersData = await userAPI.getAllUsers(detectedUserRole, currentUserCompanyId);
       
       console.log('🔍 Got users data from API:', usersData);
       console.log('🔍 Length:', usersData?.length || 0);
@@ -202,7 +499,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     }
   };
 
-  // Load companies function - using existing API
+  // Load companies function
   const loadCompanies = async () => {
     try {
       const companiesData = await companyAPI.getAllCompanies();
@@ -224,7 +521,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     }
   };
 
-  // Update user role - using existing API
+  // Update user role
   const handleRoleUpdate = async (userId: string, newRole: string) => {
     const validRole = toUserRole(newRole);
 
@@ -233,7 +530,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
       
       console.log('🔍 Updating user role via API:', { userId, role: validRole });
       
-      const success = await authAPI.updateUserRole(userId, validRole);
+      const success = await userAPI.updateUserRole(userId, validRole);
       
       if (success) {
         setUsers(prev => prev.map(u => {
@@ -262,7 +559,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     }
   };
 
-  // Update user status - using existing API
+  // Update user status
   const handleStatusUpdate = async (userId: string, newStatus: string) => {
     const validStatus = toUserStatus(newStatus);
 
@@ -271,7 +568,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
       
       console.log('🔍 Updating user status via API:', { userId, status: validStatus });
       
-      const success = await authAPI.updateUserStatus(userId, validStatus);
+      const success = await userAPI.updateUserStatus(userId, validStatus);
       
       if (success) {
         setUsers(prev => prev.map(u => 
@@ -292,7 +589,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     }
   };
 
-  // Suspend user - using existing API
+  // Suspend user
   const handleSuspendUser = async (userId: string, userEmail: string) => {
     showConfirmation(
       `Are you sure you want to suspend user ${userEmail}? They will not be able to access the system.`,
@@ -300,7 +597,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
         try {
           setUpdating(userId);
           
-          const success = await authAPI.updateUserStatus(userId, 'suspended');
+          const success = await userAPI.updateUserStatus(userId, 'suspended');
           
           if (success) {
             setUsers(prev => prev.map(u => 
@@ -323,12 +620,12 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     );
   };
 
-  // Approve user - using existing API
+  // Approve user
   const handleApproveUser = async (userId: string) => {
     try {
       setUpdating(userId);
       
-      const success = await authAPI.updateUserStatus(userId, 'active');
+      const success = await userAPI.updateUserStatus(userId, 'active');
       
       if (success) {
         setUsers(prev => prev.map(u => 
@@ -349,7 +646,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     }
   };
 
-  // Reactivate user - using existing API
+  // Reactivate user
   const handleReactivateUser = async (userId: string) => {
     showConfirmation(
       'Are you sure you want to reactivate this user?',
@@ -357,7 +654,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
         try {
           setUpdating(userId);
           
-          const success = await authAPI.updateUserStatus(userId, 'active');
+          const success = await userAPI.updateUserStatus(userId, 'active');
           
           if (success) {
             setUsers(prev => prev.map(u => 
@@ -380,7 +677,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     );
   };
 
-  // Delete user permanently - using existing API
+  // Delete user permanently
   const handleDeleteUser = async (userId: string, userEmail: string) => {
     showConfirmation(
       `Are you sure you want to permanently delete user ${userEmail}? This action cannot be undone.`,
@@ -388,7 +685,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
         try {
           setUpdating(userId);
           
-          const success = await authAPI.deleteUser(userId);
+          const success = await userAPI.deleteUser(userId);
           
           if (success) {
             setUsers(prev => prev.filter(u => u.id !== userId));
@@ -406,7 +703,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     );
   };
 
-  // Bulk role update - using existing API
+  // Bulk role update
   const handleBulkRoleUpdate = async (newRole: string) => {
     if (selectedUsers.length === 0) return;
 
@@ -414,7 +711,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
 
     try {
       for (const userId of selectedUsers) {
-        await authAPI.updateUserRole(userId, validRole);
+        await userAPI.updateUserRole(userId, validRole);
       }
 
       setUsers(prev => prev.map(u => {
@@ -455,7 +752,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     }
   };
 
-  // Create user - using existing API
+  // Create user
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -473,7 +770,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
         company_id: newUserCompany || currentUserCompanyId
       });
       
-      const newUser = await authAPI.createUser({
+      const newUser = await userAPI.createUser({
         email: newUserEmail,
         password: newUserPassword,
         full_name: newUserName || '',
@@ -502,7 +799,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     }
   };
 
-  // Create company - using existing API
+  // Create company
   const handleAddCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -543,7 +840,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     setIsEditUserModalOpen(true);
   };
 
-  // Update user - using existing API (FIXED: removed password update)
+  // Update user
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -561,29 +858,23 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
 
       // Update role if changed
       if (editUserRole !== selectedUser.role) {
-        await authAPI.updateUserRole(selectedUser.id, editUserRole);
+        await userAPI.updateUserRole(selectedUser.id, editUserRole);
       }
 
       // Update status if changed
       if (editUserStatus !== selectedUser.status) {
-        await authAPI.updateUserStatus(selectedUser.id, editUserStatus);
+        await userAPI.updateUserStatus(selectedUser.id, editUserStatus);
       }
 
       // Update company if changed and user is admin
       if (isAdminUser && editUserCompany !== selectedUser.company_id) {
         try {
-          await authAPI.assignUserToCompany(selectedUser.id, editUserCompany);
+          // Convert empty string to null for company_id
+          const companyId = editUserCompany || null;
+          await userAPI.assignUserToCompany(selectedUser.id, companyId);
         } catch (companyError) {
           console.warn('⚠️ Company assignment failed, continuing with other updates:', companyError);
         }
-      }
-
-      // Note: Password update is not available in the current authAPI interface
-      // If you need password updates, you'll need to add that function to your API
-      if (editUserPassword) {
-        console.warn('⚠️ Password update requested but not implemented in API');
-        // You can add password update functionality here if you extend your API
-        // For now, we'll just log a warning
       }
 
       // Refresh users to get updated data
@@ -607,7 +898,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     }
   };
 
-  // Delete company - using existing API
+  // Delete company
   const handleDeleteCompany = async (companyId: string, companyName: string) => {
     showConfirmation(
       `Are you sure you want to delete company "${companyName}"? This will remove all associated data and cannot be undone.`,
@@ -636,7 +927,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
     setIsEditCompanyModalOpen(true);
   };
 
-  // Update company - using existing API
+  // Update company
   const handleUpdateCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -830,6 +1121,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
                       <option value="moderator">Moderator</option>
                       <option value="controller">Controller</option>
                       <option value="user">User</option>
+                      <option value="responder">Responder</option>
                     </select>
 
                     <select
@@ -871,6 +1163,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
                           <option value="moderator">Moderator</option>
                           <option value="controller">Controller</option>
                           <option value="user">User</option>
+                          <option value="responder">Responder</option>
                         </select>
                       </div>
                     )}
@@ -959,6 +1252,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
                                       <option value="moderator">Moderator</option>
                                       <option value="admin">Admin</option>
                                       <option value="controller">Controller</option>
+                                      <option value="responder">Responder</option>
                                     </select>
                                     {updating === user.id && (
                                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
@@ -1256,10 +1550,11 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
                     <option value="moderator">Moderator</option>
                     <option value="admin">Admin</option>
                     <option value="controller">Controller</option>
+                    <option value="responder">Responder</option>
                   </select>
                 </div>
 
-                {(isAdminUser || newUserRole === 'user' || newUserRole === 'controller') && (
+                {(isAdminUser || newUserRole === 'user' || newUserRole === 'controller' || newUserRole === 'responder') && (
                   <div>
                     <label htmlFor="new-user-company" className="block text-sm font-medium text-gray-300 mb-2">
                       Company {isAdminUser ? '(Optional)' : ''}
@@ -1277,7 +1572,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
                       ))}
                     </select>
                     {!isAdminUser && (
-                      <p className="text-xs text-gray-500 mt-1">Users and controllers must be assigned to a company</p>
+                      <p className="text-xs text-gray-500 mt-1">Users, controllers, and responders must be assigned to a company</p>
                     )}
                   </div>
                 )}
@@ -1458,6 +1753,7 @@ export default function UserManagementModal({ open, onClose, currentUserRole = '
                     <option value="moderator">Moderator</option>
                     <option value="admin">Admin</option>
                     <option value="controller">Controller</option>
+                    <option value="responder">Responder</option>
                   </select>
                 </div>
 
