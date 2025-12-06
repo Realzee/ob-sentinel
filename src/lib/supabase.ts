@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // Types
 export type ReportStatus = 'active' | 'pending' | 'resolved' | 'rejected' | 'recovered';
-export type UserRole = 'admin' | 'moderator' | 'controller' | 'user';
+export type UserRole = 'admin' | 'moderator' | 'controller' | 'user' | 'responder'; // ADDED 'responder'
 export type UserStatus = 'active' | 'pending' | 'suspended';
 
 export interface Company {
@@ -576,6 +576,79 @@ export const reportsAPI = {
       throw error;
     }
   },
+
+  // Update report status with responder actions
+updateReportWithResponderAction: async (
+  reportId: string, 
+  reportType: 'vehicle' | 'crime',
+  updates: any,
+  responderId?: string
+): Promise<any> => {
+  try {
+    let data;
+    
+    if (reportType === 'vehicle') {
+      const { data: reportData, error } = await supabase
+        .from('vehicle_alerts')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+          responder_id: responderId || null
+        })
+        .eq('id', reportId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      data = reportData;
+    } else {
+      const { data: reportData, error } = await supabase
+        .from('crime_reports')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+          responder_id: responderId || null
+        })
+        .eq('id', reportId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      data = reportData;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error updating report with responder action:', error);
+    throw error;
+  }
+},
+
+// Get reports assigned to a specific responder
+getResponderAssignedReports: async (responderId: string): Promise<any[]> => {
+  try {
+    const [vehicleReports, crimeReports] = await Promise.all([
+      supabase
+        .from('vehicle_alerts')
+        .select('*')
+        .eq('responder_id', responderId)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('crime_reports')
+        .select('*')
+        .eq('responder_id', responderId)
+        .order('created_at', { ascending: false })
+    ]);
+
+    const vehicles = vehicleReports.data || [];
+    const crimes = crimeReports.data || [];
+    
+    return [...vehicles, ...crimes];
+  } catch (error) {
+    console.error('Error fetching responder assigned reports:', error);
+    return [];
+  }
+},
 
   // Dashboard Stats with company filtering
   getDashboardStats: async (userRole?: UserRole, companyId?: string): Promise<any> => {

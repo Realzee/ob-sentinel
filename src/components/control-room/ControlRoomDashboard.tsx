@@ -1,4 +1,4 @@
-// components/control-room/ControlRoomDashboard.tsx (Enhanced with Event Stack)
+// components/control-room/ControlRoomDashboard.tsx (Enhanced with Event Stack and Responder Integration)
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -75,6 +75,19 @@ interface EventReport {
     model: string;
     color: string;
   };
+}
+
+// NEW: Responder interface
+interface Responder {
+  id: string;
+  name: string;
+  status: 'available' | 'busy' | 'offline';
+  currentLocation?: string;
+  assignedReports: string[];
+  lastUpdate: string;
+  members: string[];
+  role: 'responder' | 'controller';
+  email: string;
 }
 
 // Clock component
@@ -165,10 +178,15 @@ export default function ControlRoomDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'vehicles' | 'crimes' | 'dispatch' | 'audit'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'vehicles' | 'crimes' | 'dispatch' | 'audit' | 'responders'>('overview'); // ADDED 'responders'
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [dispatchRecords, setDispatchRecords] = useState<DispatchRecord[]>([]);
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  // NEW: Responder states
+  const [responders, setResponders] = useState<Responder[]>([]);
+  const [selectedResponder, setSelectedResponder] = useState<Responder | null>(null);
+  const [showResponderDispatchModal, setShowResponderDispatchModal] = useState(false);
   
   // Track previous counts to detect new reports
   const prevVehicleCount = useRef(0);
@@ -198,11 +216,11 @@ export default function ControlRoomDashboard() {
     priority: 'medium' as 'low' | 'medium' | 'high' | 'critical'
   });
   const [modalConfig, setModalConfig] = useState({
-    title: '',
-    message: '',
-    onConfirm: () => {},
-    variant: 'danger' as 'danger' | 'warning' | 'success'
-  });
+  title: '',
+  message: '',
+  onConfirm: () => {},
+  variant: 'danger' as 'danger' | 'warning' | 'success' | 'error' // ADD 'error' here
+});
 
   useEffect(() => {
     setIsClient(true);
@@ -284,6 +302,9 @@ export default function ControlRoomDashboard() {
       // Convert dispatch records to local type
       setDispatchRecords(dispatchData as DispatchRecord[]);
       
+      // Load responders
+      await loadResponders();
+      
       // Play alert sound if new reports detected
       if ((hasNewVehicles || hasNewCrimes) && alertAudioRef.current) {
         playAlertSound();
@@ -298,6 +319,39 @@ export default function ControlRoomDashboard() {
       console.error('Error loading control room data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // NEW: Load responders function
+  const loadResponders = async () => {
+    try {
+      // Load users with responder/controller role
+      const allUsers = await authAPI.getAllUsers();
+      const responderUsers = allUsers.filter((user: any) => 
+        user.role === 'responder' || user.role === 'controller'
+      );
+
+      // Get assigned reports for each responder
+      const respondersWithAssignments = await Promise.all(
+        responderUsers.map(async (user: any) => {
+          const assignedReports = await reportsAPI.getResponderAssignedReports(user.id);
+          return {
+            id: user.id,
+            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Responder',
+            status: assignedReports.length > 0 ? 'busy' : 'available',
+            currentLocation: 'On patrol', // This could be updated with real GPS data
+            assignedReports: assignedReports.map((r: any) => r.id),
+            lastUpdate: new Date().toISOString(),
+            members: [user.email],
+            role: user.role,
+            email: user.email
+          } as Responder;
+        })
+      );
+
+      setResponders(respondersWithAssignments);
+    } catch (error) {
+      console.error('Error loading responders:', error);
     }
   };
 
@@ -399,6 +453,58 @@ export default function ControlRoomDashboard() {
     }
   };
 
+  // NEW: Assign report to responder
+  const handleAssignToResponder = async (report: any, responderId: string) => {
+    try {
+      const reportType = report.license_plate ? 'vehicle' : 'crime';
+      
+      await reportsAPI.updateReportWithResponderAction(
+        report.id,
+        reportType,
+        {
+          status: 'dispatched',
+          responder_action: 'assigned'
+        },
+        responderId
+      );
+      
+      // Create dispatch record
+      const dispatchRecord = await reportsAPI.createDispatchRecord({
+        report_id: report.id,
+        report_type: reportType,
+        assigned_to: responders.find(r => r.id === responderId)?.name || 'Responder',
+        status: 'dispatched',
+        notes: `Assigned to responder`,
+        priority: report.severity as any
+      });
+      
+      setDispatchRecords(prev => [...prev, dispatchRecord as DispatchRecord]);
+      await loadResponders(); // Refresh responder status
+      
+      showConfirmationModal({
+        title: 'Assignment Successful',
+        message: 'Report has been assigned to responder',
+        variant: 'success',
+        onConfirm: () => setModalOpen(false)
+      });
+      
+    } catch (error) {
+      console.error('Error assigning to responder:', error);
+      showConfirmationModal({
+        title: 'Assignment Failed',
+        message: 'Failed to assign report to responder',
+        variant: 'error',
+        onConfirm: () => setModalOpen(false)
+      });
+    }
+  };
+
+  // NEW: Open responder dispatch modal
+  const handleOpenResponderDispatch = (report: any) => {
+    setSelectedReport(report);
+    setShowResponderDispatchModal(true);
+  };
+
   // WhatsApp sharing functionality
   const handleShareToWhatsApp = (report: any, type: 'vehicle' | 'crime') => {
     setSelectedReport({...report, reportType: type});
@@ -492,6 +598,16 @@ export default function ControlRoomDashboard() {
     }
   };
 
+  // NEW: Get responder status color
+  const getResponderStatusColor = (status: string) => {
+    switch(status) {
+      case 'available': return 'bg-green-500';
+      case 'busy': return 'bg-yellow-500';
+      case 'offline': return 'bg-gray-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
   const handleLogout = async () => {
     showConfirmationModal({
       title: 'Logout',
@@ -509,17 +625,17 @@ export default function ControlRoomDashboard() {
   };
 
   const showConfirmationModal = (config: {
-    title: string;
-    message: string;
-    onConfirm: () => void;
-    variant?: 'danger' | 'warning' | 'success';
-  }) => {
-    setModalConfig({
-      ...config,
-      variant: config.variant || 'danger'
-    });
-    setModalOpen(true);
-  };
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  variant?: 'danger' | 'warning' | 'success' | 'error'; // ADD 'error' here
+}) => {
+  setModalConfig({
+    ...config,
+    variant: config.variant || 'danger'
+  });
+  setModalOpen(true);
+};
 
   const handleResolveReport = async (reportId: string, type: 'vehicle' | 'crime') => {
     showConfirmationModal({
@@ -641,7 +757,8 @@ export default function ControlRoomDashboard() {
             crimeReports,
             auditLogs: auditLogs.slice(0, 100), // Last 100 entries
             dispatchRecords,
-            stats
+            stats,
+            responders
           };
           
           const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -777,6 +894,86 @@ export default function ControlRoomDashboard() {
         </div>
       )}
 
+      {/* NEW: Responder Dispatch Modal */}
+      {showResponderDispatchModal && selectedReport && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md">
+            <div className="p-6">
+              <h3 className="text-xl font-semibold text-white mb-4">Assign to Responder</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Report</label>
+                  <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+                    {selectedReport.license_plate 
+                      ? `Vehicle: ${selectedReport.license_plate}`
+                      : `Crime: ${selectedReport.title}`
+                    }
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Select Responder</label>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {responders.map((responder) => (
+                      <div 
+                        key={responder.id}
+                        className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                          selectedResponder?.id === responder.id 
+                            ? 'bg-blue-500/20 border-blue-500' 
+                            : 'bg-gray-900/50 border-gray-700 hover:bg-gray-800'
+                        }`}
+                        onClick={() => setSelectedResponder(responder)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-semibold text-white">{responder.name}</div>
+                            <div className="text-sm text-gray-400">{responder.email}</div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <div className={`w-3 h-3 rounded-full ${getResponderStatusColor(responder.status)}`}></div>
+                            <span className="text-xs text-gray-400 capitalize">{responder.status}</span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {responder.assignedReports.length} assignments • {responder.role}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="flex space-x-3 mt-6">
+                <CustomButton
+                  onClick={() => {
+                    setShowResponderDispatchModal(false);
+                    setSelectedReport(null);
+                    setSelectedResponder(null);
+                  }}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  Cancel
+                </CustomButton>
+                <CustomButton
+                  onClick={() => {
+                    if (selectedResponder) {
+                      handleAssignToResponder(selectedReport, selectedResponder.id);
+                      setShowResponderDispatchModal(false);
+                      setSelectedReport(null);
+                      setSelectedResponder(null);
+                    }
+                  }}
+                  variant="primary"
+                  className="flex-1"
+                  disabled={!selectedResponder}
+                >
+                  Assign to Responder
+                </CustomButton>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* WhatsApp Share Modal */}
       {whatsappModalOpen && selectedReport && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -874,6 +1071,7 @@ export default function ControlRoomDashboard() {
                   { id: 'vehicles', label: 'Vehicle Alerts' },
                   { id: 'crimes', label: 'Crime Reports' },
                   { id: 'dispatch', label: 'Dispatch Log' },
+                  { id: 'responders', label: 'Responders' }, // NEW TAB
                   { id: 'audit', label: 'Audit Trail' }
                 ].map(tab => (
                   <button
@@ -992,6 +1190,69 @@ export default function ControlRoomDashboard() {
                 />
               </div>
 
+              {/* NEW: Responder Status Section */}
+              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 mb-6">
+                <div className="px-6 py-4 border-b border-gray-700">
+                  <h3 className="text-xl font-semibold text-white">Responder Status</h3>
+                </div>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-gray-900/50 rounded-lg p-4">
+                      <div className="text-2xl font-bold text-green-500">
+                        {responders.filter(r => r.status === 'available').length}
+                      </div>
+                      <div className="text-sm text-gray-400">Available</div>
+                    </div>
+                    <div className="bg-gray-900/50 rounded-lg p-4">
+                      <div className="text-2xl font-bold text-yellow-500">
+                        {responders.filter(r => r.status === 'busy').length}
+                      </div>
+                      <div className="text-sm text-gray-400">Busy</div>
+                    </div>
+                    <div className="bg-gray-900/50 rounded-lg p-4">
+                      <div className="text-2xl font-bold text-blue-500">
+                        {responders.length}
+                      </div>
+                      <div className="text-sm text-gray-400">Total Responders</div>
+                    </div>
+                    <div className="bg-gray-900/50 rounded-lg p-4">
+                      <div className="text-2xl font-bold text-purple-500">
+                        {responders.reduce((acc, r) => acc + r.assignedReports.length, 0)}
+                      </div>
+                      <div className="text-sm text-gray-400">Active Assignments</div>
+                    </div>
+                  </div>
+                  
+                  {/* Responder List */}
+                  <div>
+                    <h4 className="text-lg font-semibold text-white mb-3">Responder Details</h4>
+                    <div className="space-y-3">
+                      {responders.slice(0, 5).map((responder) => (
+                        <div key={responder.id} className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-700">
+                          <div className="flex items-center space-x-3">
+                            <div className={`w-3 h-3 rounded-full ${getResponderStatusColor(responder.status)}`}></div>
+                            <div>
+                              <div className="font-semibold text-white">{responder.name}</div>
+                              <div className="text-xs text-gray-400">
+                                {responder.email}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs text-gray-500">
+                              {responder.assignedReports.length} assignments • {responder.role}
+                            </div>
+                            <div className="text-xs text-gray-600">
+                              Last update: {new Date(responder.lastUpdate).toLocaleTimeString()}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Recent Activity with Color Coding */}
               <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700">
                 <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
@@ -1042,13 +1303,22 @@ export default function ControlRoomDashboard() {
                                   {Math.round((Date.now() - new Date(report.created_at).getTime()) / (1000 * 60 * 60))}h ago
                                 </div>
                               </div>
-                              <CustomButton
-                                onClick={() => handleOpenDispatchModal(report)}
-                                variant="primary"
-                                size="sm"
-                              >
-                                Dispatch
-                              </CustomButton>
+                              <div className="flex space-x-2">
+                                <CustomButton
+                                  onClick={() => handleOpenDispatchModal(report)}
+                                  variant="primary"
+                                  size="sm"
+                                >
+                                  Dispatch
+                                </CustomButton>
+                                <CustomButton
+                                  onClick={() => handleOpenResponderDispatch(report)}
+                                  variant="success"
+                                  size="sm"
+                                >
+                                  Assign Responder
+                                </CustomButton>
+                              </div>
                             </div>
                           </div>
                         );
@@ -1124,7 +1394,7 @@ export default function ControlRoomDashboard() {
                                 </div>
                               )}
                             </div>
-                            <div className="flex space-x-2">
+                            <div className="flex flex-wrap gap-2">
                               <CustomButton
                                 onClick={() => handleResolveReport(report.id, 'vehicle')}
                                 variant="success"
@@ -1140,13 +1410,22 @@ export default function ControlRoomDashboard() {
                                 Escalate
                               </CustomButton>
                               {!dispatch && (
-                                <CustomButton
-                                  onClick={() => handleOpenDispatchModal(report)}
-                                  variant="primary"
-                                  size="sm"
-                                >
-                                  Dispatch
-                                </CustomButton>
+                                <>
+                                  <CustomButton
+                                    onClick={() => handleOpenDispatchModal(report)}
+                                    variant="primary"
+                                    size="sm"
+                                  >
+                                    Dispatch
+                                  </CustomButton>
+                                  <CustomButton
+                                    onClick={() => handleOpenResponderDispatch(report)}
+                                    variant="success"
+                                    size="sm"
+                                  >
+                                    Assign Responder
+                                  </CustomButton>
+                                </>
                               )}
                               <CustomButton
                                 onClick={() => handleShareToWhatsApp(report, 'vehicle')}
@@ -1233,7 +1512,7 @@ export default function ControlRoomDashboard() {
                                 </div>
                               )}
                             </div>
-                            <div className="flex space-x-2">
+                            <div className="flex flex-wrap gap-2">
                               <CustomButton
                                 onClick={() => handleResolveReport(report.id, 'crime')}
                                 variant="success"
@@ -1249,13 +1528,22 @@ export default function ControlRoomDashboard() {
                                 Escalate
                               </CustomButton>
                               {!dispatch && (
-                                <CustomButton
-                                  onClick={() => handleOpenDispatchModal(report)}
-                                  variant="primary"
-                                  size="sm"
-                                >
-                                  Dispatch
-                                </CustomButton>
+                                <>
+                                  <CustomButton
+                                    onClick={() => handleOpenDispatchModal(report)}
+                                    variant="primary"
+                                    size="sm"
+                                  >
+                                    Dispatch
+                                  </CustomButton>
+                                  <CustomButton
+                                    onClick={() => handleOpenResponderDispatch(report)}
+                                    variant="success"
+                                    size="sm"
+                                  >
+                                    Assign Responder
+                                  </CustomButton>
+                                </>
                               )}
                               <CustomButton
                                 onClick={() => handleShareToWhatsApp(report, 'crime')}
@@ -1345,6 +1633,146 @@ export default function ControlRoomDashboard() {
                           </div>
                         );
                       })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* NEW: Responders Tab */}
+        {activeTab === 'responders' && (
+          <div className="space-y-6">
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700">
+              <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 className="text-xl font-semibold text-white">Responder Management</h3>
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm text-gray-400 bg-gray-900 px-3 py-1 rounded-full">
+                    {responders.length} total responders
+                  </span>
+                  <CustomButton
+                    onClick={() => router.push('/dashboard')}
+                    variant="primary"
+                    size="sm"
+                  >
+                    Manage Responders
+                  </CustomButton>
+                </div>
+              </div>
+              <div className="p-6">
+                {/* Responder Statistics */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-gray-900/50 rounded-lg p-4">
+                    <div className="text-2xl font-bold text-green-500">
+                      {responders.filter(r => r.status === 'available').length}
+                    </div>
+                    <div className="text-sm text-gray-400">Available</div>
+                  </div>
+                  <div className="bg-gray-900/50 rounded-lg p-4">
+                    <div className="text-2xl font-bold text-yellow-500">
+                      {responders.filter(r => r.status === 'busy').length}
+                    </div>
+                    <div className="text-sm text-gray-400">Busy</div>
+                  </div>
+                  <div className="bg-gray-900/50 rounded-lg p-4">
+                    <div className="text-2xl font-bold text-blue-500">
+                      {responders.filter(r => r.role === 'responder').length}
+                    </div>
+                    <div className="text-sm text-gray-400">Responders</div>
+                  </div>
+                  <div className="bg-gray-900/50 rounded-lg p-4">
+                    <div className="text-2xl font-bold text-purple-500">
+                      {responders.filter(r => r.role === 'controller').length}
+                    </div>
+                    <div className="text-sm text-gray-400">Controllers</div>
+                  </div>
+                </div>
+
+                {/* Responder List */}
+                {responders.length === 0 ? (
+                  <p className="text-gray-400 text-center py-8">No responders found</p>
+                ) : (
+                  <div className="space-y-4">
+                    {responders.map((responder) => {
+                      const assignedReports = [...vehicleReports, ...crimeReports].filter(r => 
+                        responder.assignedReports.includes(r.id)
+                      );
+                      
+                      return (
+                        <div key={responder.id} className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="flex items-center space-x-4">
+                              <div className={`w-3 h-3 rounded-full ${getResponderStatusColor(responder.status)}`}></div>
+                              <div>
+                                <div className="font-semibold text-white text-lg">{responder.name}</div>
+                                <div className="text-sm text-gray-400">{responder.email}</div>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end space-y-1">
+                              <span className={`px-2 py-1 text-xs rounded-full ${
+                                responder.role === 'controller' 
+                                  ? 'bg-purple-500/20 text-purple-300' 
+                                  : 'bg-blue-500/20 text-blue-300'
+                              }`}>
+                                {responder.role}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                Status: <span className="capitalize">{responder.status}</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div>
+                              <div className="text-sm text-gray-400 mb-1">Current Status</div>
+                              <div className="flex items-center">
+                                <div className={`w-2 h-2 rounded-full ${getResponderStatusColor(responder.status)} mr-2`}></div>
+                                <span className="text-white capitalize">{responder.status}</span>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-gray-400 mb-1">Active Assignments</div>
+                              <div className="text-white text-lg font-semibold">
+                                {assignedReports.length}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm text-gray-400 mb-1">Last Update</div>
+                              <div className="text-white">
+                                {new Date(responder.lastUpdate).toLocaleTimeString()}
+                              </div>
+                            </div>
+                          </div>
+
+                          {assignedReports.length > 0 && (
+                            <div className="mt-4 pt-4 border-t border-gray-700">
+                              <div className="text-sm text-gray-400 mb-2">Active Assignments:</div>
+                              <div className="space-y-2">
+                                {assignedReports.map((report) => (
+                                  <div key={report.id} className="flex items-center justify-between p-2 bg-gray-800/50 rounded border border-gray-700">
+                                    <div>
+                                      <div className="text-sm text-white">
+                                        {report.license_plate || report.title}
+                                      </div>
+                                      <div className="text-xs text-gray-400">
+                                        {report.last_seen_location || report.location}
+                                      </div>
+                                    </div>
+                                    <span className={`px-2 py-1 text-xs rounded-full ${
+                                      report.severity === 'critical' ? 'bg-red-500/20 text-red-300' :
+                                      report.severity === 'high' ? 'bg-orange-500/20 text-orange-300' :
+                                      'bg-yellow-500/20 text-yellow-300'
+                                    }`}>
+                                      {report.severity}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

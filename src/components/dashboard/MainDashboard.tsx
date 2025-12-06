@@ -8,6 +8,7 @@ import VehicleReportModal from '@/components/reports/VehicleReportModal';
 import CrimeReportModal from '@/components/reports/CrimeReportModal';
 import ReportActionsModal from '@/components/reports/ReportActionsModal';
 import UserManagementModal from '@/components/admin/UserManagementModal';
+import ResponderManagementModal from '@/components/admin/ResponderManagementModal'; // NEW
 import LocationPreviewModal from '@/components/reports/LocationPreviewModal';
 import ImagePreviewModal from '@/components/reports/ImagePreviewModal';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
@@ -70,6 +71,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const [isCrimeModalOpen, setIsCrimeModalOpen] = useState(false);
   const [isActionsModalOpen, setIsActionsModalOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [isResponderManagementOpen, setIsResponderManagementOpen] = useState(false); // NEW
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<any>(null);
@@ -619,6 +621,21 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                 </CustomButton>
               )}
 
+              {/* Responder Management - NEW: For admins */}
+              {canManageUsers && (
+                <CustomButton
+                  onClick={() => setIsResponderManagementOpen(true)}
+                  variant="primary"
+                  size="sm"
+                  className="hidden sm:flex items-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  <span>Responders</span>
+                </CustomButton>
+              )}
+
               {/* Mobile Menu Button */}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -673,6 +690,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                   </CustomButton>
                 )}
 
+                {/* Admin Panel - Mobile */}
                 {canManageUsers && (
                   <CustomButton
                     onClick={() => setIsUserManagementOpen(true)}
@@ -687,6 +705,22 @@ export default function MainDashboard({ user }: MainDashboardProps) {
                   </CustomButton>
                 )}
 
+                {/* Responder Management - Mobile */}
+                {canManageUsers && (
+                  <CustomButton
+                    onClick={() => setIsResponderManagementOpen(true)}
+                    variant="primary"
+                    size="md"
+                    className="w-full flex items-center justify-center space-x-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <span>Responders</span>
+                  </CustomButton>
+                )}
+
+                {/* Sign Out - Mobile */}
                 <CustomButton
                   onClick={handleSignOut}
                   variant="secondary"
@@ -1039,6 +1073,14 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       <UserManagementModal 
         open={isUserManagementOpen}
         onClose={() => setIsUserManagementOpen(false)}
+        currentUserRole={user?.role}
+        currentUserCompanyId={user?.company_id}
+      />
+
+      {/* NEW: Responder Management Modal */}
+      <ResponderManagementModal 
+        open={isResponderManagementOpen}
+        onClose={() => setIsResponderManagementOpen(false)}
         currentUserRole={user?.role}
         currentUserCompanyId={user?.company_id}
       />
