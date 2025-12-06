@@ -57,35 +57,44 @@ export default function ResponderManagementModal({
 
   // Load responders and companies
   const loadData = async () => {
-    setLoading(true);
-    try {
-      // Load companies
-      const companiesData = await companyAPI.getAllCompanies();
-      setCompanies(companiesData);
+  setLoading(true);
+  try {
+    // Load companies
+    const companiesData = await companyAPI.getAllCompanies();
+    setCompanies(companiesData);
 
-      // Load all users and filter for responders/controllers
-      const allUsers = await authAPI.getAllUsers();
-      const respondersData = allUsers
-        .filter((user: any) => user.role === 'responder' || user.role === 'controller')
-        .map((user: any) => ({
-          id: user.id,
-          email: user.email,
-          full_name: user.user_metadata?.full_name || '',
-          role: user.role as UserRole,
-          status: user.status || 'active',
-          company_id: user.company_id,
-          company_name: companiesData.find(c => c.id === user.company_id)?.name || 'No Company',
-          last_seen_at: user.last_sign_in_at || user.created_at
-        })) as Responder[];
-      
-      setResponders(respondersData);
-    } catch (error) {
-      console.error('Error loading data:', error);
-      setError('Failed to load data');
-    } finally {
-      setLoading(false);
+    // Load all users and filter for responders/controllers
+    const allUsers = await authAPI.getAllUsers();
+    
+    // Check if we got valid data
+    if (!Array.isArray(allUsers)) {
+      setError('Failed to load user data');
+      setResponders([]);
+      return;
     }
-  };
+
+    const respondersData = allUsers
+      .filter((user: any) => user && (user.role === 'responder' || user.role === 'controller'))
+      .map((user: any) => ({
+        id: user.id,
+        email: user.email || 'No email',
+        full_name: user.user_metadata?.full_name || user.full_name || '',
+        role: user.role || 'responder',
+        status: user.status || 'active',
+        company_id: user.company_id,
+        company_name: companiesData.find(c => c.id === user.company_id)?.name || 'No Company',
+        last_seen_at: user.last_sign_in_at || user.created_at || new Date().toISOString()
+      })) as Responder[];
+    
+    setResponders(respondersData);
+  } catch (error) {
+    console.error('Error loading data:', error);
+    setError('Failed to load data. Please check your permissions.');
+    setResponders([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     if (open) {

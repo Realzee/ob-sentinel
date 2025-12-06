@@ -195,39 +195,46 @@ export const formatDateForDateTimeLocal = (dateString: string): string => {
 export const companyAPI = {
   // Get all companies (admin sees all, moderators see only their company)
   getAllCompanies: async (): Promise<Company[]> => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return [];
 
-      // Get user's role to determine what companies to show
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role, company_id')
-        .eq('id', user.id)
-        .single();
+    // Get user's full profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
 
-      if (!profile) throw new Error('Profile not found');
+    // If profile not found, return empty array
+    if (profileError || !profile) {
+      console.warn('Profile not found for user:', session.user.id, profileError?.message);
+      return [];
+    }
 
-      let query = supabase.from('companies').select('*');
-      
-      // If user is moderator, only show their company
-      if (profile.role === 'moderator' && profile.company_id) {
-        query = query.eq('id', profile.company_id);
-      }
-      // Admins and controllers see all companies
-      else if (profile.role !== 'admin' && profile.role !== 'controller') {
-        return []; // Regular users see no companies
-      }
+    let query = supabase.from('companies').select('*');
+    
+    // If user is moderator, only show their company
+    if (profile.role === 'moderator' && profile.company_id) {
+      query = query.eq('id', profile.company_id);
+    }
+    // Admins and controllers see all companies
+    else if (profile.role !== 'admin' && profile.role !== 'controller') {
+      return []; // Regular users see no companies
+    }
 
-      const { data, error } = await query.order('name');
-      
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
+    const { data, error } = await query.order('name');
+    
+    if (error) {
       console.error('Error fetching companies:', error);
       return [];
     }
-  },
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching companies:', error);
+    return [];
+  }
+},
   
   // Get company by ID
   getCompanyById: async (companyId: string): Promise<Company | null> => {
@@ -870,54 +877,116 @@ getResponderAssignedReports: async (responderId: string): Promise<any[]> => {
 export const authAPI = {
   // Get all users (admin sees all, moderators see only their company users)
   getAllUsers: async (currentUserRole?: UserRole, companyId?: string) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return [];
+    
+    // Get current user's profile to check permissions
+    const { data: currentUserProfile } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, role, company_id, status, created_at, updated_at') // ADD ALL FIELDS
+      .eq('id', session.user.id)
+      .single();
+    
+    if (!currentUserProfile) return [];
+    
+    // For non-admin users, use a different approach
+    if (currentUserProfile.role !== 'admin') {
+      // Get profiles from the profiles table instead of admin API
+      let query = supabase
+        .from('profiles')
+        .select('*');
+      
+      // If user is moderator, only show users from their company
+      if (currentUserProfile.role === 'moderator' && currentUserProfile.company_id) {
+        query = query.eq('company_id', currentUserProfile.company_id);
+      }
+      
+      const { data: profiles, error } = await query;
+      
+      if (error) {
+        console.error('Error fetching profiles:', error);
+        return [];
+      }
+      
+      // Map profiles to AuthUser format
+      return profiles?.map(profile => ({
+        id: profile.id,
+        email: profile.email,
+        role: profile.role || 'user',
+        status: profile.status || 'active',
+        company_id: profile.company_id,
+        user_metadata: {
+          full_name: profile.full_name,
+          role: profile.role
+        },
+        created_at: profile.created_at,
+        updated_at: profile.updated_at
+      } as AuthUser)) || [];
+    }
+    
+    // For admin users, try to use admin API with fallback
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return [];
-      
-      // Get all auth users
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      if (authError) throw authError;
-      
-      // Get user profiles from profiles table
+      // First try to get users from profiles table
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('*');
       
-      if (profilesError) throw profilesError;
-      
-      // Merge auth users with their profiles
-      const usersWithProfiles = authUsers.users.map(authUser => {
-        const profile = profiles?.find(p => p.id === authUser.id);
-        return {
-          id: authUser.id,
-          email: authUser.email,
-          role: profile?.role || authUser.user_metadata?.role || 'user',
-          status: profile?.status || 'active',
-          company_id: profile?.company_id,
+      if (!profilesError && profiles) {
+        return profiles.map(profile => ({
+          id: profile.id,
+          email: profile.email,
+          role: profile.role || 'user',
+          status: profile.status || 'active',
+          company_id: profile.company_id,
           user_metadata: {
-            ...authUser.user_metadata,
-            full_name: profile?.full_name || authUser.user_metadata?.full_name,
-            role: profile?.role || authUser.user_metadata?.role || 'user'
+            full_name: profile.full_name,
+            role: profile.role
           },
-          created_at: authUser.created_at,
-          updated_at: authUser.updated_at
-        } as AuthUser;
-      });
-      
-      // Filter based on role if needed
-      if (currentUserRole === 'moderator' && companyId) {
-        return usersWithProfiles.filter(user => 
-          user.company_id === companyId || user.role === 'admin'
-        );
+          created_at: profile.created_at,
+          updated_at: profile.updated_at
+        } as AuthUser));
       }
       
-      return usersWithProfiles;
+      // Fallback: Return current user only if admin API fails
+      console.warn('Admin API access failed, falling back to basic user info');
+      return [{
+        id: session.user.id,
+        email: session.user.email!,
+        role: currentUserProfile.role,
+        status: currentUserProfile.status || 'active',
+        company_id: currentUserProfile.company_id,
+        user_metadata: {
+          full_name: currentUserProfile.full_name,
+          role: currentUserProfile.role
+        },
+        created_at: currentUserProfile.created_at,
+        updated_at: currentUserProfile.updated_at
+      } as AuthUser];
       
     } catch (error) {
-      console.error('Error fetching users:', error);
-      return [];
+      console.error('Error in admin user fetch:', error);
+      // Return minimal user info
+      return [{
+        id: session.user.id,
+        email: session.user.email!,
+        role: currentUserProfile.role,
+        status: currentUserProfile.status || 'active',
+        company_id: currentUserProfile.company_id,
+        user_metadata: {
+          full_name: currentUserProfile.full_name,
+          role: currentUserProfile.role
+        },
+        created_at: currentUserProfile.created_at,
+        updated_at: currentUserProfile.updated_at
+      } as AuthUser];
     }
-  },  
+    
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    return [];
+  }
+},
   // Update user role - only admins can do this
   updateUserRole: async (userId: string, role: UserRole): Promise<boolean> => {
     try {
