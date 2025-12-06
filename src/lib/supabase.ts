@@ -1327,6 +1327,7 @@ export const authAPI = {
     return data;
   },
 
+  // Add these new methods for reports API
   updateResponderStatus: async (userId: string, status: string) => {
     const { data, error } = await supabase
       .from('users')
@@ -1338,7 +1339,6 @@ export const authAPI = {
   },
 
   updateResponderDispatchStatus: async (userId: string, reportId: string, status: string) => {
-    // This would update the dispatch record status
     const { data, error } = await supabase
       .from('dispatch_records')
       .update({ status: status })
@@ -1349,24 +1349,80 @@ export const authAPI = {
     return data;
   },
 
+  // Helper method to get dispatch records by company
   getDispatchRecordsByCompany: async (companyId: string) => {
-    // First get reports for the company, then get dispatch records for those reports
-    const { data: reports, error: reportsError } = await supabase
-      .from('reports')
-      .select('id')
-      .eq('company_id', companyId);
+    try {
+      // First, get all reports for this company
+      const [vehicleReports, crimeReports] = await Promise.all([
+        supabase.from('vehicle_alerts').select('id').eq('company_id', companyId),
+        supabase.from('crime_reports').select('id').eq('company_id', companyId)
+      ]);
 
-    if (reportsError) throw reportsError;
+      const vehicleIds = vehicleReports.data?.map(r => r.id) || [];
+      const crimeIds = crimeReports.data?.map(r => r.id) || [];
+      const allReportIds = [...vehicleIds, ...crimeIds];
 
-    const reportIds = reports.map(report => report.id);
-    
-    const { data: dispatchRecords, error } = await supabase
-      .from('dispatch_records')
-      .select('*')
-      .in('report_id', reportIds);
+      if (allReportIds.length === 0) return [];
 
-    if (error) throw error;
-    return dispatchRecords;
+      // Get dispatch records for these reports
+      const { data, error } = await supabase
+        .from('dispatch_records')
+        .select('*')
+        .in('report_id', allReportIds);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error getting dispatch records by company:', error);
+      throw error;
+    }
+  },
+
+  // Get responder assigned reports
+  getResponderAssignedReports: async (userId: string) => {
+    try {
+      // Get dispatch records for this responder
+      const { data: dispatchRecords, error: dispatchError } = await supabase
+        .from('dispatch_records')
+        .select('report_id, report_type')
+        .eq('assigned_to', userId)
+        .in('status', ['dispatched', 'en_route', 'on_scene']);
+
+      if (dispatchError) throw dispatchError;
+
+      if (!dispatchRecords || dispatchRecords.length === 0) return [];
+
+      // Get the actual reports
+      const reports = [];
+      for (const record of dispatchRecords) {
+        if (record.report_type === 'vehicle') {
+          const { data: vehicleReport, error: vehicleError } = await supabase
+            .from('vehicle_alerts')
+            .select('*')
+            .eq('id', record.report_id)
+            .single();
+
+          if (!vehicleError && vehicleReport) {
+            reports.push(vehicleReport);
+          }
+        } else if (record.report_type === 'crime') {
+          const { data: crimeReport, error: crimeError } = await supabase
+            .from('crime_reports')
+            .select('*')
+            .eq('id', record.report_id)
+            .single();
+
+          if (!crimeError && crimeReport) {
+            reports.push(crimeReport);
+          }
+        }
+      }
+
+      return reports;
+    } catch (error) {
+      console.error('Error getting responder assigned reports:', error);
+      throw error;
+    }
   },
 
   // Update current user profile

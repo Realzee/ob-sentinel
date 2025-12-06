@@ -1,206 +1,376 @@
-// lib/users-api.ts
-import { supabase, UserRole, UserStatus } from './supabase';
+// lib/api/user-api.ts
+'use server';
 
-export interface SystemUser {
-  id: string;
-  email: string;
-  full_name?: string;
-  role: UserRole;
-  status: UserStatus;
-  company_id?: string;
-  company_name?: string;
-  created_at: string;
-  updated_at: string;
-  last_sign_in_at?: string;
-}
+import { createClient } from '@/lib/supabase/server';
+import { AuthUser, UserRole, UserStatus } from '@/lib/supabase';
+import { cookies } from 'next/headers';
 
-export const usersAPI = {
-  // Get all users with role-based filtering
-  getAllUsers: async (currentUserRole: UserRole, currentUserCompanyId?: string): Promise<SystemUser[]> => {
+export class UserAPI {
+  private async getClient() {
+    const cookieStore = cookies();
+    return createClient(cookieStore);
+  }
+
+  /**
+   * Get all users with proper role-based filtering
+   */
+  async getAllUsers(currentUserRole: UserRole, currentUserCompanyId?: string): Promise<AuthUser[]> {
     try {
+      const supabase = await this.getClient();
+      
+      // First, get the current user's session
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (!session) {
-        console.log('No session found');
-        return [];
+        throw new Error('Not authenticated');
       }
+
+      const currentUser = session.user;
+      const currentUserRoleFromMetadata = currentUser.user_metadata?.role || 'user';
+      
+      console.log('🔍 Current user debug:', {
+        userId: currentUser.id,
+        email: currentUser.email,
+        metadataRole: currentUserRoleFromMetadata,
+        passedRole: currentUserRole,
+        companyId: currentUserCompanyId
+      });
 
       // Start building the query
-      let query = supabase
-        .from('profiles')
-        .select(`
-          *,
-          companies (
-            name
-          )
-        `);
+      let query = supabase.from('auth_users').select('*');
 
-      // Apply role-based filters
-      if (currentUserRole === 'moderator' && currentUserCompanyId) {
-        // Moderators can only see users from their company
-        query = query.eq('company_id', currentUserCompanyId);
-      } else if (currentUserRole === 'controller' && currentUserCompanyId) {
-        // Controllers can only see users from their company
-        query = query.eq('company_id', currentUserCompanyId);
-      } else if (currentUserRole === 'admin') {
-        // Admins can see all users
-        // No filter needed
-      } else {
-        // Other roles cannot view user management
-        console.log('User does not have permission to view user management');
-        return [];
+      // Apply role-based filtering
+      switch (currentUserRoleFromMetadata) {
+        case 'admin':
+          // Admins see all users
+          break;
+
+        case 'moderator':
+          // Moderators see only users from their company
+          if (currentUserCompanyId) {
+            query = query.eq('company_id', currentUserCompanyId);
+          } else {
+            // If moderator doesn't have company, they see nothing
+            return [];
+          }
+          break;
+
+        case 'controller':
+          // Controllers see only users from their company
+          if (currentUserCompanyId) {
+            query = query.eq('company_id', currentUserCompanyId);
+          } else {
+            return [];
+          }
+          break;
+
+        default:
+          // Regular users see only themselves
+          query = query.eq('id', currentUser.id);
+          break;
       }
 
-      const { data: profiles, error } = await query;
+      const { data: users, error } = await query;
 
       if (error) {
         console.error('Error fetching users:', error);
-        return [];
+        throw error;
       }
 
-      if (!profiles) {
-        console.log('No profiles found');
-        return [];
-      }
-
-      // Transform data to SystemUser format
-      return profiles.map(profile => ({
-        id: profile.id,
-        email: profile.email,
-        full_name: profile.full_name,
-        role: profile.role as UserRole,
-        status: profile.status as UserStatus,
-        company_id: profile.company_id,
-        company_name: profile.companies?.name,
-        created_at: profile.created_at,
-        updated_at: profile.updated_at
+      console.log('✅ Fetched users:', users?.length || 0);
+      
+      // Transform to AuthUser type
+      const authUsers: AuthUser[] = (users || []).map(user => ({
+        id: user.id,
+        email: user.email,
+        user_metadata: {
+          full_name: user.user_metadata?.full_name || '',
+          role: user.user_metadata?.role || 'user',
+          avatar_url: user.user_metadata?.avatar_url
+        },
+        role: user.user_metadata?.role || 'user',
+        status: user.status || 'active',
+        company_id: user.company_id || null,
+        created_at: user.created_at,
+        updated_at: user.updated_at || user.created_at,
+        last_sign_in_at: user.last_sign_in_at,
+        phone: user.phone || '',
+        confirmed_at: user.confirmed_at,
+        email_confirmed_at: user.email_confirmed_at,
+        banned_until: user.banned_until,
+        invited_at: user.invited_at,
+        is_sso_user: user.is_sso_user || false,
+        deleted_at: user.deleted_at
       }));
+
+      return authUsers;
 
     } catch (error) {
       console.error('Error in getAllUsers:', error);
-      return [];
+      throw error;
     }
-  },
+  }
 
-  // Create a new user
-  createUser: async (userData: {
+  /**
+   * Create a new user
+   */
+  async createUser(userData: {
     email: string;
     password: string;
     full_name?: string;
-    role?: UserRole;
+    role: UserRole;
     company_id?: string;
-  }): Promise<{ success: boolean; error?: string }> => {
+  }) {
     try {
+      const supabase = await this.getClient();
+      
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (!session) {
-        return { success: false, error: 'Not authenticated' };
+        throw new Error('Not authenticated');
       }
 
-      // Create user in auth
+      // Check if current user has permission to create users
+      const currentUserRole = session.user.user_metadata?.role;
+      if (!['admin', 'moderator'].includes(currentUserRole)) {
+        throw new Error('Insufficient permissions');
+      }
+
+      // Validate moderator can only assign to their company
+      if (currentUserRole === 'moderator') {
+        const moderatorCompany = session.user.user_metadata?.company_id;
+        if (userData.company_id && userData.company_id !== moderatorCompany) {
+          throw new Error('Moderators can only assign users to their own company');
+        }
+        userData.company_id = moderatorCompany;
+      }
+
+      // Create the user in Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: userData.email,
         password: userData.password,
         email_confirm: true,
         user_metadata: {
-          full_name: userData.full_name,
-          role: userData.role || 'user'
+          full_name: userData.full_name || '',
+          role: userData.role,
+          company_id: userData.company_id
         }
       });
 
       if (authError) {
-        console.error('Auth error creating user:', authError);
-        return { success: false, error: authError.message };
+        throw authError;
       }
 
-      if (!authData.user) {
-        return { success: false, error: 'User creation failed' };
-      }
+      // Update the user's status in the users table
+      if (authData.user) {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            status: 'active',
+            company_id: userData.company_id,
+            role: userData.role
+          })
+          .eq('id', authData.user.id);
 
-      // Create profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: authData.user.id,
-          email: userData.email,
-          full_name: userData.full_name,
-          role: userData.role || 'user',
-          status: 'active' as UserStatus,
-          company_id: userData.company_id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-
-      if (profileError) {
-        console.error('Profile error:', profileError);
-        return { success: false, error: profileError.message };
-      }
-
-      return { success: true };
-    } catch (error: any) {
-      console.error('Error creating user:', error);
-      return { success: false, error: error.message };
-    }
-  },
-
-  // Update user
-  updateUser: async (
-    userId: string, 
-    updates: {
-      full_name?: string;
-      role?: UserRole;
-      status?: UserStatus;
-      company_id?: string;
-    }
-  ): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId);
-
-      if (error) {
-        console.error('Error updating user:', error);
-        return { success: false, error: error.message };
-      }
-
-      return { success: true };
-    } catch (error: any) {
-      console.error('Error updating user:', error);
-      return { success: false, error: error.message };
-    }
-  },
-
-  // Delete user
-  deleteUser: async (userId: string): Promise<{ success: boolean; error?: string }> => {
-    try {
-      // First delete the profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', userId);
-
-      if (profileError) {
-        console.error('Error deleting profile:', profileError);
-        return { success: false, error: profileError.message };
-      }
-
-      // Then delete the auth user (requires admin client)
-      const { getSupabaseAdmin } = await import('./supabase');
-      const adminClient = getSupabaseAdmin();
-      
-      if (adminClient) {
-        const { error: authError } = await adminClient.auth.admin.deleteUser(userId);
-        if (authError) {
-          console.warn('Could not delete auth user (may not have admin access):', authError);
+        if (updateError) {
+          console.error('Error updating user metadata:', updateError);
         }
       }
 
-      return { success: true };
-    } catch (error: any) {
-      console.error('Error deleting user:', error);
-      return { success: false, error: error.message };
+      return authData.user;
+
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw error;
     }
   }
-};
+
+  /**
+   * Update user role
+   */
+  async updateUserRole(userId: string, role: UserRole) {
+    try {
+      const supabase = await this.getClient();
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Check permissions
+      const currentUserRole = session.user.user_metadata?.role;
+      if (!['admin', 'moderator'].includes(currentUserRole)) {
+        throw new Error('Insufficient permissions');
+      }
+
+      // Update in auth.users table (metadata)
+      const { error: authError } = await supabase.auth.admin.updateUserById(
+        userId,
+        {
+          user_metadata: {
+            role: role,
+            ...(session.user.user_metadata || {})
+          }
+        }
+      );
+
+      if (authError) {
+        throw authError;
+      }
+
+      // Update in users table
+      const { error: dbError } = await supabase
+        .from('users')
+        .update({ role: role })
+        .eq('id', userId);
+
+      if (dbError) {
+        throw dbError;
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update user status
+   */
+  async updateUserStatus(userId: string, status: UserStatus) {
+    try {
+      const supabase = await this.getClient();
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Check permissions
+      const currentUserRole = session.user.user_metadata?.role;
+      if (!['admin', 'moderator'].includes(currentUserRole)) {
+        throw new Error('Insufficient permissions');
+      }
+
+      // Update in users table
+      const { error } = await supabase
+        .from('users')
+        .update({ status: status })
+        .eq('id', userId);
+
+      if (error) {
+        throw error;
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete user
+   */
+  async deleteUser(userId: string) {
+    try {
+      const supabase = await this.getClient();
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Check permissions (only admin can delete)
+      const currentUserRole = session.user.user_metadata?.role;
+      if (currentUserRole !== 'admin') {
+        throw new Error('Only admins can delete users');
+      }
+
+      // Soft delete from users table
+      const { error: dbError } = await supabase
+        .from('users')
+        .update({ 
+          status: 'suspended',
+          deleted_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      if (dbError) {
+        throw dbError;
+      }
+
+      // Hard delete from auth (admin only)
+      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+
+      if (authError) {
+        throw authError;
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Assign user to company
+   */
+  async assignUserToCompany(userId: string, companyId: string) {
+    try {
+      const supabase = await this.getClient();
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Check permissions
+      const currentUserRole = session.user.user_metadata?.role;
+      if (currentUserRole !== 'admin') {
+        throw new Error('Only admins can assign companies');
+      }
+
+      // Update in auth metadata
+      const { error: authError } = await supabase.auth.admin.updateUserById(
+        userId,
+        {
+          user_metadata: {
+            company_id: companyId
+          }
+        }
+      );
+
+      if (authError) {
+        throw authError;
+      }
+
+      // Update in users table
+      const { error: dbError } = await supabase
+        .from('users')
+        .update({ company_id: companyId })
+        .eq('id', userId);
+
+      if (dbError) {
+        throw dbError;
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('Error assigning user to company:', error);
+      throw error;
+    }
+  }
+}
+
+export const userAPI = new UserAPI();
