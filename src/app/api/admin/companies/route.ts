@@ -90,15 +90,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is admin
+    // Check if user is admin or moderator
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (profileError || profile.role !== 'admin') {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    if (profileError || (profile.role !== 'admin' && profile.role !== 'moderator')) {
+      return NextResponse.json({ error: 'Admin or moderator access required' }, { status: 403 });
     }
 
     const { name } = await request.json();

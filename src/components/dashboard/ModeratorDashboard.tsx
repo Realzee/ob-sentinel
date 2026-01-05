@@ -131,14 +131,14 @@ export default function ModeratorDashboard({ user }: ModeratorDashboardProps) {
                       <Button
                         variant="primary"
                         size="sm"
-                        onClick={() => updateReportStatus(alert.id, 'vehicle', 'under_review')}
+                        onClick={() => updateReportStatus(alert.id, 'vehicle', 'approved' as ReportStatus)}
                       >
                         Review
                       </Button>
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => updateReportStatus(alert.id, 'vehicle', 'resolved')}
+                        onClick={() => updateReportStatus(alert.id, 'vehicle', 'resolved' as ReportStatus)}
                       >
                         Resolve
                       </Button>
@@ -184,7 +184,7 @@ export default function ModeratorDashboard({ user }: ModeratorDashboardProps) {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => updateReportStatus(report.id, 'crime', 'resolved')}
+                        onClick={() => updateReportStatus(report.id, 'crime', 'resolved' as ReportStatus)}
                       >
                         Resolve
                       </Button>
@@ -230,19 +230,19 @@ export default function ModeratorDashboard({ user }: ModeratorDashboardProps) {
             <div className="flex justify-end space-x-3 pt-4">
               <Button
                 variant="secondary"
-                onClick={() => updateReportStatus(selectedReport.id, 'crime', 'rejected')}
+                onClick={() => updateReportStatus(selectedReport.id, 'crime', 'rejected' as ReportStatus)}
               >
                 Reject
               </Button>
               <Button
                 variant="primary"
-                onClick={() => updateReportStatus(selectedReport.id, 'crime', 'under_review')}
+                onClick={() => updateReportStatus(selectedReport.id, 'crime', 'approved' as ReportStatus)}
               >
                 Mark Under Review
               </Button>
               <Button
                 variant="primary"
-                onClick={() => updateReportStatus(selectedReport.id, 'crime', 'resolved')}
+                onClick={() => updateReportStatus(selectedReport.id, 'crime', 'resolved' as ReportStatus)}
               >
                 Resolve
               </Button>

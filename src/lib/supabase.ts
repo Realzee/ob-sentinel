@@ -320,21 +320,21 @@ export const companyAPI = {
     }
   },
 
-  // Update company - only admins
+  // Update company - admins and moderators
   updateCompany: async (companyId: string, updates: Partial<Company>): Promise<Company> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Verify user is admin
+      // Verify user is admin or moderator
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .single();
 
-      if (profile?.role !== 'admin') {
-        throw new Error('Admin access required');
+      if (profile?.role !== 'admin' && profile?.role !== 'moderator') {
+        throw new Error('Admin or moderator access required');
       }
 
       const { data, error } = await supabase
