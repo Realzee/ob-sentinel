@@ -160,10 +160,10 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           alert.status === 'resolved' ? 'bg-green-100 text-green-800' :
                           alert.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          alert.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
+                          String(alert.status) === 'under_review' ? 'bg-blue-100 text-blue-800' :
                           'bg-red-100 text-red-800'
                         }`}>
-                          {alert.status.replace('_', ' ')}
+                          {String(alert.status).replace('_', ' ')}
                         </span>
                         <span className="text-sm text-gray-500">
                           {new Date(alert.created_at).toLocaleDateString()}
@@ -197,10 +197,10 @@ export default function UserDashboard({ user }: UserDashboardProps) {
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           report.status === 'resolved' ? 'bg-green-100 text-green-800' :
                           report.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          report.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
+                          String(report.status) === 'under_review' ? 'bg-blue-100 text-blue-800' :
                           'bg-red-100 text-red-800'
                         }`}>
-                          {report.status.replace('_', ' ')}
+                          {String(report.status).replace('_', ' ')}
                         </span>
                         <span className="text-sm text-gray-500">
                           {report.location} • {new Date(report.created_at).toLocaleDateString()}

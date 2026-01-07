@@ -173,7 +173,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                       </select>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      N/A
+                      {(user as any).department || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <button 
@@ -235,8 +235,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        alert.status === 'active' ? 'bg-yellow-100 text-yellow-800' :
-                        alert.status === 'recovered' ? 'bg-green-100 text-green-800' :
+                        alert.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                        alert.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        alert.status === 'active' ? 'bg-blue-100 text-blue-800' :
                         'bg-red-100 text-red-800'
                       }`}>
                         {alert.status.replace('_', ' ')}
@@ -253,7 +254,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {alert.reported_by || 'Unknown'}
+                      {(alert as any).profiles?.full_name || (alert as any).profiles?.email || (alert as any).reported_by || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <button className="text-blue-600 hover:text-blue-900 mr-3">
@@ -289,16 +290,16 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               <p className="mt-1 text-sm text-gray-900">{selectedUser.email}</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Role</label>
-              <p className="mt-1 text-sm text-gray-900">{selectedUser.role || 'N/A'}</p>
+              <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+              <p className="mt-1 text-sm text-gray-900">{(selectedUser as any).phone_number || 'N/A'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Department</label>
-              <p className="mt-1 text-sm text-gray-900">{'N/A'}</p>
+              <p className="mt-1 text-sm text-gray-900">{(selectedUser as any).department || 'N/A'}</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Status</label>
-              <p className="mt-1 text-sm text-gray-900">{selectedUser.status || 'N/A'}</p>
+              <label className="block text-sm font-medium text-gray-700">Badge Number</label>
+              <p className="mt-1 text-sm text-gray-900">{(selectedUser as any).badge_number || (selectedUser as any).badgeNumber || 'N/A'}</p>
             </div>
             <div className="flex justify-end space-x-3 pt-4">
               <Button
