@@ -1,13 +1,28 @@
-// app/responder/page.tsx
-'use client';
+// app/layout.tsx
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { AuthProvider } from '@/components/providers/AuthProvider';
 
-import ResponderDashboard from '@/components/dashboard/ResponderDashboard';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
+const inter = Inter({ subsets: ['latin'] });
 
-export default function ResponderPage() {
+export const metadata: Metadata = {
+  title: 'RAPID REPORT - Community Safety Platform',
+  description: 'Report and track community safety incidents',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <ProtectedRoute requiredRole="responder">
-      <ResponderDashboard />
-    </ProtectedRoute>
+    <html lang="en">
+      <body className={inter.className}>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </body>
+    </html>
   );
 }

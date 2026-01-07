@@ -6,8 +6,6 @@ export type ReportStatus = 'active' | 'pending' | 'resolved' | 'rejected' | 'rec
 export type UserRole = 'admin' | 'moderator' | 'controller' | 'user' | 'responder'; // ADDED 'responder'
 export type UserStatus = 'active' | 'pending' | 'suspended';
 
-export { createClient } from './supabase/server';
-
 export interface Company {
   id: string;
   name: string;
@@ -116,18 +114,6 @@ export interface AuthUser {
   company_id?: string;
 }
 
-export interface PermissionSet {
-  canViewDashboard: boolean;
-  canViewControlRoom: boolean;
-  canManageUsers: boolean;
-  canManageCompanies: boolean;
-  canManageReports: boolean;
-  canCreateReports: boolean;
-  canEditReports: boolean;
-  canDeleteReports: boolean;
-  canManageResponders: boolean;
-  // Add other permissions as needed
-}
 // Initialize regular Supabase client (for browser use)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -211,10 +197,7 @@ export const companyAPI = {
   getAllCompanies: async (): Promise<Company[]> => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      console.log('No session in getAllCompanies');
-      return [];
-    }
+    if (!session) return [];
 
     // Get user's full profile
     const { data: profile, error: profileError } = await supabase
@@ -223,33 +206,21 @@ export const companyAPI = {
       .eq('id', session.user.id)
       .single();
 
+    // If profile not found, return empty array
     if (profileError || !profile) {
-      console.warn('Profile not found:', profileError?.message);
+      console.warn('Profile not found for user:', session.user.id, profileError?.message);
       return [];
     }
 
-    console.log('User profile for company access:', {
-      id: profile.id,
-      role: profile.role,
-      company_id: profile.company_id
-    });
-
     let query = supabase.from('companies').select('*');
     
-    // Role-based filtering
+    // If user is moderator, only show their company
     if (profile.role === 'moderator' && profile.company_id) {
-      console.log('Moderator filtering to company:', profile.company_id);
       query = query.eq('id', profile.company_id);
-    } else if (profile.role === 'controller' && profile.company_id) {
-      console.log('Controller filtering to company:', profile.company_id);
-      query = query.eq('id', profile.company_id);
-    } else if (profile.role === 'admin' || profile.role === 'moderator') {
-      // Admins and moderators can see companies
-      // No filter needed for admins
-      console.log(`${profile.role} can see all companies`);
-    } else {
-      console.log(`Role ${profile.role} cannot view companies`);
-      return [];
+    }
+    // Admins and controllers see all companies
+    else if (profile.role !== 'admin' && profile.role !== 'controller') {
+      return []; // Regular users see no companies
     }
 
     const { data, error } = await query.order('name');
@@ -258,8 +229,6 @@ export const companyAPI = {
       console.error('Error fetching companies:', error);
       return [];
     }
-    
-    console.log('Companies fetched:', data?.length || 0);
     return data || [];
   } catch (error) {
     console.error('Error fetching companies:', error);
@@ -1312,116 +1281,6 @@ export const authAPI = {
     } catch (error) {
       console.error('Error fetching current user profile:', error);
       return null;
-    }
-  },
-
-  getRespondersByCompany: async (companyId: string) => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('company_id', companyId)
-      .in('role', ['responder', 'controller'])
-      .eq('status', 'active');
-
-    if (error) throw error;
-    return data;
-  },
-
-  // Add these new methods for reports API
-  updateResponderStatus: async (userId: string, status: string) => {
-    const { data, error } = await supabase
-      .from('users')
-      .update({ status: status })
-      .eq('id', userId);
-
-    if (error) throw error;
-    return data;
-  },
-
-  updateResponderDispatchStatus: async (userId: string, reportId: string, status: string) => {
-    const { data, error } = await supabase
-      .from('dispatch_records')
-      .update({ status: status })
-      .eq('assigned_to', userId)
-      .eq('report_id', reportId);
-
-    if (error) throw error;
-    return data;
-  },
-
-  // Helper method to get dispatch records by company
-  getDispatchRecordsByCompany: async (companyId: string) => {
-    try {
-      // First, get all reports for this company
-      const [vehicleReports, crimeReports] = await Promise.all([
-        supabase.from('vehicle_alerts').select('id').eq('company_id', companyId),
-        supabase.from('crime_reports').select('id').eq('company_id', companyId)
-      ]);
-
-      const vehicleIds = vehicleReports.data?.map(r => r.id) || [];
-      const crimeIds = crimeReports.data?.map(r => r.id) || [];
-      const allReportIds = [...vehicleIds, ...crimeIds];
-
-      if (allReportIds.length === 0) return [];
-
-      // Get dispatch records for these reports
-      const { data, error } = await supabase
-        .from('dispatch_records')
-        .select('*')
-        .in('report_id', allReportIds);
-
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error('Error getting dispatch records by company:', error);
-      throw error;
-    }
-  },
-
-  // Get responder assigned reports
-  getResponderAssignedReports: async (userId: string) => {
-    try {
-      // Get dispatch records for this responder
-      const { data: dispatchRecords, error: dispatchError } = await supabase
-        .from('dispatch_records')
-        .select('report_id, report_type')
-        .eq('assigned_to', userId)
-        .in('status', ['dispatched', 'en_route', 'on_scene']);
-
-      if (dispatchError) throw dispatchError;
-
-      if (!dispatchRecords || dispatchRecords.length === 0) return [];
-
-      // Get the actual reports
-      const reports = [];
-      for (const record of dispatchRecords) {
-        if (record.report_type === 'vehicle') {
-          const { data: vehicleReport, error: vehicleError } = await supabase
-            .from('vehicle_alerts')
-            .select('*')
-            .eq('id', record.report_id)
-            .single();
-
-          if (!vehicleError && vehicleReport) {
-            reports.push(vehicleReport);
-          }
-        } else if (record.report_type === 'crime') {
-          const { data: crimeReport, error: crimeError } = await supabase
-            .from('crime_reports')
-            .select('*')
-            .eq('id', record.report_id)
-            .single();
-
-          if (!crimeError && crimeReport) {
-            reports.push(crimeReport);
-          }
-        }
-      }
-
-      return reports;
-    } catch (error) {
-      console.error('Error getting responder assigned reports:', error);
-      throw error;
     }
   },
 

@@ -89,5 +89,6 @@ export default function ControlRoomPage() {
     );
   }
 
-  return <ControlRoomDashboard user={user} />;
+  const Dashboard = ControlRoomDashboard as unknown as (props: any) => JSX.Element;
+  return <Dashboard user={user} />;
 }

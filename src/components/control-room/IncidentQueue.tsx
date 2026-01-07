@@ -1,232 +1,379 @@
-// components/control-room/IncidentQueue.tsx
+// components/control-room/EventStack.tsx
 'use client';
 
-import { useState } from 'react';
-import CustomButton from '@/components/ui/CustomButton';
+import { useState, useEffect } from 'react';
 
-// Import the Incident interface from ControlRoomDashboard
-import type { Incident } from './ControlRoomDashboard';
-
-interface ResponseTeam {
+interface EventReport {
   id: string;
-  name: string;
-  status: 'available' | 'en_route' | 'busy' | 'offline';
-  members: string[];
-  currentLocation?: string;
-  assignedIncidents: string[];
-  lastUpdate: string;
+  type: 'vehicle' | 'crime' | 'other';
+  title: string;
+  description: string;
+  location: {
+    lat: number;
+    lng: number;
+    address?: string;
+    zone?: string;
+    area?: string;
+    region?: string;
+  };
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  timestamp: string;
+  status: 'active' | 'pending' | 'resolved';
+  counters?: {
+    witnesses?: number;
+    evidence?: number;
+    related?: number;
+  };
+  vehicleDetails?: {
+    license_plate: string;
+    make: string;
+    model: string;
+    color: string;
+  };
 }
 
-interface IncidentQueueProps {
-  incidents: Incident[];
-  teams: ResponseTeam[];
-  onAssignTeam: (incidentId: string, teamId: string) => void;
-  onUpdateStatus: (incidentId: string, status: string) => void;
-  onSelectIncident: (incident: Incident) => void;
+interface EventStackProps {
+  vehicleReports: any[];
+  crimeReports: any[];
+  onSelectEvent: (event: EventReport) => void;
+  selectedEventId?: string;
 }
 
-export default function IncidentQueue({ 
-  incidents, 
-  teams, 
-  onAssignTeam, 
-  onUpdateStatus,
-  onSelectIncident 
-}: IncidentQueueProps) {
-  const [expandedIncident, setExpandedIncident] = useState<string | null>(null);
+export default function EventStack({ 
+  vehicleReports, 
+  crimeReports, 
+  onSelectEvent,
+  selectedEventId 
+}: EventStackProps) {
+  const [events, setEvents] = useState<EventReport[]>([]);
+  const [lastUpdate, setLastUpdate] = useState<string>('');
+  const [isBrowser, setIsBrowser] = useState(false);
+
+  useEffect(() => {
+    setIsBrowser(typeof window !== 'undefined');
+  }, []);
+
+  // Transform reports into event format
+  useEffect(() => {
+    const transformEvents = () => {
+      const now = new Date().toISOString();
+      setLastUpdate(now);
+      
+      const newEvents: EventReport[] = [];
+      
+      // Transform vehicle reports
+      vehicleReports.forEach(report => {
+        const event: EventReport = {
+          id: report.id,
+          type: 'vehicle',
+          title: `Vehicle Alert: ${report.license_plate || 'Unknown'}`,
+          description: report.reason || 'Vehicle alert reported',
+          location: {
+            lat: parseFloat(report.last_seen_location?.split(',')[0]) || 0,
+            lng: parseFloat(report.last_seen_location?.split(',')[1]) || 0,
+            address: report.last_seen_location || 'Unknown location',
+            zone: report.zone || 'Zone A',
+            area: report.area || 'Urban',
+            region: report.region || 'Region 1'
+          },
+          severity: report.severity || 'medium',
+          timestamp: report.created_at,
+          status: report.status || 'active',
+          counters: {
+            witnesses: 1,
+            evidence: report.evidence_images?.length || 0
+          },
+          vehicleDetails: {
+            license_plate: report.license_plate,
+            make: report.vehicle_make,
+            model: report.vehicle_model,
+            color: report.vehicle_color
+          }
+        };
+        newEvents.unshift(event); // Add to beginning (newest first)
+      });
+      
+      // Transform crime reports
+      crimeReports.forEach(report => {
+        const event: EventReport = {
+          id: report.id,
+          type: 'crime',
+          title: report.title || 'Crime Report',
+          description: report.description || 'Crime incident reported',
+          location: {
+            lat: parseFloat(report.location?.split(',')[0]) || 0,
+            lng: parseFloat(report.location?.split(',')[1]) || 0,
+            address: report.location || 'Unknown location',
+            zone: report.zone || 'Zone B',
+            area: report.area || 'Urban',
+            region: report.region || 'Region 1'
+          },
+          severity: report.severity || 'medium',
+          timestamp: report.created_at,
+          status: report.status || 'active',
+          counters: {
+            witnesses: report.witness_info ? 1 : 0,
+            evidence: report.evidence_images?.length || 0,
+            related: 0
+          }
+        };
+        newEvents.unshift(event); // Add to beginning (newest first)
+      });
+      
+      // Sort by timestamp (newest first)
+      newEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      
+      setEvents(newEvents);
+    };
+    
+    transformEvents();
+    
+    // Auto-update every 5 seconds
+    if (isBrowser) {
+      const interval = setInterval(transformEvents, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [vehicleReports, crimeReports, isBrowser]);
+
+  // Get event style based on type
+  const getEventStyle = (event: EventReport, isSelected: boolean) => {
+    const baseStyles: React.CSSProperties = {
+      transition: 'all 0.2s ease',
+      cursor: 'pointer'
+    };
+    
+    if (isSelected) {
+      // Inverted colors for selected state
+      switch (event.type) {
+        case 'vehicle':
+          return {
+            ...baseStyles,
+            backgroundColor: '#FFFFFF', // White background
+            color: '#FF0000', // Red text
+            border: '2px solid #FF0000'
+          };
+        case 'crime':
+          return {
+            ...baseStyles,
+            backgroundColor: '#000000', // Black background
+            color: '#FFFF00', // Yellow text
+            border: '2px solid #FFFF00'
+          };
+        default:
+          return {
+            ...baseStyles,
+            backgroundColor: '#FFFFFF', // White background
+            color: '#000000', // Black text
+            border: '2px solid #CCCCCC'
+          };
+      }
+    } else {
+      // Normal state
+      switch (event.type) {
+        case 'vehicle':
+          return {
+            ...baseStyles,
+            backgroundColor: '#FF0000', // Red background
+            color: '#FFFFFF' // White text
+          };
+        case 'crime':
+          return {
+            ...baseStyles,
+            backgroundColor: '#FFFF00', // Yellow background
+            color: '#000000' // Black text
+          };
+        default:
+          return {
+            ...baseStyles,
+            backgroundColor: '#000000', // Black background
+            color: '#CCCCCC' // Light grey text
+          };
+      }
+    }
+  };
+
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}h ago`;
+    return date.toLocaleDateString();
+  };
 
   const getSeverityBadge = (severity: string) => {
-    const colors = {
-      critical: 'bg-red-500 border-red-600',
-      high: 'bg-orange-500 border-orange-600',
-      medium: 'bg-yellow-500 border-yellow-600',
-      low: 'bg-green-500 border-green-600'
-    };
-    
+    switch (severity) {
+      case 'critical':
+        return <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse"></span>;
+      case 'high':
+        return <span className="inline-block w-2 h-2 rounded-full bg-white"></span>;
+      default:
+        return <span className="inline-block w-2 h-2 rounded-full bg-gray-300"></span>;
+    }
+  };
+
+  // Show loading state on server
+  if (!isBrowser) {
     return (
-      <span className={`px-2 py-1 text-xs rounded-full border ${colors[severity as keyof typeof colors] || 'bg-gray-500'} text-white`}>
-        {severity.toUpperCase()}
-      </span>
-    );
-  };
-
-  const getStatusBadge = (status: string) => {
-    const colors = {
-      active: 'bg-blue-500 border-blue-600',
-      pending: 'bg-yellow-500 border-yellow-600',
-      resolved: 'bg-green-500 border-green-600',
-      recovered: 'bg-green-500 border-green-600',
-      rejected: 'bg-red-500 border-red-600'
-    };
-    
-    return (
-      <span className={`px-2 py-1 text-xs rounded-full border ${colors[status as keyof typeof colors] || 'bg-gray-500'} text-white`}>
-        {status.toUpperCase()}
-      </span>
-    );
-  };
-
-  const getTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-    return `${Math.floor(diffMins / 1440)}d ago`;
-  };
-
-  return (
-    <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-white">📋 Incident Queue</h2>
-        <div className="text-sm text-gray-400">
-          Showing {incidents.length} active incidents
+      <div className="h-full rounded-xl border border-gray-700 overflow-hidden bg-gray-900 p-4">
+        <div className="animate-pulse">
+          <div className="h-6 bg-gray-800 rounded mb-4"></div>
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-16 bg-gray-800 rounded"></div>
+            ))}
+          </div>
         </div>
       </div>
+    );
+  }
 
-      <div className="space-y-4">
-        {incidents.length === 0 ? (
-          <div className="text-center py-8 text-gray-400">
-            No active incidents. All clear! 🎉
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="bg-gray-900 p-4 border-b border-gray-800">
+        <div className="flex justify-between items-center">
+          <h3 className="text-white font-bold text-lg">Live Event Stack</h3>
+          <div className="flex items-center space-x-2">
+            <div className="text-xs text-gray-400">
+              {events.length} events
+            </div>
+            <div className="text-xs text-gray-500">
+              Updated: {lastUpdate ? formatTime(lastUpdate) : 'Just now'}
+            </div>
           </div>
-        ) : (
-          incidents.map((incident) => (
-            <div
-              key={incident.id}
-              className={`bg-gray-700 rounded-lg border-l-4 ${
-                incident.severity === 'critical' ? 'border-l-red-500' :
-                incident.severity === 'high' ? 'border-l-orange-500' :
-                incident.severity === 'medium' ? 'border-l-yellow-500' :
-                'border-l-green-500'
-              } hover:bg-gray-600 transition-colors cursor-pointer`}
-              onClick={() => onSelectIncident(incident)}
-            >
-              <div className="p-4">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="font-semibold text-white text-lg">
-                        {incident.title}
-                      </h3>
-                      {getSeverityBadge(incident.severity)}
-                      {getStatusBadge(incident.status)}
+        </div>
+        
+        {/* Legend */}
+        <div className="flex items-center space-x-4 mt-3">
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 rounded" style={{ backgroundColor: '#FF0000' }}></div>
+            <span className="text-xs text-gray-300">Vehicle</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 rounded" style={{ backgroundColor: '#FFFF00' }}></div>
+            <span className="text-xs text-gray-300">Crime</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 rounded bg-black"></div>
+            <span className="text-xs text-gray-300">Other</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Event List */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-2 space-y-2">
+          {events.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No active events
+            </div>
+          ) : (
+            events.map((event) => {
+              const isSelected = selectedEventId === event.id;
+              return (
+                <div
+                  key={event.id}
+                  onClick={() => onSelectEvent(event)}
+                  style={getEventStyle(event, isSelected)}
+                  className="rounded-lg p-3 hover:opacity-90 active:scale-[0.98]"
+                >
+                  <div className="flex items-start justify-between">
+                    {/* Left Column: Event/Zone Description */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-2 mb-1">
+                        {getSeverityBadge(event.severity)}
+                        <span className="font-bold text-sm truncate">
+                          {event.title}
+                        </span>
+                      </div>
+                      <div className="text-xs opacity-90 truncate">
+                        {event.description}
+                      </div>
+                      <div className="text-xs mt-1 flex items-center space-x-2">
+                        <span>{event.location.zone}</span>
+                        <span className="opacity-70">•</span>
+                        <span>{formatTime(event.timestamp)}</span>
+                      </div>
                     </div>
                     
-                    <p className="text-gray-300 text-sm mb-2">
-                      {incident.description}
-                    </p>
+                    {/* Middle Columns: Area, Region */}
+                    <div className="flex items-center space-x-3 ml-4">
+                      <div className="text-center">
+                        <div className="text-xs opacity-80">Area</div>
+                        <div className="text-sm font-medium">
+                          {event.location.area}
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xs opacity-80">Region</div>
+                        <div className="text-sm font-medium">
+                          {event.location.region}
+                        </div>
+                      </div>
+                    </div>
                     
-                    <div className="flex items-center space-x-4 text-xs text-gray-400">
-                      <span>📍 {incident.location}</span>
-                      <span>🕒 {getTimeAgo(incident.reportedAt)}</span>
-                      <span>🔢 {incident.obNumber}</span>
-                      <span>👤 {incident.reporter}</span>
+                    {/* Right Columns: Counters and Status */}
+                    <div className="flex items-center space-x-4 ml-4">
+                      <div className="text-center">
+                        <div className="text-xs opacity-80">Status</div>
+                        <div className={`text-xs font-medium px-2 py-1 rounded-full ${
+                          event.status === 'active' ? 'bg-green-500/20 text-green-300' :
+                          event.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300' :
+                          'bg-gray-500/20 text-gray-300'
+                        }`}>
+                          {event.status}
+                        </div>
+                      </div>
+                      
+                      {event.counters && (
+                        <div className="flex items-center space-x-3">
+                          {event.counters.witnesses !== undefined && (
+                            <div className="text-center">
+                              <div className="text-xs opacity-80">Wit.</div>
+                              <div className="text-sm font-medium">
+                                {event.counters.witnesses}
+                              </div>
+                            </div>
+                          )}
+                          {event.counters.evidence !== undefined && (
+                            <div className="text-center">
+                              <div className="text-xs opacity-80">Evid.</div>
+                              <div className="text-sm font-medium">
+                                {event.counters.evidence}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   
-                  <div className="flex space-x-2 ml-4">
-                    {!incident.assignedTeam && (
-                      <select
-                        className="bg-gray-600 border border-gray-500 rounded px-2 py-1 text-xs text-white"
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => onAssignTeam(incident.id, e.target.value)}
-                        value=""
-                      >
-                        <option value="">Assign Team</option>
-                        {teams.filter(t => t.status === 'available').map(team => (
-                          <option key={team.id} value={team.id}>
-                            {team.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    
-                    {incident.assignedTeam && (
-                      <span className="bg-blue-500 text-white px-2 py-1 rounded text-xs">
-                        Assigned: {teams.find(t => t.id === incident.assignedTeam)?.name}
-                      </span>
-                    )}
-                    
-                    <select
-                      className="bg-gray-600 border border-gray-500 rounded px-2 py-1 text-xs text-white"
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => onUpdateStatus(incident.id, e.target.value)}
-                      value={incident.status}
-                    >
-                      <option value="active">Active</option>
-                      <option value="pending">Pending</option>
-                      <option value="resolved">Resolved</option>
-                      <option value="recovered">Recovered</option>
-                      <option value="rejected">Rejected</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Expanded Details */}
-                {expandedIncident === incident.id && (
-                  <div className="mt-4 pt-4 border-t border-gray-600">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <h4 className="font-medium text-gray-300 mb-2">Details</h4>
-                        <div className="space-y-1 text-gray-400">
-                          <div>Type: {incident.type}</div>
-                          <div>Reported: {new Date(incident.reportedAt).toLocaleString()}</div>
-                          <div>Case: {incident.obNumber}</div>
-                        </div>
-                      </div>
-                      <div>
-                        <h4 className="font-medium text-gray-300 mb-2">Actions</h4>
-                        <div className="flex space-x-2">
-                          <CustomButton size="sm" variant="primary">
-                            View Details
-                          </CustomButton>
-                          <CustomButton size="sm" variant="secondary">
-                            Add Note
-                          </CustomButton>
-                        </div>
+                  {/* Vehicle details if applicable */}
+                  {event.type === 'vehicle' && event.vehicleDetails && (
+                    <div className="mt-2 pt-2 border-t border-current border-opacity-20">
+                      <div className="text-xs flex items-center space-x-4">
+                        <span>Plate: {event.vehicleDetails.license_plate}</span>
+                        <span>Make: {event.vehicleDetails.make}</span>
+                        <span>Color: {event.vehicleDetails.color}</span>
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Queue Statistics */}
-      {incidents.length > 0 && (
-        <div className="mt-6 pt-6 border-t border-gray-700">
-          <div className="grid grid-cols-4 gap-4 text-center">
-            <div>
-              <div className="text-2xl font-bold text-red-500">
-                {incidents.filter(i => i.severity === 'critical').length}
-              </div>
-              <div className="text-xs text-gray-400">Critical</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-orange-500">
-                {incidents.filter(i => i.severity === 'high').length}
-              </div>
-              <div className="text-xs text-gray-400">High</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-yellow-500">
-                {incidents.filter(i => i.severity === 'medium').length}
-              </div>
-              <div className="text-xs text-gray-400">Medium</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-green-500">
-                {incidents.filter(i => i.severity === 'low').length}
-              </div>
-              <div className="text-xs text-gray-400">Low</div>
-            </div>
-          </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
-      )}
+      </div>
+      
+      {/* Footer */}
+      <div className="bg-gray-900 p-3 border-t border-gray-800">
+        <div className="text-xs text-gray-500 text-center">
+          Click any event to focus on map • Auto-refresh every 5s
+        </div>
+      </div>
     </div>
   );
 }

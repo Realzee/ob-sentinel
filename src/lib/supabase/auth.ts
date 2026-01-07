@@ -1,79 +1,72 @@
-// lib/supabase/auth.ts
-import { supabase } from './client';
+// lib/cache.ts
+const cache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-export const authAPI = {
-  // Get current user session
-  getCurrentUser: async () => {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error) throw error;
-    return user;
-  },
-
-  // Get user session
-  getSession: async () => {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error) throw error;
-    return session;
-  },
-
-  // Sign in
-  signIn: async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+export const cacheManager = {
+  set(key: string, data: any) {
+    cache.set(key, {
+      data,
+      timestamp: Date.now()
     });
-    if (error) throw error;
-    return data;
   },
-
-  // Sign up
-  signUp: async (email: string, password: string, userMetadata?: any) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: userMetadata
-      }
-    });
-    if (error) throw error;
-    return data;
-  },
-
-  // Sign out
-  signOut: async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-  },
-
-  // Update user
-  updateUser: async (updates: any) => {
-    const { data, error } = await supabase.auth.updateUser(updates);
-    if (error) throw error;
-    return data;
-  },
-
-  // Admin functions (these require service role key)
-  getAllUsers: async () => {
-    // This should be called from an API route, not directly from client
-    const response = await fetch('/api/admin/users');
-    if (!response.ok) {
-      throw new Error('Failed to fetch users');
-    }
-    return response.json();
-  },
-
-  updateUserRole: async (userId: string, role: string) => {
-    const response = await fetch('/api/admin/users', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId, role }),
-    });
+  
+  get(key: string) {
+    const item = cache.get(key);
+    if (!item) return null;
     
-    if (!response.ok) {
-      throw new Error('Failed to update user role');
+    if (Date.now() - item.timestamp > CACHE_DURATION) {
+      cache.delete(key);
+      return null;
     }
-    return response.json();
+    
+    return item.data;
+  },
+  
+  clear() {
+    cache.clear();
+  },
+  
+  clearByPattern(pattern: string) {
+    // Convert Map keys to array for iteration
+    const keys = Array.from(cache.keys());
+    for (const key of keys) {
+      if (key.includes(pattern)) {
+        cache.delete(key);
+      }
+    }
+  }
+};
+
+// Debounce utility
+export const debounce = (func: Function, wait: number) => {
+  let timeout: NodeJS.Timeout;
+  return (...args: any[]) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+};
+
+// Performance monitoring
+export const performanceMonitor = {
+  start: (name: string) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.time(name);
+    }
+  },
+  
+  end: (name: string) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.timeEnd(name);
+    }
+  },
+  
+  measure: async <T>(name: string, operation: () => Promise<T>): Promise<T> => {
+    performanceMonitor.start(name);
+    try {
+      const result = await operation();
+      return result;
+    } finally {
+      performanceMonitor.end(name);
+    }
   }
 };

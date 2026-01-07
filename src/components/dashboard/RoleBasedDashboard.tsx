@@ -4,17 +4,18 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import Header from '@/components/layout/Header';
 import AdminDashboard from './AdminDashboard';
 import ModeratorDashboard from './ModeratorDashboard';
-import ControllerDashboard from './ControllerDashboard';
 import UserDashboard from './UserDashboard';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import AuthGuard from '@/components/auth/AuthGuard';
+
+const ControllerDashboard = ({ user }: { user?: any }) => <UserDashboard user={user} />;
 
 export default function RoleBasedDashboard() {
   const { user, loading } = useAuth();
 
   // Render based on user role
   const renderDashboard = () => {
-    const role = user?.profile?.role;
+    const role = (user as any)?.profile?.role ?? (user as any)?.role;
 
     switch (role) {
       case 'admin':

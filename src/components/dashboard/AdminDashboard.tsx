@@ -5,7 +5,6 @@ import { authAPI, reportsAPI, Profile, UserRole, UserStatus, VehicleAlert, Crime
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import CompanyManagement from '@/components/admin/CompanyManagement';
 
 interface AdminDashboardProps {
   user: any;
@@ -72,7 +71,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       {/* Navigation Tabs */}
       <div className="mb-6">
         <nav className="flex space-x-4">
-          {['overview', 'users', 'companies', 'vehicles', 'crimes', 'settings'].map((tab) => (
+          {['overview', 'users', 'vehicles', 'crimes', 'settings'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -132,6 +131,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Department
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -171,6 +173,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                       </select>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {(user as any).department || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <button 
                         onClick={() => {
                           setSelectedUser(user);
@@ -187,11 +192,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </table>
           </div>
         </div>
-      )}
-
-      {/* Companies Management */}
-      {activeTab === 'companies' && (
-        <CompanyManagement user={user} />
       )}
 
       {/* Vehicle Alerts Management */}
@@ -235,9 +235,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        alert.status === 'active' ? 'bg-green-100 text-green-800' :
-                        alert.status === 'recovered' ? 'bg-yellow-100 text-yellow-800' :
-                        alert.status === 'rejected' ? 'bg-blue-100 text-blue-800' :
+                        alert.status === 'resolved' ? 'bg-green-100 text-green-800' :
+                        alert.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                        alert.status === 'active' ? 'bg-blue-100 text-blue-800' :
                         'bg-red-100 text-red-800'
                       }`}>
                         {alert.status.replace('_', ' ')}
@@ -254,7 +254,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {alert.reported_by || 'N/A'}
+                      {(alert as any).profiles?.full_name || (alert as any).profiles?.email || (alert as any).reported_by || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <button className="text-blue-600 hover:text-blue-900 mr-3">
@@ -291,15 +291,15 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Phone Number</label>
-              <p className="mt-1 text-sm text-gray-900">{'N/A'}</p>
+              <p className="mt-1 text-sm text-gray-900">{(selectedUser as any).phone_number || 'N/A'}</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Role</label>
-              <p className="mt-1 text-sm text-gray-900">{selectedUser.role || 'N/A'}</p>
+              <label className="block text-sm font-medium text-gray-700">Department</label>
+              <p className="mt-1 text-sm text-gray-900">{(selectedUser as any).department || 'N/A'}</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Status</label>
-              <p className="mt-1 text-sm text-gray-900">{selectedUser.status || 'N/A'}</p>
+              <label className="block text-sm font-medium text-gray-700">Badge Number</label>
+              <p className="mt-1 text-sm text-gray-900">{(selectedUser as any).badge_number || (selectedUser as any).badgeNumber || 'N/A'}</p>
             </div>
             <div className="flex justify-end space-x-3 pt-4">
               <Button

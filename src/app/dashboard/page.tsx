@@ -1,40 +1,47 @@
 // app/dashboard/page.tsx
-import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/providers/AuthProvider';
 import MainDashboard from '@/components/dashboard/MainDashboard';
-import ControllerDashboard from '@/components/dashboards/ControllerDashboard';
-import ResponderDashboard from '@/components/dashboards/ResponderDashboard';
 
-export default async function DashboardPage() {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+export default function DashboardPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
 
-  const { data: { session } } = await supabase.auth.getSession();
+  useEffect(() => {
+    // Redirect to login if not authenticated after loading completes
+    if (!loading && !user) {
+      console.log('🚫 No user found, redirecting to login...');
+      router.push('/');
+    }
+  }, [user, loading, router]);
 
-  if (!session) {
-    redirect('/auth/login');
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto"></div>
+          <p className="text-white mt-4">Loading dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
-  // Get user profile with company info
-  const { data: profile } = await supabase
-    .from('users')
-    .select('*, company:companies(*)')
-    .eq('id', session.user.id)
-    .single();
-
-  // Get user role from metadata
-  const userRole = session.user.user_metadata?.role || 'user';
-
-  // Render different dashboard based on role
-  switch (userRole) {
-    case 'controller':
-      return <ControllerDashboard user={{ ...session.user, ...profile }} />;
-    
-    case 'responder':
-      return <ResponderDashboard user={{ ...session.user, ...profile }} />;
-    
-    default:
-      return <MainDashboard user={{ ...session.user, ...profile }} />;
+  // Show nothing while checking auth (will redirect if not authenticated)
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto"></div>
+          <p className="text-white mt-4">Verifying authentication...</p>
+        </div>
+      </div>
+    );
   }
+
+  // Render dashboard for authenticated users
+  return <MainDashboard user={user} />;
 }
