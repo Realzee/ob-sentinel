@@ -55,7 +55,7 @@ export async function middleware(request: NextRequest) {
     if (currentPath.startsWith(route)) {
       // User not authenticated
       if (!session) {
-        return NextResponse.redirect(new URL('/auth/login', request.url))
+        return NextResponse.redirect(new URL('/', request.url))
       }
 
       // Get user role from metadata
