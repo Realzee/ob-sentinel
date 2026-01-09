@@ -103,7 +103,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         // Handle redirects based on auth state
         if (event === 'SIGNED_IN' && pathname === '/') {
-          router.push('/dashboard');
+          // Role-based redirect after sign in
+          const userRole = session?.user?.user_metadata?.role || 'user';
+
+          if (userRole === 'admin') {
+            router.push('/dashboard');
+          } else if (userRole === 'moderator' || userRole === 'controller') {
+            router.push('/control-room');
+          } else if (userRole === 'responder') {
+            router.push('/responder');
+          } else {
+            router.push('/dashboard');
+          }
         } else if (event === 'SIGNED_OUT') {
           router.push('/');
         }
