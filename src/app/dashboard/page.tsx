@@ -13,7 +13,7 @@ export default async function DashboardPage() {
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {
-    redirect('/auth/login');
+    redirect('/');
   }
 
   // Get user profile with company info

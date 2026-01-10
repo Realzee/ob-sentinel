@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getSafeUserProfile, supabase } from '@/lib/supabase'
+import supabase from '@/lib/supabase'
 import { User, LogOut, Shield, Menu, X } from 'lucide-react'
 
 export default function Header() {
@@ -11,13 +11,22 @@ export default function Header() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  // components/Header.tsx - Updated useEffect
+// components/Header.tsx - Updated useEffect
 useEffect(() => {
+  const fetchUserProfile = async (id: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', id)
+      .single()
+    return data ?? null
+  }
+
   const getUser = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     setUser(user)
     if (user) {
-      const profile = await getSafeUserProfile(user.id)
+      const profile = await fetchUserProfile(user.id)
       setUserProfile(profile)
     }
   }
@@ -28,7 +37,7 @@ useEffect(() => {
     setUser(currentUser)
     
     if (currentUser) {
-      const profile = await getSafeUserProfile(currentUser.id)
+      const profile = await fetchUserProfile(currentUser.id)
       setUserProfile(profile)
     } else {
       setUserProfile(null)
@@ -146,7 +155,7 @@ useEffect(() => {
             ) : (
               <div className="flex space-x-3">
                 <a
-                  href="/login"
+                  href="/"
                   className="btn-primary flex items-center space-x-2"
                 >
                   <User className="w-4 h-4" />
@@ -203,7 +212,7 @@ useEffect(() => {
             ) : (
               <div className="space-y-3">
                 <a
-                  href="/login"
+                  href="/"
                   className="btn-primary flex items-center justify-center space-x-2 w-full"
                   onClick={() => setMobileMenuOpen(false)}
                 >
