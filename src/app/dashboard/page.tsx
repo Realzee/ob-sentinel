@@ -10,30 +10,44 @@ export default async function DashboardPage() {
   const cookieStore = cookies();
   const supabase = createClient(cookieStore);
 
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-  if (!session) {
+  if (!session || sessionError) {
+    console.error('No session or session error:', sessionError);
     redirect('/');
   }
 
   // Get user profile with company info
-  const { data: profile } = await supabase
-    .from('users')
-    .select('*, company:companies(*)')
-    .eq('id', session.user.id)
-    .single();
+  let profile = null;
+  try {
+    const { data: profileData, error: profileError } = await supabase
+      .from('users')
+      .select('*, company:companies(*)')
+      .eq('id', session.user.id)
+      .single();
 
-  // Get user role from metadata
-  const userRole = session.user.user_metadata?.role || 'user';
+    if (profileError) {
+      console.error('Error fetching user profile:', profileError);
+      // Continue without profile data
+    } else {
+      profile = profileData;
+    }
+  } catch (error) {
+    console.error('Exception fetching user profile:', error);
+    // Continue without profile data
+  }
+
+  // Get user role from metadata or profile
+  const userRole = session.user.user_metadata?.role || profile?.role || 'user';
 
   // Render different dashboard based on role
   switch (userRole) {
     case 'controller':
       return <ControllerDashboard user={{ ...session.user, ...profile }} />;
-    
+
     case 'responder':
       return <ResponderDashboard user={{ ...session.user, ...profile }} />;
-    
+
     default:
       return <MainDashboard user={{ ...session.user, ...profile }} />;
   }

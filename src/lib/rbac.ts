@@ -95,7 +95,7 @@ export const getPermissions = (role: UserRole, userCompanyId?: string): Permissi
     case 'controller':
       return {
         ...basePermissions,
-        canViewDashboard: false,
+        canViewDashboard: true, // Allow controllers to view dashboard
         canCreateReports: false,
         canViewReports: true, // Only from their company
         canEditReports: true, // Only status updates
@@ -108,7 +108,7 @@ export const getPermissions = (role: UserRole, userCompanyId?: string): Permissi
         canManageCompanies: false,
         canViewControlRoom: true, // Main role
         canDispatchResponders: true, // Primary function
-        canUpdateReportStatus: true, // Primary function        
+        canUpdateReportStatus: true, // Primary function
       };
 
     case 'responder':

@@ -72,17 +72,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       try {
         console.log('🔄 Getting initial session...');
         const { data: { session }, error } = await supabase.auth.getSession();
-        
+
         if (error) {
           console.error('❌ Session error:', error);
           setLoading(false);
           return;
         }
-        
+
         console.log('📋 Session data:', session);
         setSession(session);
         setUser(session?.user ?? null);
-        
+
       } catch (error) {
         console.error('❌ Error getting session:', error);
       } finally {
@@ -96,12 +96,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         console.log('🔐 Auth state changed:', event, session?.user?.email);
-        
+
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
 
-        // Handle redirects based on auth state
+        // Handle redirects based on auth state - ONLY redirect from login page
         if (event === 'SIGNED_IN' && pathname === '/') {
           // Role-based redirect after sign in
           const userRole = session?.user?.user_metadata?.role || 'user';
@@ -116,7 +116,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             router.push('/dashboard');
           }
         } else if (event === 'SIGNED_OUT') {
-          router.push('/');
+          // Only redirect to login if not already there
+          if (pathname !== '/') {
+            router.push('/');
+          }
         }
       }
     );
