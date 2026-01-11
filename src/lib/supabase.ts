@@ -218,7 +218,7 @@ export const companyAPI = {
 
     // Get user's full profile
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
+      .from('users')
       .select('*')
       .eq('id', session.user.id)
       .single();
@@ -235,7 +235,7 @@ export const companyAPI = {
     });
 
     let query = supabase.from('companies').select('*');
-    
+
     // Role-based filtering
     if (profile.role === 'moderator' && profile.company_id) {
       console.log('Moderator filtering to company:', profile.company_id);
@@ -253,12 +253,12 @@ export const companyAPI = {
     }
 
     const { data, error } = await query.order('name');
-    
+
     if (error) {
       console.error('Error fetching companies:', error);
       return [];
     }
-    
+
     console.log('Companies fetched:', data?.length || 0);
     return data || [];
   } catch (error) {
@@ -292,7 +292,7 @@ export const companyAPI = {
 
       // Verify user is admin
       const { data: profile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('role')
         .eq('id', user.id)
         .single();
@@ -328,7 +328,7 @@ export const companyAPI = {
 
       // Verify user is admin
       const { data: profile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('role')
         .eq('id', user.id)
         .single();
@@ -374,7 +374,7 @@ export const companyAPI = {
 
       // Check if company has users
       const { data: users } = await supabase
-        .from('profiles')
+        .from('users')
         .select('id')
         .eq('company_id', companyId)
         .limit(1);
@@ -914,7 +914,7 @@ export const authAPI = {
     
     // Get current user's profile to check permissions
     const { data: currentUserProfile } = await supabase
-      .from('profiles')
+      .from('users')
       .select('id, email, full_name, role, company_id, status, created_at, updated_at') // ADD ALL FIELDS
       .eq('id', session.user.id)
       .single();

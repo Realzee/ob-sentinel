@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     // Check if user is admin
     const { data: profile } = await supabase
-      .from('profiles')
+      .from('users')
       .select('role')
       .eq('id', user.id)
       .single();
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       .from('companies')
       .select(`
         *,
-        user_count:profiles(count)
+        user_count:users(count)
       `);
 
     if (error) {

@@ -27,7 +27,7 @@ export async function PUT(
 
     // Check if user is admin
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
+      .from('users')
       .select('role')
       .eq('id', user.id)
       .single();
@@ -93,7 +93,7 @@ export async function DELETE(
 
     // Check if company has users
     const { data: users, error: usersError } = await supabase
-      .from('profiles')
+      .from('users')
       .select('id')
       .eq('company_id', params.id)
       .limit(1);

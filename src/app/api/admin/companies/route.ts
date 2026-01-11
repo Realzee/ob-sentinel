@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     // Get user profile to check role
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
+      .from('users')
       .select('role, company_id')
       .eq('id', user.id)
       .single();

@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
 
     // Check user role
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
+      .from('users')
       .select('role, company_id, full_name, avatar_url')
       .eq('id', user.id)
       .single();
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
     // Test database connection
     try {
       const { data: testData, error: testError } = await supabase
-        .from('profiles')
+        .from('users')
         .select('count')
         .limit(1);
 
@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
     // Check RLS policies (if accessible)
     try {
       const { data: policies, error: policiesError } = await supabase
-        .from('profiles')
+        .from('users')
         .select('*')
         .eq('email', user.email || '');
 
