@@ -42,6 +42,9 @@ export default async function DashboardPage() {
 
   // Render different dashboard based on role
   switch (userRole) {
+    case 'admin':
+      return <MainDashboard user={{ ...session.user, ...profile }} />;
+
     case 'controller':
       return <ControllerDashboard user={{ ...session.user, ...profile }} />;
 
