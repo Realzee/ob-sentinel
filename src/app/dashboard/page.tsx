@@ -21,7 +21,7 @@ export default async function DashboardPage() {
   let profile = null;
   try {
     const { data: profileData, error: profileError } = await supabase
-      .from('users')
+      .from('profiles')
       .select('*, company:companies(*)')
       .eq('id', session.user.id)
       .single();

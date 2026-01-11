@@ -213,14 +213,20 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      
+
       console.log('🔄 Loading fresh data...');
-      
+
+      // Get user role and company ID for filtering
+      const userRole = user?.role;
+      const companyId = user?.company_id;
+
+      console.log('🔍 Loading data with filters:', { userRole, companyId });
+
       // Load data in parallel for faster loading
       const [statsData, vehiclesData, crimesData] = await Promise.all([
-        reportsAPI.getDashboardStats(),
-        reportsAPI.getVehicleAlerts(),
-        reportsAPI.getCrimeReports()
+        reportsAPI.getDashboardStats(userRole, companyId),
+        reportsAPI.getVehicleAlerts(userRole, companyId),
+        reportsAPI.getCrimeReports(userRole, companyId)
       ]);
       
       setStats(statsData);
@@ -368,7 +374,9 @@ export default function MainDashboard({ user }: MainDashboardProps) {
   useEffect(() => {
     const updateStats = async () => {
       try {
-        const statsData = await reportsAPI.getDashboardStats();
+        const userRole = user?.role;
+        const companyId = user?.company_id;
+        const statsData = await reportsAPI.getDashboardStats(userRole, companyId);
         setStats(statsData);
       } catch (error) {
         console.error('Error updating stats:', error);
@@ -376,7 +384,7 @@ export default function MainDashboard({ user }: MainDashboardProps) {
     };
 
     updateStats();
-  }, [vehicleReports.length, crimeReports.length]);
+  }, [vehicleReports.length, crimeReports.length, user?.role, user?.company_id]);
 
   // Modal helper functions
   const showSuccess = (message: string) => {
@@ -459,7 +467,9 @@ export default function MainDashboard({ user }: MainDashboardProps) {
       }
       
       // Refresh stats to reflect the deletion
-      const statsData = await reportsAPI.getDashboardStats();
+      const userRole = user?.role;
+      const companyId = user?.company_id;
+      const statsData = await reportsAPI.getDashboardStats(userRole, companyId);
       setStats(statsData);
       
       showSuccess('Report deleted successfully!');
