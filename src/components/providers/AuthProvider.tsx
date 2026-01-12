@@ -1,7 +1,7 @@
 // components/providers/AuthProvider.tsx
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, usePathname } from 'next/navigation';
 import { User, Session } from '@supabase/supabase-js';
@@ -66,6 +66,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const lastSessionIdRef = useRef<string | null>(null);
+
+  // Separate useEffect for auth state changes (no redirects here)
   useEffect(() => {
     // Get initial session - SIMPLIFIED VERSION
     const getInitialSession = async () => {
@@ -79,7 +82,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           return;
         }
 
-        console.log('📋 Session data:', session);
+        // Only log session data if it's different from last session
+        const currentSessionId = session?.access_token || null;
+        if (currentSessionId !== lastSessionIdRef.current) {
+          console.log('📋 Session data:', session);
+          lastSessionIdRef.current = currentSessionId;
+        }
+
         setSession(session);
         setUser(session?.user ?? null);
 
@@ -92,40 +101,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     getInitialSession();
 
-    // Listen for auth changes - SIMPLIFIED
+    // Listen for auth changes - SIMPLIFIED (no redirects here)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        console.log('🔐 Auth state changed:', event, session?.user?.email);
+        const currentSessionId = session?.access_token || null;
+
+        // Only log if session actually changed or it's a significant event
+        if (currentSessionId !== lastSessionIdRef.current || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+          console.log('🔐 Auth state changed:', event, session?.user?.email);
+          lastSessionIdRef.current = currentSessionId;
+        }
 
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
-
-        // Handle redirects based on auth state - ONLY redirect from login page
-        if (event === 'SIGNED_IN' && pathname === '/') {
-          // Role-based redirect after sign in
-          const userRole = session?.user?.user_metadata?.role || 'user';
-
-          if (userRole === 'admin') {
-            router.push('/dashboard');
-          } else if (userRole === 'moderator' || userRole === 'controller') {
-            router.push('/control-room');
-          } else if (userRole === 'responder') {
-            router.push('/responder');
-          } else {
-            router.push('/dashboard');
-          }
-        } else if (event === 'SIGNED_OUT') {
-          // Only redirect to login if not already there
-          if (pathname !== '/') {
-            router.push('/');
-          }
-        }
       }
     );
 
     return () => subscription.unsubscribe();
-  }, [router, pathname]);
+  }, []); // No dependencies needed
+
+  // Note: Redirects are now handled by individual page components to avoid infinite loops
+  // This AuthProvider only manages authentication state
 
   const value: AuthContextType = {
     user,

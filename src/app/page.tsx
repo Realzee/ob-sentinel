@@ -15,13 +15,8 @@ export default function LoginPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
-  // Redirect if already authenticated
-  useEffect(() => {
-    if (user && !authLoading) {
-      console.log('✅ User already authenticated, redirecting to dashboard');
-      router.push('/dashboard');
-    }
-  }, [user, authLoading, router]);
+  // Note: Redirect logic removed to prevent infinite loops with AuthProvider
+  // AuthProvider now only manages auth state, redirects are handled by protected routes
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

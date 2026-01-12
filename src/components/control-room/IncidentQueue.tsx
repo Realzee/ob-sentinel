@@ -4,8 +4,20 @@
 import { useState } from 'react';
 import CustomButton from '@/components/ui/CustomButton';
 
-// Import the Incident interface from ControlRoomDashboard
-import type { Incident } from './ControlRoomDashboard';
+// Local Incident interface
+interface Incident {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  status: string;
+  obNumber: string;
+  reporter: string;
+  reportedAt: string;
+  type: string;
+  assignedTeam?: string;
+}
 
 interface ResponseTeam {
   id: string;

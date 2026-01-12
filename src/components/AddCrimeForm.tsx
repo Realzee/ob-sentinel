@@ -245,12 +245,9 @@ if (!profile.approved) {
   return
 }
 
-      const dbUser = await ensureUserExists(user.id, {
-        email: user.email!,
-        name: user.user_metadata?.name
-      })
+      const userExists = await ensureUserExists(user.id)
 
-      if (!dbUser) {
+      if (!userExists) {
         setError('Unable to verify your account. Please try logging in again.')
         return
       }

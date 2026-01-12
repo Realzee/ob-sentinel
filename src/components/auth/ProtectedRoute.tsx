@@ -1,7 +1,7 @@
 // components/auth/ProtectedRoute.tsx
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { canAccessRoute } from '@/lib/rbac';
@@ -13,28 +13,39 @@ interface ProtectedRouteProps {
   redirectTo?: string;
 }
 
-export default function ProtectedRoute({ 
-  children, 
-  requiredRole, 
-  requiredPermissions, 
-  redirectTo = '/' 
+export default function ProtectedRoute({
+  children,
+  requiredRole,
+  requiredPermissions,
+  redirectTo = '/'
 }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const hasRedirectedRef = useRef(false);
 
   useEffect(() => {
+    // Reset redirect flag when auth state changes
+    hasRedirectedRef.current = false;
+  }, [user, loading]);
+
+  useEffect(() => {
+    // Prevent multiple redirects
+    if (hasRedirectedRef.current) return;
+
     if (!loading && !user) {
+      hasRedirectedRef.current = true;
       router.push('/');
       return;
     }
 
     if (!loading && user) {
       const userRole = user.role || user.user_metadata?.role || 'user';
-      
+
       // Check role-based access
       if (requiredRole) {
         const requiredRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
         if (!requiredRoles.includes(userRole)) {
+          hasRedirectedRef.current = true;
           router.push(redirectTo);
           return;
         }
@@ -43,6 +54,7 @@ export default function ProtectedRoute({
       // Check route access
       const currentPath = window.location.pathname;
       if (!canAccessRoute(userRole as any, currentPath)) {
+        hasRedirectedRef.current = true;
         router.push(redirectTo);
         return;
       }
