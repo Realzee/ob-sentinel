@@ -89,5 +89,5 @@ export default function ControlRoomPage() {
     );
   }
 
-  return <ControlRoomDashboard user={user} />;
+  return <ControlRoomDashboard />;
 }
