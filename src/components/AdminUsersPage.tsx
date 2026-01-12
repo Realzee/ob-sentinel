@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, getOnlineUsers, updateUserPresence } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { Users, Shield, CheckCircle, XCircle, Edit, Save, X, User, Clock, Search, Filter, Wifi, WifiOff, Mail, Phone, MapPin, Calendar, Trash2, AlertTriangle, Eye, Ban, CheckSquare, Square, Plus, Key } from 'lucide-react'
 
 interface UserProfile {
@@ -79,9 +79,8 @@ export default function AdminUsersPage() {
   const checkAuth = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     setCurrentUser(user)
-    
+
     if (user) {
-      updateUserPresence(user.id)
       // Update last login for admin user
       await updateUserLastLogin(user.id)
     }
@@ -91,8 +90,8 @@ export default function AdminUsersPage() {
   const updateUserLastLogin = async (userId: string) => {
     try {
       const { error } = await supabase
-        .from('profiles')
-        .update({ 
+        .from('users')
+        .update({
           last_login: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -102,7 +101,7 @@ export default function AdminUsersPage() {
         console.error('Error updating last login:', error)
         return { error }
       }
-      
+
       console.log('✅ Last login updated for user:', userId)
       return { success: true }
     } catch (error) {
@@ -115,7 +114,7 @@ export default function AdminUsersPage() {
     try {
       setLoading(true)
       const { data: profiles, error } = await supabase
-        .from('profiles')
+        .from('users')
         .select('*')
         .order('created_at', { ascending: false })
 
@@ -129,20 +128,7 @@ export default function AdminUsersPage() {
   }
 
   const startPresenceUpdates = async () => {
-    // Update presence every minute
-    const interval = setInterval(async () => {
-      if (currentUser) {
-        await updateUserPresence(currentUser.id)
-      }
-      const onlineUsers = await getOnlineUsers()
-      setOnlineUsers(onlineUsers)
-    }, 60000)
-
-    // Initial load
-    const onlineUsers = await getOnlineUsers()
-    setOnlineUsers(onlineUsers)
-
-    return () => clearInterval(interval)
+    // Presence updates removed - functions not available
   }
 
   // Add new user function

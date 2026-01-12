@@ -82,7 +82,7 @@ export async function DELETE(
 
     // Check if user is admin
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
+      .from('users')
       .select('role')
       .eq('id', user.id)
       .single();

@@ -15,7 +15,7 @@ export default function Header() {
 useEffect(() => {
   const fetchUserProfile = async (id: string) => {
     const { data, error } = await supabase
-      .from('profiles')
+      .from('users')
       .select('*')
       .eq('id', id)
       .single()

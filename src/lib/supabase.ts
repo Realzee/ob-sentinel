@@ -363,7 +363,7 @@ export const companyAPI = {
 
       // Verify user is admin
       const { data: profile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('role')
         .eq('id', user.id)
         .single();
@@ -399,7 +399,7 @@ export const companyAPI = {
   getUsersByCompany: async (companyId: string): Promise<Profile[]> => {
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('users')
         .select('*')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false });
@@ -420,7 +420,7 @@ export const companyAPI = {
 
       // Verify current user has permission
       const { data: currentUserProfile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('role, company_id')
         .eq('id', user.id)
         .single();
@@ -439,18 +439,18 @@ export const companyAPI = {
       }
 
       const { error } = await supabase
-        .from('profiles')
-        .update({ 
+        .from('users')
+        .update({
           company_id: companyId,
           updated_at: new Date().toISOString()
         })
         .eq('id', userId);
-      
+
       if (error) {
         console.error('❌ Error updating user company:', error);
         return false;
       }
-      
+
       return true;
     } catch (error) {
       console.error('Error assigning user to company:', error);
@@ -923,23 +923,23 @@ export const authAPI = {
     
     // For non-admin users, use a different approach
     if (currentUserProfile.role !== 'admin') {
-      // Get profiles from the profiles table instead of admin API
+      // Get profiles from the users table instead of admin API
       let query = supabase
-        .from('profiles')
+        .from('users')
         .select('*');
-      
+
       // If user is moderator, only show users from their company
       if (currentUserProfile.role === 'moderator' && currentUserProfile.company_id) {
         query = query.eq('company_id', currentUserProfile.company_id);
       }
-      
+
       const { data: profiles, error } = await query;
-      
+
       if (error) {
         console.error('Error fetching profiles:', error);
         return [];
       }
-      
+
       // Map profiles to AuthUser format
       return profiles?.map(profile => ({
         id: profile.id,
@@ -1026,7 +1026,7 @@ export const authAPI = {
 
       // Verify current user is admin
       const { data: adminProfile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('role')
         .eq('id', user.id)
         .single();
@@ -1037,18 +1037,18 @@ export const authAPI = {
       }
 
       const { error } = await supabase
-        .from('profiles')
-        .update({ 
+        .from('users')
+        .update({
           role: role,
           updated_at: new Date().toISOString()
         })
         .eq('id', userId);
-      
+
       if (error) {
         console.error('❌ Error updating user role:', error);
         return false;
       }
-      
+
       return true;
     } catch (error) {
       console.error('Error updating user role:', error);
@@ -1064,7 +1064,7 @@ export const authAPI = {
 
       // Verify current user is admin
       const { data: adminProfile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('role')
         .eq('id', user.id)
         .single();
@@ -1075,18 +1075,18 @@ export const authAPI = {
       }
 
       const { error } = await supabase
-        .from('profiles')
-        .update({ 
+        .from('users')
+        .update({
           status: status,
           updated_at: new Date().toISOString()
         })
         .eq('id', userId);
-      
+
       if (error) {
         console.error('❌ Error updating user status:', error);
         return false;
       }
-      
+
       return true;
     } catch (error) {
       console.error('Error updating user status:', error);
@@ -1102,7 +1102,7 @@ export const authAPI = {
 
       // Verify current user is admin
       const { data: adminProfile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('role')
         .eq('id', user.id)
         .single();
@@ -1120,15 +1120,15 @@ export const authAPI = {
 
       // Delete user profile (auth user will be handled by cascade or trigger)
       const { error } = await supabase
-        .from('profiles')
+        .from('users')
         .delete()
         .eq('id', userId);
-      
+
       if (error) {
         console.error('❌ Error deleting user:', error);
         return false;
       }
-      
+
       return true;
     } catch (error) {
       console.error('Error deleting user:', error);
