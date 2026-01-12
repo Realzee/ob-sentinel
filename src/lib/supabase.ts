@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Types
-export type ReportStatus = 'active' | 'pending' | 'resolved' | 'rejected' | 'recovered';
+export type ReportStatus = 'active' | 'pending' | 'resolved' | 'rejected' | 'recovered' | 'under_review';
 export type UserRole = 'admin' | 'moderator' | 'controller' | 'user' | 'responder'; // ADDED 'responder'
 export type UserStatus = 'active' | 'pending' | 'suspended';
 
@@ -1723,6 +1723,111 @@ export const getUserStatus = async (): Promise<UserStatus | null> => {
   } catch (error) {
     console.error('Error getting user status:', error);
     return null;
+  }
+};
+
+// Additional utility functions
+export const hasValidSupabaseConfig = (): boolean => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  return !!(url && key && url.startsWith('https://') && key.length > 0);
+};
+
+export const ensureUserExists = async (userId: string): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .single();
+
+    if (error && error.code === 'PGRST116') {
+      // User doesn't exist, create profile
+      const { data: authUser } = await supabase.auth.getUser();
+      if (authUser.user) {
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert([{
+            id: userId,
+            email: authUser.user.email,
+            full_name: authUser.user.user_metadata?.full_name || '',
+            role: 'user',
+            status: 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }]);
+
+        return !insertError;
+      }
+    }
+
+    return !error;
+  } catch (error) {
+    console.error('Error ensuring user exists:', error);
+    return false;
+  }
+};
+
+export const getSafeUserProfile = async (userId: string): Promise<Profile | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching safe user profile:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error getting safe user profile:', error);
+    return null;
+  }
+};
+
+// Online presence types and functions
+export interface OnlineUser {
+  id: string;
+  email: string;
+  full_name?: string;
+  last_seen_at: string;
+  is_online: boolean;
+}
+
+export const getOnlineUsers = async (): Promise<OnlineUser[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, last_seen_at')
+      .not('last_seen_at', 'is', null)
+      .order('last_seen_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Consider users online if they were seen within the last 5 minutes
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+    return data?.map(user => ({
+      ...user,
+      is_online: new Date(user.last_seen_at) > fiveMinutesAgo
+    })) || [];
+  } catch (error) {
+    console.error('Error fetching online users:', error);
+    return [];
+  }
+};
+
+export const updateUserPresence = async (userId: string): Promise<void> => {
+  try {
+    await supabase
+      .from('profiles')
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq('id', userId);
+  } catch (error) {
+    console.error('Error updating user presence:', error);
   }
 };
 
